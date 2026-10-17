@@ -134,7 +134,7 @@ try {
   const localSales = () => p.run(`return (await GET('/api/sales', { from: '2000-01-01', to: '2100-01-01' })).length;`);
   const salesBefore = await localSales();
 
-  await drive(p, 'overview', { shotAt: ['Sell', 'More', 'Is everything saved?'] });
+  await drive(p, 'overview', { shotAt: ['Sale order', 'More', 'Is everything saved?'] });
   ok(!(await p.run('return Practice.on;')), 'the overview needs no practice mode');
   await drive(p, 'sell', { shotAt: ['Find the item', 'Pick the item', 'Cash received', 'Finish the sale'] });
   ok(await p.run('return Practice.on && !!document.querySelector("#practiceBar");'), 'practice mode is on, with the orange bar');
@@ -148,7 +148,7 @@ try {
   // mobile width: text box and arrow stay on the screen
   await p.resize(390, 780, true);
   await p.run('location.hash = "#/training"; await sleep(500);');
-  await drive(p, 'overview', { shotAt: ['Sell', 'Is everything saved?'], label: 'phone' });
+  await drive(p, 'overview', { shotAt: ['Sale order', 'Is everything saved?'], label: 'phone' });
   await p.resize(1280, 800, false);
 
   // finish: everything goes

@@ -22,6 +22,7 @@ route('GET', '/api/login-users', null, () => ({
 
 // Wrong PINs: after 5 tries, wait 30 seconds (then 60, 120 …).
 const tries = new Map();
+export const clearLockout = (id) => tries.delete(id);
 route('POST', '/api/login', null, async ({ body }) => {
   const id = toInt(body.user_id);
   const t = tries.get(id) || { n: 0, until: 0 };

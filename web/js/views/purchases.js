@@ -21,7 +21,7 @@ function openSupplierForm(s, onSaved) {
 }
 
 View('purchases', {
-  title: 'Purchases',
+  title: 'Purchase',
   allow: () => can('buy'),
   async render({ el }) {
     const st = { from: rangePresets().month[1], to: todayStr(), q: '' };

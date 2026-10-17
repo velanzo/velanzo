@@ -18,6 +18,8 @@ export function createCloud() {
     return sb;
   }
 
+  const siteUrl = () => location.origin + location.pathname;
+
   // Cloud errors start with "VZ:<kind>:"; no connection is kind "offline".
   class CloudError extends Error { constructor(kind, message) { super(message); this.kind = kind; } }
   function asError(err) {
@@ -118,6 +120,44 @@ export function createCloud() {
     createSetupCode: (locationId) => rpc('create_setup_code', { p_location: locationId }),
     removeDevice: (id) => rpc('remove_device', { p_id: id }),
     restoreBegin: () => rpc('restore_begin'),
+
+    // ---------- Links in emails ----------
+    // Forgot the owner password: Supabase emails a link that opens this page again.
+    resetPassword: (email) => auth((a) => a.resetPasswordForEmail(email, { redirectTo: siteUrl() })),
+    // The page was opened from an email link (…#access_token=…&type=recovery | magiclink | signup): take what it carries out of the address.
+    takeLink() {
+      const h = location.hash.replace(/^#/, '');
+      if (!/(^|&)(access_token|error|error_code)=/.test(h)) return null;
+      const q = new URLSearchParams(h);
+      history.replaceState(null, '', location.pathname + location.search);
+      if (q.get('error') || q.get('error_code')) return { error: true, expired: /expired|invalid/i.test(q.get('error_code') + ' ' + q.get('error_description')) };
+      return { type: q.get('type'), access_token: q.get('access_token'), refresh_token: q.get('refresh_token') };
+    },
+    // Work with a link's sign-in on its own, never touching this device's own sign-in
+    // (the owner may open the link on a shop computer; that must not change the shop computer).
+    async withLink(link, fn) {
+      const c = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'velanzo-link' },
+      });
+      const { error } = await c.auth.setSession({ access_token: link.access_token, refresh_token: link.refresh_token });
+      if (error) throw asError(error);
+      return fn(c);
+    },
+    async linkSetPassword(link, password) {
+      await this.withLink(link, async (c) => { const { error } = await c.auth.updateUser({ password }); if (error) throw asError(error); });
+    },
+    linkPinRequests: (link) => Cloud.withLink(link, async (c) => { const { data, error } = await c.rpc('list_pin_resets'); if (error) throw asError(error); return data; }),
+    linkDecide: (link, id, approve) => Cloud.withLink(link, async (c) => { const { error } = await c.rpc('decide_pin_reset', { p_id: id, p_approve: approve }); if (error) throw asError(error); }),
+
+    // ---------- Forgotten PIN ----------
+    // Asks for a new PIN for one person on this computer; a link goes to the owner's email to approve it.
+    async requestPinReset(userId) {
+      const r = await rpc('request_pin_reset', { p_device: App.device.id, p_user: userId });
+      await auth((a) => a.signInWithOtp({ email: r.email, options: { emailRedirectTo: siteUrl(), shouldCreateUser: false } }));
+      return r;
+    },
+    checkPinReset: (id) => rpc('check_pin_reset', { p_device: App.device.id, p_id: id }),
+    usePinReset: (id) => rpc('use_pin_reset', { p_device: App.device.id, p_id: id }),
     CloudError,
   };
 }

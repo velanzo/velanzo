@@ -495,3 +495,10 @@ h3 > svg { width: 20px; height: 20px; vertical-align: -4px; margin-right: 4px; c
 .clear-kinds { display: grid; gap: 6px; }
 .danger-zone { margin-top: 24px; padding: 16px; border: 1px solid #f5c9cb; background: var(--danger-soft); border-radius: 10px; }
 .btn.danger.solid { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+/* ---------- Forgot PIN / links ---------- */
+.forgot-pin { display: block; text-align: center; margin-top: 12px; font-size: 14px; }
+
+/* ---------- The seventh menu item: on the bar when there is room, under More otherwise ---------- */
+.more-list .narrow-only { display: none; }
+@media (max-width: 1399px) { .tabnav .wide-only { display: none; } .more-list .narrow-only { display: flex; } }

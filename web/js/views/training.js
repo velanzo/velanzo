@@ -94,19 +94,19 @@ const Practice = {
 
 // ---------- The guides ----------
 const navTarget = (href) => () => {
-  const a = document.querySelector(`#nav a[data-nav="${href}"]`);
-  return Tour.visible(a) ? a : document.querySelector('#moreMenu summary'); // inside "More"? point at More first
+  const a = [...document.querySelectorAll(`#nav a[data-nav="${href}"]`)].find((x) => Tour.visible(x));
+  return a || document.querySelector('#moreMenu summary'); // inside "More"? point at More first
 };
 // the DEMO T-Shirt in the search list (it always has stock)
 const pickDemo = () => [...document.querySelectorAll('.picker-item')].find((e) => /T-Shirt/.test(e.textContent)) || document.querySelector('.picker-item');
 const path = () => location.hash.replace(/^#\/?/, '').split('?')[0];
 const NAV_TEXT = {
   Home: 'Your starting screen. The owner sees today\'s sales and every shop live; others see their main buttons.',
-  Sell: 'Make a bill: scan the items, take the money, print the bill.',
+  'Sale order': 'Make a bill: scan the items, take the money, print the bill.',
   Bills: 'Every bill ever made. Find one, print it again or cancel it.',
   'Receive stock': 'Parcels sent to your shop. Count them and press confirm.',
-  'Send stock': 'Send items to a shop or the warehouse, and see what is on the way.',
-  'Stock arrived': 'Write down stock that came from a supplier.',
+  'Dispatch order': 'Send items from the warehouse to a shop, and see what is on the way.',
+  Purchase: 'Write down stock that came from a supplier. This is where the flow starts.',
   Labels: 'Print barcode stickers for your items.',
   Items: 'All your items with sizes, colours, prices and barcodes. Add new ones here.',
   Stock: 'How many pieces of each item are at every shop and the warehouse.',
@@ -125,15 +125,16 @@ const Guides = [
     show: () => true,
     outro: 'That is the whole screen. To practise a job, like making a bill or receiving stock, pick one of the other guides.',
     steps: () => {
-      const main = $$('#nav > a').map((a) => ({ key: a.dataset.nav, label: a.querySelector('span')?.textContent.trim() }));
-      const more = $$('#moreMenu .more-list a').map((a) => a.querySelector('span')?.textContent.trim());
+      const narrow = matchMedia('(max-width: 1399px)').matches;
+      const main = $$('#nav > a').filter((a) => !(narrow && a.classList.contains('wide-only'))).map((a) => ({ key: a.dataset.nav, label: a.querySelector('span')?.textContent.trim() }));
+      const more = $$('#moreMenu .more-list a').filter((a) => !(!narrow && a.classList.contains('narrow-only'))).map((a) => a.querySelector('span')?.textContent.trim());
       const steps = [{
         title: 'Welcome to Velanzo', text: 'This short tour shows you around. Press <b>Next</b> to move on, or <b>✕</b> to stop at any time.',
       }];
       for (const m of main) {
         steps.push({
           title: m.label, text: NAV_TEXT[m.label] || '', side: 'bottom',
-          target: () => document.querySelector(`#nav > a[data-nav="${m.key}"]`),
+          target: () => [...document.querySelectorAll(`#nav > a[data-nav="${m.key}"]`)].find((x) => Tour.visible(x)),
         });
       }
       if (more.length) {
@@ -157,12 +158,12 @@ const Guides = [
   },
 
   {
-    id: 'sell', title: 'Making a bill (selling)', icon: 'cart', time: '3 min', practice: true,
+    id: 'sell', title: 'Sale order (making a bill)', icon: 'cart', time: '3 min', practice: true,
     desc: 'Scan an item, take the money, finish the sale and find the bill afterwards.',
     show: () => can('sell'),
     outro: 'That is how every sale works: scan, take the money, Done. Try <b>Return or exchange</b> next if you take items back.',
     steps: [
-      { title: 'Open the Sell screen', text: 'Click <b>Sell</b> in the top bar. This is the screen you use for every customer.', target: navTarget('pos'), done: () => path() === 'pos', skipIf: () => path() === 'pos' },
+      { title: 'Open Sale order', text: 'Click <b>Sale order</b> in the top bar. This is the screen you use for every customer.', target: navTarget('pos'), done: () => path() === 'pos', skipIf: () => path() === 'pos' },
       { route: 'pos', title: 'Find the item', target: '#scan', done: (h) => h.has('.picker-item'),
         text: 'Click this box and type <b>DEMO T-Shirt</b>. At a real counter you just <b>scan the barcode</b> with the scanner and the item is added by itself.',
         assist: { label: 'Type it for me', run: (h) => h.set('#scan', 'DEMO T-Shirt') } },
@@ -194,7 +195,7 @@ const Guides = [
     show: () => can('returns') && can('sell'),
     outro: 'For an <b>exchange</b>, scan the returned item first, press <b>Return or exchange</b> again, then scan the new item. The bill shows the difference.',
     steps: [
-      { title: 'Open the Sell screen', text: 'Returns are made on the <b>Sell</b> screen. Click <b>Sell</b>.', target: navTarget('pos'), done: () => path() === 'pos', skipIf: () => path() === 'pos' },
+      { title: 'Open Sale order', text: 'Returns are made on the <b>Sale order</b> screen. Click <b>Sale order</b>.', target: navTarget('pos'), done: () => path() === 'pos', skipIf: () => path() === 'pos' },
       { route: 'pos', title: 'Switch to taking back', target: '#retBtn', side: 'top', done: () => !!document.querySelector('#retBtn.on'),
         text: 'Click <b>↩ Return or exchange</b>. The screen changes colour so you know items are coming back.' },
       { route: 'pos', title: 'Find the item', target: '#scan', done: (h) => h.has('.picker-item'),
@@ -212,12 +213,12 @@ const Guides = [
   },
 
   {
-    id: 'purchase', title: 'Stock arrived (buying from a supplier)', icon: 'bag', time: '4 min', practice: true,
+    id: 'purchase', title: 'Purchase (buying from a supplier)', icon: 'bag', time: '4 min', practice: true,
     desc: 'Write down stock that came from a supplier, add it to the warehouse and get the labels ready.',
     show: () => can('buy'),
-    outro: 'That is the whole buying flow: <b>Stock arrived → labels → stick on the items</b>. Next you send the stock to a shop with the <b>Send stock</b> guide.',
+    outro: 'That is the whole buying flow: <b>Purchase → labels → stick on the items</b>. Next you send the stock to a shop with the <b>Dispatch order</b> guide.',
     steps: [
-      { title: 'Open Stock arrived', text: 'Click <b>Stock arrived</b>. Every time goods come from a supplier, you start here.', target: navTarget('purchases'), done: () => /^purchases/.test(path()), skipIf: () => /^purchases/.test(path()) },
+      { title: 'Open Purchase', text: 'Click <b>Purchase</b>. Every time goods come from a supplier, you start here.', target: navTarget('purchases'), done: () => /^purchases/.test(path()), skipIf: () => /^purchases/.test(path()) },
       { route: 'purchases', title: 'Start a new purchase', target: '#pageActions .btn', done: () => path() === 'purchases/new',
         text: 'Click <b>New purchase</b>.' },
       { route: 'purchases/new', title: 'Who sent it?', target: '#sup', done: () => !!document.querySelector('#sup')?.value,
@@ -255,7 +256,7 @@ const Guides = [
     id: 'newitem', title: 'Adding a new item (sizes & colours)', icon: 'tag', time: '3 min', practice: true,
     desc: 'Make an item with several sizes at once. Each size gets its own barcode.',
     show: () => can('add_items') || can('buy'),
-    outro: 'Done! Each size now has its own barcode. Add the stock with <b>Stock arrived</b>, then print the labels.',
+    outro: 'Done! Each size now has its own barcode. Add the stock with <b>Purchase</b>, then print the labels.',
     steps: [
       { title: 'Open Items', text: 'Click <b>Items</b>.', target: navTarget('products'), done: () => /^products/.test(path()), skipIf: () => /^products/.test(path()) },
       { route: /^products$/, title: 'Add an item', target: '#addBtn', side: 'bottom', done: (h) => h.has('.modal-wrap'),
@@ -281,14 +282,14 @@ const Guides = [
   },
 
   {
-    id: 'send', title: 'Sending stock to a shop', icon: 'truck', time: '3 min', practice: true,
+    id: 'send', title: 'Dispatch order (sending stock to a shop)', icon: 'truck', time: '3 min', practice: true,
     desc: 'Pack items, send them to a shop and see them go “on the way”.',
     show: () => isAdmin() || can('send'),
     outro: 'The parcel is now <b>on the way</b>. The shop sees it under <b>Receive stock</b>, counts it and confirms. Stock only moves into the shop when they confirm.',
     steps: [
-      { title: 'Open Send stock', text: 'Click <b>Send stock</b>.', target: navTarget('dispatch'), done: () => /^dispatch/.test(path()), skipIf: () => /^dispatch/.test(path()) },
+      { title: 'Open Dispatch order', text: 'Click <b>Dispatch order</b>.', target: navTarget('dispatch'), done: () => /^dispatch/.test(path()), skipIf: () => /^dispatch/.test(path()) },
       { route: 'dispatch', title: 'Start a new parcel', target: '#pageActions .btn', done: () => path() === 'dispatch/new',
-        text: 'Click <b>Send stock</b>.' },
+        text: 'Click <b>New dispatch order</b>.' },
       { route: 'dispatch/new', title: 'From → To', target: '#to', side: 'bottom',
         text: '<b>From</b> is where the stock is now. In <b>To</b>, choose the shop it is going to.' },
       { route: 'dispatch/new', title: 'Add the items', target: '#scan', done: (h) => h.has('.picker-item'),

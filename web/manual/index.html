@@ -87,7 +87,7 @@
     <li><a href="#shop">Shop</a>
       <ol><li><a href="#sell">Make a bill</a></li><li><a href="#return">Return or exchange</a></li><li><a href="#bills">Find a bill</a></li><li><a href="#receive">Receive stock</a></li><li><a href="#expenses">Expenses</a></li></ol></li>
     <li><a href="#warehouse">Warehouse</a>
-      <ol><li><a href="#arrived">Stock arrived</a></li><li><a href="#items">New items</a></li><li><a href="#labels">Barcode labels</a></li><li><a href="#send">Send stock to a shop</a></li></ol></li>
+      <ol><li><a href="#arrived">Purchase</a></li><li><a href="#items">New items</a></li><li><a href="#labels">Barcode labels</a></li><li><a href="#send">Send stock to a shop</a></li></ol></li>
     <li><a href="#owner">Owner</a>
       <ol><li><a href="#home">Home — live</a></li><li><a href="#activity">Activity</a></li><li><a href="#reports">Reports and profit</a></li><li><a href="#stock">Stock and corrections</a></li><li><a href="#devices">Devices</a></li><li><a href="#backup">Backups and Excel</a></li></ol></li>
     <li><a href="#offline">No internet?</a></li>
@@ -109,10 +109,10 @@
 <figure class="diagram"><img src="img/flow.svg" alt="Flow: supplier → stock arrived → warehouse stock → labels → send stock → receive → scan → sale → bill → customer; the owner sees everything"></figure>
 <table>
   <tr><th style="width:44px">#</th><th>Step</th><th>Who</th><th>Where in Velanzo</th></tr>
-  <tr><td>1</td><td>Stock comes from a supplier</td><td>Warehouse</td><td><span class="menu">Stock arrived</span></td></tr>
+  <tr><td>1</td><td>Stock comes from a supplier</td><td>Warehouse</td><td><span class="menu">Purchase</span></td></tr>
   <tr><td>2</td><td>It is added to the warehouse stock</td><td>—</td><td>automatic</td></tr>
   <tr><td>3</td><td>A barcode label goes on every piece</td><td>Warehouse</td><td><span class="menu">Labels</span></td></tr>
-  <tr><td>4</td><td>A parcel is packed and sent to a shop</td><td>Warehouse</td><td><span class="menu">Send stock</span></td></tr>
+  <tr><td>4</td><td>A parcel is packed and sent to a shop</td><td>Warehouse</td><td><span class="menu">Dispatch order</span></td></tr>
   <tr><td>5</td><td>The shop checks the parcel and receives it</td><td>Shop</td><td><span class="menu">Receive stock</span></td></tr>
   <tr><td>6–8</td><td>Items are scanned, paid and a bill is printed</td><td>Shop</td><td><span class="menu">Sell</span></td></tr>
 </table>
@@ -196,8 +196,16 @@
   <tr><td><span style="color:var(--red);font-weight:600">● 1 not saved</span></td><td>The cloud refused a change (for example a switch was off). Tap it to see why.</td></tr>
   <tr><td><span style="color:var(--warn);font-weight:600">● Practice mode</span></td><td>You are in Training. Nothing is real and nothing is sent. See below.</td></tr>
 </table>
+<h3 id="forgot">Forgot your PIN or password?</h3>
+<p>This computer stays connected; only the PIN is asked, each time Velanzo opens. If you forget it:</p>
+<ul>
+  <li><b>Shop or warehouse person:</b> on the PIN screen tap <b>Forgot your PIN?</b> → <b>Send the link</b>. A link goes to the <b>owner's email</b>. The owner opens it (on any phone or computer) and presses <b>Approve</b>. Your screen moves on by itself: choose a new PIN. The owner never sees it.</li>
+  <li><b>Owner:</b> the same on the owner's computer or phone; the link goes to the owner's own email. Forgot the account <i>password</i>: <span class="menu">Owner sign in → Forgot your password?</span>.</li>
+  <li>The owner can always set a new PIN for someone in <span class="menu">Settings → People</span>.</li>
+</ul>
+<p>The owner's email must be a real, working address — it receives these links. Links work for 30 minutes.</p>
 <h3 id="training">Learning by doing: Training</h3>
-<p>New here? Open <span class="menu">More → Training</span> (or your name → Training). Pick a guide — <b>Full overview</b>, <b>Making a bill</b>, <b>Stock arrived</b>, <b>Send stock</b>, <b>Receiving a parcel</b> and more — and Velanzo shows an arrow where to click and says what to do. It moves on by itself when you have done each step, and you only see guides for what your place and your switches allow.</p>
+<p>New here? Open <span class="menu">More → Training</span> (or your name → Training). Pick a guide — <b>Full overview</b>, <b>Making a bill</b>, <b>Purchase</b>, <b>Send stock</b>, <b>Receiving a parcel</b> and more — and Velanzo shows an arrow where to click and says what to do. It moves on by itself when you have done each step, and you only see guides for what your place and your switches allow.</p>
 <p>Guides marked <i>practice</i> use the real screens with <b>DEMO</b> items. An orange bar shows that practice is on; nothing is sent online and nothing prints. When you press <b>Finish &amp; remove practice</b> everything you did is deleted completely, as if it never happened. Do not make real sales while practising — they would be deleted too.</p>
 
 <!-- ============================================================ -->
@@ -241,9 +249,9 @@
 <p>The warehouse home has one big button for each job, and shows the parcels on the way.</p>
 <figure><img src="img/warehouse-home.webp" alt="Warehouse home"></figure>
 
-<h3 id="arrived">5.1 Stock arrived</h3>
+<h3 id="arrived">5.1 Purchase</h3>
 <ol class="steps">
-  <li><span class="menu">Stock arrived → New purchase</span>. Choose the supplier and type their bill number.</li>
+  <li><span class="menu">Purchase → New purchase</span>. Choose the supplier and type their bill number.</li>
   <li>Scan items you already have, or click <b>New item</b> to add a new design with its sizes and colours (Velanzo makes a barcode for each).</li>
   <li>Type how many came and their cost. Type what you paid the supplier now (0 if later — it shows as owed).</li>
   <li>Press <span class="btn g">Save purchase &amp; add to stock</span>, then print the labels.</li>
@@ -262,7 +270,7 @@
 
 <h3 id="send">5.4 Send stock to a shop</h3>
 <ol class="steps">
-  <li><span class="menu">Send stock → Send stock</span>. Choose the shop.</li>
+  <li><span class="menu">Send stock → Dispatch order</span>. Choose the shop.</li>
   <li>Scan each piece as you pack it — every scan adds one.</li>
   <li>Press <span class="btn g">Send dispatch</span> and print the dispatch note for the parcel.</li>
 </ol>
@@ -335,7 +343,7 @@
   <li>Before leaving: the top bar says <b>All saved online</b>.</li>
 </ul></div>
 <div><h3>Warehouse</h3><ul class="checks">
-  <li>Enter everything that arrived (<span class="menu">Stock arrived</span>).</li>
+  <li>Enter everything that arrived (<span class="menu">Purchase</span>).</li>
   <li>Print and stick labels.</li>
   <li>Send parcels; print the dispatch note.</li>
   <li>Before leaving: <b>All saved online</b>.</li>

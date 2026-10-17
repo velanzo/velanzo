@@ -6,7 +6,7 @@ Simple software for a clothing business: **stock arrives → barcode labels → 
 - **Works without internet.** Every computer keeps its own copy; changes wait there and go to the cloud when the internet is back.
 - The data lives in **Supabase** (a cloud database). No computer has to stay on.
 - The **owner** sees every shop and the warehouse live, on a laptop or a phone.
-- The owner decides **what each shop may do** (sell, returns, discounts, buy from suppliers, send stock …) and can switch things off for one person. People log in by tapping their name and typing a PIN.
+- The owner decides **what each shop may do** (sell, returns, discounts, buy from suppliers, send stock …) and can switch things off for one person. People log in by tapping their name and typing a PIN. A computer stays signed in to the cloud; the PIN is asked each time Velanzo opens, like a phone. A forgotten PIN is approved by the owner with a link sent to the owner's email.
 
 ![How Velanzo works](web/manual/img/flow.svg)
 
@@ -42,7 +42,7 @@ How syncing works, in short: every record id is unique across devices (device nu
 npm test
 ```
 
-Runs the shop flows on one device (59 checks), three devices syncing through the cloud database, including what the cloud must refuse (54 checks), practice mode putting everything back exactly (19 checks) and clearing data by kind and date (18 checks). With the preview running and demo data loaded, `node tools/test-browser.mjs` checks a real browser selling without internet, reopening offline and syncing afterwards, `node tools/test-training.mjs` follows every Training guide in a real browser, `node tools/test-clear-browser.mjs` clears data by date and then everything with a shop computer following (this one empties the preview's demo data; refill it with `node tools/demo-data.mjs`), and `node tools/test-local-to-cloud.mjs` checks a computer that started without the cloud joining it with its data (this one empties the preview's cloud).
+Runs the shop flows on one device (59 checks), three devices syncing through the cloud database, including the owner lock, owner-only rules and PIN approval (87 checks), practice mode putting everything back exactly (19 checks) and clearing data by kind and date (18 checks). With the preview running and demo data loaded, `node tools/test-browser.mjs` checks a real browser selling without internet, reopening offline and syncing afterwards, `node tools/test-training.mjs` follows every Training guide in a real browser, `node tools/test-recovery-browser.mjs` forgets PINs and a password and recovers with the emailed links, `node tools/test-clear-browser.mjs` clears data by date and then everything with a shop computer following (this one empties the preview's demo data; refill it with `node tools/demo-data.mjs`), and `node tools/test-local-to-cloud.mjs` checks a computer that started without the cloud joining it with its data (this one empties the preview's cloud).
 
 ## Backups and moving data
 

@@ -269,11 +269,11 @@ const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColo
 const NAV = [
   { href: 'dashboard', label: 'Home', icon: 'home', show: () => isAdmin() },
   { href: 'home', label: 'Home', icon: 'home', show: () => !isAdmin() && !can('sell') },
-  { href: 'pos', label: 'Sell', icon: 'cart', show: () => can('sell') },
-  { href: 'sales', label: 'Bills', icon: 'file', show: () => can('sell') || isAdmin() },
+  { href: 'purchases', label: 'Purchase', icon: 'bag', show: () => can('buy') },
+  { href: 'dispatch', label: 'Dispatch order', icon: 'truck', show: () => can('send'), badge: 'incoming' },
   { href: 'dispatch', label: 'Receive stock', icon: 'inbox', show: () => can('receive') && !can('send'), badge: 'incoming' },
-  { href: 'purchases', label: 'Stock arrived', icon: 'bag', show: () => can('buy') },
-  { href: 'dispatch', label: 'Send stock', icon: 'truck', show: () => can('send'), badge: 'incoming' },
+  { href: 'pos', label: 'Sale order', icon: 'cart', show: () => can('sell') },
+  { href: 'sales', label: 'Bills', icon: 'file', show: () => can('sell') || isAdmin() },
   { href: 'labels', label: 'Labels', icon: 'printer', show: () => can('add_items') || can('buy') },
   { href: 'products', label: 'Items', icon: 'tag', show: () => can('add_items') || can('buy') },
   { href: 'stock', label: 'Stock', icon: 'box', show: () => true },
@@ -285,18 +285,22 @@ const NAV = [
   { href: 'training', label: 'Training', icon: 'help', show: () => true },
 ];
 // When there are many, these stay on the bar and the rest go under "More".
-const MAIN_TABS = { owner: ['dashboard', 'pos', 'sales', 'stock', 'reports'], staff: ['home', 'pos', 'sales', 'dispatch', 'purchases', 'labels', 'stock'] };
+// The first six stay on the bar (a seventh too on a wide screen); the rest go under "More".
+const MAIN_TABS = { owner: ['dashboard', 'purchases', 'dispatch', 'pos', 'sales', 'stock', 'reports'], staff: ['home', 'purchases', 'dispatch', 'pos', 'sales', 'labels', 'stock'] };
 const homeFor = () => (isAdmin() ? 'dashboard' : can('sell') ? 'pos' : 'home');
 
 function navHtml() {
   const visible = NAV.filter((n) => n.show());
   const base = visible.filter((n) => n.href !== 'training'); // Training always lives under More
   const mainList = MAIN_TABS[isAdmin() ? 'owner' : 'staff'];
-  const main = base.length <= 6 ? base : base.filter((n) => mainList.includes(n.href)).slice(0, 6);
-  const more = visible.filter((n) => !main.includes(n));
-  const link = (n) => `<a href="#/${n.href}" data-nav="${n.href}">${icon(n.icon)}<span>${esc(n.label)}</span>${n.badge ? `<span class="badge hidden" data-badge="${n.badge}"></span>` : ''}</a>`;
-  return main.map(link).join('') + (more.length ? `<details class="more" id="moreMenu"><summary>${icon('menu')}<span>More</span></summary>
-    <div class="more-list">${more.map(link).join('')}</div></details>` : '');
+  const wide = base.length <= 6 ? base : base.filter((n) => mainList.includes(n.href)).slice(0, 7);
+  const main = wide.slice(0, 6);
+  const extra = wide.slice(6); // shown on the bar only on a wide screen, under More on a narrow one
+  const more = visible.filter((n) => !wide.includes(n));
+  const link = (n, cls = '') => `<a href="#/${n.href}" data-nav="${n.href}"${cls ? ` class="${cls}"` : ''}>${icon(n.icon)}<span>${esc(n.label)}</span>${n.badge ? `<span class="badge hidden" data-badge="${n.badge}"></span>` : ''}</a>`;
+  const inMore = [...extra.map((n) => link(n, 'narrow-only')), ...more.map((n) => link(n))];
+  return main.map((n) => link(n)).join('') + extra.map((n) => link(n, 'wide-only')).join('') + (inMore.length ? `<details class="more" id="moreMenu"><summary>${icon('menu')}<span>More</span></summary>
+    <div class="more-list">${inMore.join('')}</div></details>` : '');
 }
 
 function renderShell() {

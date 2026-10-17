@@ -149,9 +149,9 @@ route('POST', '/api/data/clear-plan', 'owner', ({ body }) => {
 });
 
 // Marks every record on this device as "to send" (after a restore, or when a device joins the cloud for the first time).
-export function queueEverything() {
+export function queueEverything(tables = D.SYNC_TABLES) {
   let n = 0;
-  for (const t of D.SYNC_TABLES) {
+  for (const t of tables) {
     const key = t === 'settings' ? 'key' : 'id';
     const rows = all(`SELECT ${key} AS k FROM ${t}`);
     // Send in chunks of 500 records, parents before children.

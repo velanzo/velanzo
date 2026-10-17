@@ -37,6 +37,17 @@ function device(name, uid) {
 const stockOf = async (d, loc, pid) => (await d.sql('SELECT qty FROM stock WHERE location_id = ? AND product_id = ?', [loc, pid]))[0]?.qty ?? 0;
 const cloudStock = async (loc, pid) => (await db.query('select qty from stock where location_id = $1 and product_id = $2', [loc, pid])).rows[0]?.qty ?? 0;
 
+// ---------- Only the approved, confirmed email can become the owner ----------
+await db.query("insert into owner_allow values ('Owner@Shop.pk')"); // (case does not matter)
+const U = (n) => 'dddddddd-0000-0000-0000-00000000000' + n;
+await db.query("insert into auth.users values ($1, 'stranger@example.com', now()), ($2, 'owner@shop.pk', null), ($3, null, now()), ($4, 'owner@shop.pk', now()), ($5, 'owner@shop.pk', now())",
+  [U(1), U(2), U(3), 'aaaaaaaa-0000-0000-0000-000000000001', U(5)]);
+const refuseOwner = async (uid, re, msg) => { await assert.rejects(cloudRpc(uid, 'create_owner', {}), re, msg); checks++; };
+await refuseOwner(U(1), /not approved/, 'a stranger with a confirmed email cannot become the owner');
+await refuseOwner(U(2), /Confirm your email/, 'the approved email, not confirmed, cannot become the owner');
+await refuseOwner(U(3), /email address/, 'an anonymous sign-in cannot become the owner');
+await refuseOwner(null, /Sign in first/, 'nobody signed in cannot become the owner');
+
 // ---------- The owner starts the business on a laptop ----------
 const owner = device('owner', 'aaaaaaaa-0000-0000-0000-000000000001');
 await owner.rpc('create_owner', { p_email: 'owner@shop.pk' });
@@ -44,6 +55,8 @@ const od = await owner.rpc('register_owner_device', { p_label: 'Owner laptop', p
 await owner.system('setupCloud', { ...od, label: 'Owner laptop' });
 await owner.system('startBusiness', { business_name: 'Velanzo Test', owner_name: 'Owner', pin: '1234' });
 const me = await owner.call('GET', '/api/me');
+ok((await db.query('select email from owners')).rows[0].email === 'owner@shop.pk', 'the approved email became the owner');
+await refuseOwner(U(5), /already has an owner/, 'even the approved email cannot make a second owner');
 const WH = me.locations.find((l) => l.type === 'warehouse').id;
 const S1 = me.locations.find((l) => l.type === 'shop').id;
 const bilal = await owner.call('POST', '/api/users', { name: 'Bilal', role: 'staff', location_id: WH, pin: '1111' });
@@ -132,6 +145,21 @@ t = await tamper([{ t: 'expenses', k: 1, del: 1 }]);
 ok(!t.ok, 'staff cannot delete');
 ok(await cloudStock(S1, km.id) === 7, 'cloud stock unchanged by refused changes');
 
+// ---------- Only the owner creates shops, warehouses, people and computers ----------
+const shopDev = (await shop.system('info')).device.id;
+t = await tamper([{ t: 'locations', r: { id: 555, name: 'Sneaky shop', code: 'SN', type: 'shop', active: 1, created_at: now } }]);
+ok(!t.ok && /Only the owner/.test(t.error), 'a shop computer cannot create a shop: ' + t.error);
+t = await tamper([{ t: 'users', r: { id: 556, name: 'Ghost', role: 'staff', location_id: S1, active: 1, created_at: now } }]);
+ok(!t.ok && /Only the owner/.test(t.error), 'a shop computer cannot add a person: ' + t.error);
+const pinBefore = (await db.query('select pin_hash from users where id = $1', [me.user.id])).rows[0].pin_hash;
+const evil = (await shop.rpc('push', { p_device: shopDev, p_user: me.user.id,
+  p_groups: [{ grp: 'evil-owner-pin', rows: [{ t: 'users', r: { id: me.user.id, name: 'Owner', role: 'admin', pin_salt: 'x', pin_hash: 'y', active: 1, created_at: now } }] }] })).results[0];
+ok(!evil.ok && (await db.query('select pin_hash from users where id = $1', [me.user.id])).rows[0].pin_hash === pinBefore, 'a shop computer cannot change the owner\'s PIN, even pretending to be the owner');
+for (const [fn, args] of [['create_setup_code', { p_location: S1 }], ['remove_device', { p_id: shopDev }], ['restore_begin', {}], ['register_owner_device', { p_label: 'x' }]]) {
+  await assert.rejects(shop.rpc(fn, args), /Only the owner/, fn + ' is owner only');
+  checks++;
+}
+
 // ---------- An action refused by the cloud is noted for the owner (not retried forever) ----------
 await owner.call('PUT', `/api/locations/${S1}`, { perms: ['sell', 'receive'] });   // returns now off for Shop 1
 await owner.sync();
@@ -180,6 +208,51 @@ ok(r.refused === 0 && r.sent > 5, 'restored data sent up: ' + JSON.stringify({ s
 r = await shop.sync();
 ok(r.reset === true, 'shop downloaded everything again after the restore');
 ok(await stockOf(shop, S1, km.id) === 7 && (await shop.sql('SELECT COUNT(*) AS n FROM sales'))[0].n === 4, 'shop data back after restore');
+
+// ---------- Forgotten PIN: the owner approves with a link sent to their email ----------
+const whDev = (await wh.system('info')).device.id;
+let req = await shop.rpc('request_pin_reset', { p_device: shopDev, p_user: ahmed.id });
+ok(req.id && req.email === 'owner@shop.pk', 'Ahmed asks for a new PIN; the link goes to the owner email');
+const status = (d, dev, id) => d.rpc('check_pin_reset', { p_device: dev, p_id: id });
+ok(await status(shop, shopDev, req.id) === 'pending', 'waiting for the owner');
+await assert.rejects(shop.rpc('use_pin_reset', { p_device: shopDev, p_id: req.id }), /not approved/); checks++;
+await assert.rejects(shop.rpc('list_pin_resets', {}), /Only the owner/); checks++;
+await assert.rejects(shop.rpc('decide_pin_reset', { p_id: req.id, p_approve: true }), /Only the owner/); checks++;
+const waiting = await owner.rpc('list_pin_resets', {});
+ok(waiting.length === 1 && waiting[0].name === 'Ahmed' && waiting[0].place === 'Shop 1', 'the owner sees who is waiting: ' + JSON.stringify(waiting));
+ok(await status(wh, whDev, req.id) === 'unknown', 'another computer cannot see the request');
+await owner.rpc('decide_pin_reset', { p_id: req.id, p_approve: true });
+ok(await status(shop, shopDev, req.id) === 'approved', 'approved');
+await shop.rpc('use_pin_reset', { p_device: shopDev, p_id: req.id });
+ok(await status(shop, shopDev, req.id) === 'used', 'the permission is used up after one PIN change');
+await assert.rejects(shop.rpc('use_pin_reset', { p_device: shopDev, p_id: req.id }), /not approved/); checks++;
+await assert.rejects(shop.rpc('request_pin_reset', { p_device: shopDev, p_user: bilal.id }), /does not work at this place/); checks++;
+await assert.rejects(shop.rpc('request_pin_reset', { p_device: shopDev, p_user: me.user.id }), /only be reset on an owner computer/); checks++;
+req = await shop.rpc('request_pin_reset', { p_device: shopDev, p_user: ahmed.id });
+await owner.rpc('decide_pin_reset', { p_id: req.id, p_approve: false });
+ok(await status(shop, shopDev, req.id) === 'refused', 'the owner can refuse');
+await assert.rejects(owner.rpc('decide_pin_reset', { p_id: req.id, p_approve: true }), /no longer waiting/); checks++;
+req = await shop.rpc('request_pin_reset', { p_device: shopDev, p_user: ahmed.id });
+await db.query("update pin_resets set created_at = now() - interval '31 minutes' where id = $1", [req.id]);
+ok(await status(shop, shopDev, req.id) === 'expired' && (await owner.rpc('list_pin_resets', {})).length === 0, 'an old request expires');
+await assert.rejects(owner.rpc('decide_pin_reset', { p_id: req.id, p_approve: true }), /no longer waiting/); checks++;
+req = await shop.rpc('request_pin_reset', { p_device: shopDev, p_user: ahmed.id });
+await owner.rpc('decide_pin_reset', { p_id: req.id, p_approve: true });
+await db.query("update pin_resets set decided_at = now() - interval '16 minutes' where id = $1", [req.id]);
+ok(await status(shop, shopDev, req.id) === 'expired', 'an approval that is not used within 15 minutes expires');
+await owner.rpc('request_pin_reset', { p_device: (await owner.system('info')).device.id, p_user: me.user.id });
+ok(true, 'the owner can ask too (on an owner computer)');
+await assert.rejects((async () => { for (let i = 0; i < 6; i++) await shop.rpc('request_pin_reset', { p_device: shopDev, p_user: ahmed.id }); })(), /Too many requests/); checks++;
+ok(true, 'too many requests are stopped');
+
+// ---------- The cloud is missing a place: the owner computer can send places and people again ----------
+await db.query('delete from locations where id = $1', [S1]);
+await assert.rejects(owner.rpc('create_setup_code', { p_location: S1 }), /not reached the cloud/); checks++;
+await owner.system('requeue', ['settings', 'locations', 'users']);
+r = await owner.sync();
+ok(r.refused === 0 && (await db.query('select 1 from locations where id = $1', [S1])).rows.length === 1, 'the place is back in the cloud after sending again');
+ok(typeof (await owner.rpc('create_setup_code', { p_location: S1 })) === 'string', 'a code can be made for it again');
+await assert.rejects(shop.system('requeue', ['locations']), /Only the owner/); checks++;
 
 // ---------- A removed device stops working ----------
 await owner.rpc('remove_device', { p_id: (await wh.system('info')).device.id });

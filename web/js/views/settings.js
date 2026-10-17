@@ -242,7 +242,20 @@ const SETTINGS_RENDER = {
       });
       const b = m.$('#mk');
       b.addEventListener('click', () => busy(b, async () => {
-        const code = await Cloud.createSetupCode(Number(m.$('#place').value));
+        const place = Number(m.$('#place').value);
+        let code;
+        try { code = await Cloud.createSetupCode(place); }
+        catch (err) {
+          if (!/not reached the cloud/i.test(err.message)) throw err;
+          // The cloud is missing this place: send the places and people from this computer again, then retry once.
+          const out = await Cloud.syncNow();
+          await Engine.system('requeue', ['settings', 'locations', 'users']);
+          const sent = await Cloud.syncNow();
+          if (sent && sent.refused) throw new Error('The cloud did not accept the places: ' + sent.refusedMessages[0]);
+          if (!sent && !out) throw new Error(err.message);
+          code = await Cloud.createSetupCode(place);
+          toast('The places were sent to the cloud again.');
+        }
         m.$('#codeBox').innerHTML = `<div class="code-show">${esc(code)}</div>
           <ol class="steps"><li>On the shop or warehouse computer, open <b>${esc(location.href.split('#')[0])}</b> in Chrome or Edge.</li>
           <li>Choose <b>Shop or warehouse computer</b>.</li><li>Type this code. It works once, for the next 24 hours.</li></ol>`;

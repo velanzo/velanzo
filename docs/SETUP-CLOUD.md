@@ -15,15 +15,30 @@ You need: this project folder, a computer with Chrome, and the owner's email.
 3. Left menu: **SQL Editor → New query**.
    - Open `supabase/migrations/20261016000000_velanzo.sql` from this folder in Notepad, copy all of it, and paste it into the query box.
    - Click **Run**. It should say *Success. No rows returned*.
+   - Then do the same with the second file, `supabase/migrations/20261017000000_owner_lock_and_pin_reset.sql` (new query, paste, **Run**). It makes sure only **one approved email** can ever become the owner, and adds forgotten-PIN approval.
+   - Now say which email is the owner's. New query, with the owner's real email (the one that will receive the emails):
+
+     ```sql
+     insert into owner_allow (email) values ('owner@example.com');
+     ```
+
+     Until you do this, **nobody** can create the owner account. Don't put this email in the code or on GitHub (the repository is public) — run it only in Supabase.
 4. Left menu: **Authentication → Sign In / Providers**.
    - Switch on **Allow anonymous sign-ins**. Shop and warehouse computers use this together with the owner's one-time code.
-   - Keep **Email** on.
-   - Optional: switch off **Confirm email**, so the owner account works without clicking an email link.
+   - Keep **Email** on, and **keep Confirm email ON**. The owner proves the email is theirs by clicking the link we send; that is what makes the owner lock safe.
+   - **Authentication → URL Configuration:** set **Site URL** to the website address (e.g. `https://yourname.github.io/velanzo/`) and add the same address to **Redirect URLs**. The links in emails come back to this address.
+   - **Authentication → Email Templates → Magic Link:** change it so the owner knows what they are approving. For example, subject *Velanzo: someone forgot their PIN*, and message: *Someone asked for a new PIN in Velanzo. Open this link and press Approve only if you know who is asking: {{ .ConfirmationURL }}*
 5. Left menu: **Project Settings → API** (or **Data API**). Copy two things:
    - the **Project URL** (looks like `https://abcdxyz.supabase.co`),
    - the **anon public** key (or the **publishable** key, starting with `sb_publishable_`).
 
    These two are safe to publish. The database checks every change itself.
+
+> **Emails must really arrive.** The owner's email receives the confirmation link, password links and PIN approvals. Supabase's built-in mail sender is for testing: it only sends to the people on your Supabase team, a few per hour. Do one of these:
+> - **Simple:** Supabase → *Organization → Team → Invite* the owner's email as a member (free), or
+> - **Better for the long run:** *Authentication → Emails → SMTP Settings* and use a real mail account (for example Gmail with an app password, or Resend).
+>
+> Test it before relying on it: sign up, and check that the confirmation email comes.
 
 > **Free plan:** enough for years of a clothing business. A free project goes to sleep after **7 days without use**. Normal daily use keeps it awake; if it sleeps, open supabase.com and click *Restore*. The paid plan (about US$25/month) never sleeps and adds Supabase's own daily backups. Either way, download a Velanzo backup now and then (**Settings → Backup & data**).
 
@@ -49,9 +64,16 @@ You need: this project folder, a computer with Chrome, and the owner's email.
 
 ## C. First use
 
-1. Open the address in Chrome or Edge, choose **I'm the owner → New business? Create an owner account**, and follow the screens (user guide, chapter 2).
+1. Open the address in Chrome or Edge, choose **I'm the owner → New business? Create an owner account**, type the owner's email and a password. Open the email we send, click the link, then sign in and follow the screens (user guide, chapter 2).
 2. Add your shops, people and their PINs, then connect each shop and warehouse computer with a code (**Settings → Devices → Add a computer**).
 3. On each computer: Chrome menu ⋮ → **Install Velanzo**.
+
+## C2. If someone forgets something
+
+- **A shop or warehouse person forgot their PIN.** On the PIN screen they tap **Forgot your PIN?**. A link goes to the owner's email. The owner opens it (on any phone or computer) and presses **Approve**. The person's screen continues by itself and they choose a new PIN. The owner never sees the PIN. (The owner can also set a new PIN directly in **Settings → People**.)
+- **The owner forgot their PIN.** Same: **Forgot your PIN?** on the owner's own computer or phone; the link goes to the owner's email.
+- **The owner forgot the password.** Owner sign-in → **Forgot your password?** → a link to the owner's email → choose a new password.
+- **The owner's email is lost or no longer works.** In Supabase: *Authentication → Users*, find the owner, and choose *Send password recovery* or set the account's email. If that is not possible either, whoever runs the Supabase project can approve a new owner email: run `delete from owners;` and `insert into owner_allow (email) values ('new@example.com');` in the SQL Editor, then that email creates the owner account (**the shop data stays**; the new owner then signs in on a computer and restores a recent backup if people are missing). Keep the Supabase login safe — it can do this.
 
 ## D. Bringing existing data
 
@@ -61,7 +83,9 @@ You need: this project folder, a computer with Chrome, and the owner's email.
 ## E. Good to know
 
 - **Security.** The website and its code are public. Your data is not: devices can only reach it through the database functions, which check the device, the shop's switches and the person's switches.
-  - Keep the owner's email and password private.
+  - Only the approved owner email can become the owner; only the owner can create shops, warehouses, people and computer codes (a shop computer that tries is refused by the database).
+  - Anyone can open the website, but without a one-time code from the owner it shows nothing.
+  - Keep the owner's email password and the Supabase login private.
   - Remove lost devices in **Settings → Devices**.
 - **Updates.** Change the files and push to `main`; GitHub tests and publishes them. Devices update the next time they open with internet.
 - **A new database rule.** Run each new file in `supabase/migrations/` once, in order, in the SQL Editor.

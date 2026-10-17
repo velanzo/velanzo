@@ -17,8 +17,20 @@ export async function startCloud(dataDir) {
       create schema if not exists auth;
       create or replace function auth.uid() returns uuid language sql stable as
         $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;`);
-    const dir = path.join(ROOT, 'supabase', 'migrations');
-    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) await db.exec(fs.readFileSync(path.join(dir, f), 'utf8'));
+  }
+  // the signed-in accounts (Supabase keeps these in auth.users)
+  await db.exec('create schema if not exists auth; create table if not exists auth.users (id uuid primary key, email text, email_confirmed_at timestamptz)');
+  // Runs every migration file once (a database made before this list existed already has the first one).
+  await db.exec('create table if not exists dev_migrations (name text primary key)');
+  if (!fresh) await db.exec("insert into dev_migrations values ('20261016000000_velanzo.sql') on conflict do nothing");
+  const dir = path.join(ROOT, 'supabase', 'migrations');
+  for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) {
+    if ((await db.query('select 1 from dev_migrations where name = $1', [f])).rows.length) continue;
+    // one transaction: a file is either fully applied and recorded, or not at all (even if the preview is stopped suddenly)
+    await db.exec(`begin;
+${fs.readFileSync(path.join(dir, f), 'utf8')}
+insert into dev_migrations values ('${f}');
+commit;`);
   }
   // Calls a function as the signed-in account `uid` (like supabase.rpc). Errors keep their text.
   let queue = Promise.resolve();

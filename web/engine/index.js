@@ -5,7 +5,7 @@ import { match, HttpError, can } from './util.js';
 import * as S from './session.js';
 import * as Sync from './sync.js';
 import * as Practice from './practice.js';
-import './routes/core.js';
+import { clearLockout } from './routes/core.js';
 import './routes/inventory.js';
 import './routes/sales.js';
 import './routes/data.js';
@@ -54,6 +54,7 @@ export const system = {
   practiceStatus: () => Practice.status(),
   practiceStart: () => Practice.start(),
   practiceFinish: () => Practice.finish(),
+  requeue: (tables) => Sync.requeue(tables),
   outbox: (max) => Sync.outbox(max),
   pushed: (seqs) => Sync.pushed(seqs),
   refused: (group, message) => Sync.refused(group, message),
@@ -68,6 +69,17 @@ export const system = {
     const p = await S.makePin(pin);
     D.beginGroup();
     D.run('UPDATE users SET pin_salt = ?, pin_hash = ? WHERE id = ?', p.pin_salt, p.pin_hash, user_id);
+  },
+  // A person who forgot their PIN chooses a new one. The page has checked first that the owner approved it
+  // (a link sent to the owner's email); this only changes the PIN of someone who can sign in on this device.
+  resetPin: async ({ user_id, pin }) => {
+    if (!S.validPin(pin)) throw new Error('The PIN must be 4 to 6 numbers');
+    const u = S.loginUsers().find((x) => x.id === Number(user_id));
+    if (!u) throw new Error('This person cannot sign in on this device');
+    const p = await S.makePin(pin);
+    D.beginGroup();
+    D.run('UPDATE users SET pin_salt = ?, pin_hash = ? WHERE id = ?', p.pin_salt, p.pin_hash, u.id);
+    clearLockout(u.id);
   },
   forgetDevice: () => {
     // "Remove this device": everything on it is deleted (the cloud keeps the data).

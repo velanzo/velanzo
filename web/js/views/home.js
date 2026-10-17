@@ -6,11 +6,11 @@ View('home', {
   allow: () => !isAdmin(),
   async render({ el }) {
     const tiles = [
-      can('buy') && ['purchases/new', 'bag', 'Stock arrived', 'Enter what came from a supplier'],
+      can('buy') && ['purchases/new', 'bag', 'Purchase', 'Enter what came from a supplier'],
       (can('add_items') || can('buy')) && ['labels', 'printer', 'Print labels', 'Barcode stickers for items'],
       can('send') && ['dispatch/new', 'truck', 'Send to a shop', 'Scan items into a parcel'],
       can('receive') && ['dispatch', 'inbox', 'Receive stock', 'Check a parcel that arrived'],
-      can('sell') && ['pos', 'cart', 'Sell', 'Make a bill'],
+      can('sell') && ['pos', 'cart', 'Sale order', 'Make a bill'],
       ['stock', 'box', 'Stock', 'What is here and at each shop'],
       can('expenses') && ['expenses', 'wallet', 'Expenses', 'Tea, transport, bills'],
     ].filter(Boolean);

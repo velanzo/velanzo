@@ -2,7 +2,7 @@
 // Sell screen: scan items → bill → print. Return/exchange mode takes items back.
 
 View('pos', {
-  title: 'Sell',
+  title: 'Sale order',
   allow: () => can('sell'),
   cls: 'pos-view',
   async render({ el }) {

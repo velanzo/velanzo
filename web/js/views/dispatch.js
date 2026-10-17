@@ -10,11 +10,11 @@ const DISPATCH_STATUS = {
 };
 
 View('dispatch', {
-  title: () => (isSender() ? 'Send stock' : 'Receive stock'),
+  title: () => (isSender() ? 'Dispatch order' : 'Receive stock'),
   allow: () => isSender() || can('receive'),
   async render({ el, query }) {
     const st = { status: query.status ?? (isSender() ? 'in_transit' : '') };
-    setActions(isSender() ? `<a class="btn primary" href="#/dispatch/new">${icon('plus')} Send stock</a>` : '');
+    setActions(isSender() ? `<a class="btn primary" href="#/dispatch/new">${icon('plus')} New dispatch order</a>` : '');
     el.innerHTML = `
       ${!isSender() ? '' : `<div class="tabs" id="tabs">
         <a href="#" data-s="in_transit">On the way</a><a href="#" data-s="received">Received</a><a href="#" data-s="cancelled">Cancelled</a><a href="#" data-s="">All</a></div>`}
@@ -43,7 +43,7 @@ View('dispatch', {
 });
 
 View('dispatch/new', {
-  title: 'Send stock',
+  title: 'New dispatch order',
   nav: 'dispatch',
   allow: isSender,
   async render({ el }) {

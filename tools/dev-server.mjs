@@ -23,7 +23,9 @@ if (CLOUD) {
   const { startCloud } = await import('./pg-cloud.mjs');
   cloud = await startCloud(path.join(ROOT, '.dev-cloud'));
   await cloud.db.exec(`create table if not exists dev_auth_users (id uuid primary key, email text unique, password text, anonymous boolean, created_at timestamptz default now());
-    create table if not exists dev_auth_tokens (token text primary key, user_id uuid);`);
+    create table if not exists dev_auth_tokens (token text primary key, user_id uuid);
+    create table if not exists dev_auth_mail (id serial primary key, email text, kind text, link text, at timestamptz default now());
+    insert into owner_allow values ('*') on conflict do nothing;`); // (in the preview any email may become the owner)
 }
 
 // ---------- Sign-in stand-in (the parts of Supabase Auth the app uses) ----------
@@ -52,6 +54,7 @@ async function handleAuth(req, res, url, body) {
       if ((await cloud.db.query('select 1 from dev_auth_users where email = $1', [body.email.toLowerCase()])).rows.length) return authError(res, 422, 'User already registered', 'user_already_exists');
       const u = { id: crypto.randomUUID(), email: body.email.toLowerCase() };
       await cloud.db.query('insert into dev_auth_users (id, email, password, anonymous) values ($1, $2, $3, false)', [u.id, u.email, hash(body.password)]);
+      await cloud.db.query('insert into auth.users (id, email, email_confirmed_at) values ($1, $2, now()) on conflict do nothing', [u.id, u.email]);
       return send(res, 200, await session(u));
     }
     const u = { id: crypto.randomUUID(), anonymous: true };
@@ -71,10 +74,29 @@ async function handleAuth(req, res, url, body) {
       return send(res, 200, await session(r));
     }
   }
-  if (p === '/user') {
+  if (p === '/user' && req.method !== 'PUT') {
     const id = uidFrom(req);
     const r = id && (await cloud.db.query('select * from dev_auth_users where id = $1', [id])).rows[0];
     if (!r) return authError(res, 401, 'Not signed in', 'no_authorization');
+    return send(res, 200, (await session(r)).user);
+  }
+  // "Emails": the preview does not send any; it keeps the link that would have been sent (GET /cloud/dev/mail?email=…)
+  if ((p === '/recover' || p === '/otp') && req.method === 'POST') {
+    const r = (await cloud.db.query('select * from dev_auth_users where email = $1', [String(body.email || '').toLowerCase()])).rows[0];
+    if (r) {
+      const s = await session(r);
+      const base = url.searchParams.get('redirect_to') || 'http://localhost:4000/';
+      const kind = p === '/recover' ? 'recovery' : 'magiclink';
+      const link = `${base}#access_token=${s.access_token}&expires_in=3600&refresh_token=${s.refresh_token}&token_type=bearer&type=${kind}`;
+      await cloud.db.query('insert into dev_auth_mail (email, kind, link) values ($1, $2, $3)', [r.email, kind, link]);
+    }
+    return send(res, 200, {});
+  }
+  if (p === '/user' && req.method === 'PUT') {
+    const id = uidFrom(req);
+    if (!id || !body.password) return authError(res, 422, 'Nothing to change', 'bad_request');
+    await cloud.db.query('update dev_auth_users set password = $1 where id = $2', [hash(body.password), id]);
+    const r = (await cloud.db.query('select * from dev_auth_users where id = $1', [id])).rows[0];
     return send(res, 200, (await session(r)).user);
   }
   if (p === '/logout') { res.writeHead(204); return res.end(); }
@@ -84,7 +106,8 @@ async function handleAuth(req, res, url, body) {
 // ---------- Cloud functions stand-in (PostgREST /rpc) ----------
 async function handleRpc(req, res, url, body) {
   const fn = url.pathname.split('/').pop();
-  const allowed = ['push', 'pull', 'velanzo_whoami', 'create_owner', 'register_owner_device', 'create_setup_code', 'claim_device', 'remove_device', 'restore_begin'];
+  const allowed = ['push', 'pull', 'velanzo_whoami', 'create_owner', 'register_owner_device', 'create_setup_code', 'claim_device', 'remove_device', 'restore_begin',
+    'request_pin_reset', 'check_pin_reset', 'use_pin_reset', 'list_pin_resets', 'decide_pin_reset'];
   if (!allowed.includes(fn)) return send(res, 404, { code: 'PGRST202', message: `Could not find the function public.${fn}` });
   try {
     const out = await cloud.rpc(uidFrom(req), fn, body);
@@ -97,7 +120,7 @@ async function handleRpc(req, res, url, body) {
 // Preview only: empty the stand-in cloud (used by tools/demo-data.mjs).
 async function resetCloud(res) {
   const tables = (await cloud.db.query("select tablename from pg_tables where schemaname = 'public'")).rows.map((r) => r.tablename).filter((x) => x !== 'meta');
-  await cloud.db.exec(`truncate ${tables.map((x) => '"' + x + '"').join(', ')}; alter sequence velanzo_device_no restart with 2; update meta set value = gen_random_uuid()::text where key = 'epoch';`);
+  await cloud.db.exec(`truncate ${tables.map((x) => '"' + x + '"').join(', ')}; alter sequence velanzo_device_no restart with 2; update meta set value = gen_random_uuid()::text where key = 'epoch'; insert into owner_allow values ('*');`);
   return send(res, 200, { ok: true });
 }
 
@@ -115,6 +138,10 @@ http.createServer(async (req, res) => {
     try { body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {}; } catch { /* empty */ }
     await new Promise((r) => setTimeout(r, Number(process.env.LATENCY) || 0));
     if (url.pathname === '/cloud/dev/reset' && req.method === 'POST') return resetCloud(res);
+    if (url.pathname === '/cloud/dev/mail') {
+      const rows = (await cloud.db.query('select * from dev_auth_mail where email = $1 order by id desc limit 5', [String(url.searchParams.get('email') || '').toLowerCase()])).rows;
+      return send(res, 200, rows);
+    }
     if (url.pathname.startsWith('/cloud/auth/v1')) return handleAuth(req, res, url, body);
     if (url.pathname.startsWith('/cloud/rest/v1/rpc/')) return handleRpc(req, res, url, body);
     return send(res, 404, { message: 'Not found' });

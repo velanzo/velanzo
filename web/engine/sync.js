@@ -109,6 +109,15 @@ export function resetLocal() {
   });
 }
 
+// Marks some kinds of records as "to send" again (e.g. the places and people the cloud is missing).
+// Only on an owner computer, which holds the master copy of these.
+export function requeue(tables) {
+  if (D.deviceInfo().location_id != null) throw new Error('Only the owner computer can do this');
+  const ok = (tables || []).filter((t) => ['settings', 'locations', 'users'].includes(t));
+  if (!ok.length) throw new Error('Nothing to send');
+  return tx(() => { D.beginGroup(); return queueEverything(D.SYNC_TABLES.filter((t) => ok.includes(t))); });
+}
+
 // ---------- Setting up this device ----------
 // Not connected to the cloud: one device keeps everything (device number 1). It can join the cloud later.
 export function setupLocal({ business_name, owner_name, pin_salt, pin_hash }) {

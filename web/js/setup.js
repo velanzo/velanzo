@@ -15,6 +15,8 @@ const Setup = (() => {
   const setErr = (msg, id = 'setupErr') => { const e = $('#' + id); if (e) e.textContent = msg || ''; };
 
   async function start() {
+    const link = Cloud.enabled ? Cloud.takeLink() : null;
+    if (link) return showLink(link);
     try {
       await Engine.open();
     } catch (e) {
@@ -25,7 +27,7 @@ const Setup = (() => {
     try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch { /* not supported */ }
     const info = await Engine.system('info');
     App.device = info.device;
-    if (!info.device.id) return showWelcome();
+    if (!info.device.id) return emailConfirmed ? showOwner('signin') : showWelcome();
     Cloud.start();
     if (info.user_id) return boot();
     showLogin();
@@ -82,7 +84,9 @@ const Setup = (() => {
           ${signup ? '<small class="muted">At least 8 characters.</small>' : ''}</label>
         <button class="btn primary lg block">${signup ? 'Create account' : 'Sign in'}</button>${errBox()}
       </form>
-      <div class="setup-links">${signup ? '<a href="#" id="toggle">I already have an account</a>' : '<a href="#" id="toggle">New business? Create an owner account</a>'} · <a href="#" id="back">Back</a></div>`));
+      <div class="setup-links">${signup ? '<a href="#" id="toggle">I already have an account</a>' : '<a href="#" id="forgot">Forgot your password?</a> · <a href="#" id="toggle">New business? Create an owner account</a>'} · <a href="#" id="back">Back</a></div>`));
+    const fg = $('#forgot');
+    if (fg) fg.addEventListener('click', (e) => { e.preventDefault(); showForgotPassword(fromLocal); });
     $('#toggle').addEventListener('click', (e) => { e.preventDefault(); showOwner(signup ? 'signin' : 'signup', { fromLocal }); });
     $('#back').addEventListener('click', (e) => { e.preventDefault(); if (fromLocal) boot(); else showWelcome(); });
     $('#f').addEventListener('submit', async (e) => {
@@ -208,7 +212,10 @@ const Setup = (() => {
       <div class="pin-dots" id="dots"></div>
       <div class="pin-pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button data-k="${n}">${n}</button>`).join('')}
         <button data-k="del" aria-label="Delete">⌫</button><button data-k="0">0</button><button data-k="ok" class="ok" aria-label="OK">${icon('check')}</button></div>
-      ${errBox('pinErr')}</div>`;
+      ${errBox('pinErr')}
+      ${App.device.mode === 'cloud' && Cloud.enabled ? '<a href="#" class="forgot-pin" id="forgotPin">Forgot your PIN?</a>' : ''}</div>`;
+    const fp = $('#forgotPin');
+    if (fp) fp.addEventListener('click', (e) => { e.preventDefault(); document.removeEventListener('keydown', onKey); showForgotPin(u, device); });
     const dots = () => { $('#dots').innerHTML = Array.from({ length: Math.max(4, pin.length) }, (_, i) => `<span class="${i < pin.length ? 'on' : ''}"></span>`).join(''); };
     const submit = async () => {
       if (pin.length < 4) return;
@@ -254,6 +261,144 @@ const Setup = (() => {
         await POST('/api/login', { user_id: u.id, pin: v.pin });
         boot();
       } catch (err) { setErr(err.message, 'pinErr'); }
+    });
+  }
+
+  // ---------- Email links ----------
+  let emailConfirmed = false;
+  const mask = (email) => String(email).replace(/^(.).*(@.*)$/, '$1***$2');
+  const back = (label = 'Continue') => `<button class="btn primary lg block" id="cont">${label}</button>`;
+  const goOn = () => { const b = $('#cont'); if (b) b.addEventListener('click', () => start()); };
+
+  // The page was opened from a link in an email.
+  async function showLink(link) {
+    if (link.error) {
+      show(card(`${logo}<h1>This link did not work</h1><p>${link.expired ? 'It has run out of time, or it was already used.' : 'Something went wrong with the link.'} Please ask for a new one.</p>${back()}`));
+      return goOn();
+    }
+    if (link.type === 'recovery') return showNewPassword(link);
+    if (link.type === 'magiclink') return showApprove(link);
+    emailConfirmed = true; // the owner confirmed the email address
+    show(card(`${logo}<h1>Email confirmed</h1><p>Thank you. Now sign in to finish setting up.</p>${back('Sign in')}`));
+    goOn();
+  }
+
+  function showForgotPassword(fromLocal) {
+    show(card(`${logo}<h1>Forgot your password?</h1><p class="muted">Type the email of your owner account. We will send you a link to choose a new password.</p>
+      <form id="f"><label class="field">Email<input class="input" name="email" type="email" autocomplete="username" required></label>
+        <button class="btn primary lg block">Send the link</button>${errBox()}</form>
+      <div class="setup-links"><a href="#" id="back">Back</a></div>`));
+    $('#back').addEventListener('click', (e) => { e.preventDefault(); showOwner('signin', { fromLocal }); });
+    $('#f').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = formValues(e.target).email;
+      const btn = e.target.querySelector('button');
+      btn.disabled = true; btn.textContent = 'Please wait…';
+      try {
+        await Cloud.resetPassword(email);
+        show(card(`${logo}<h1>Check your email</h1><p>If <b>${esc(email)}</b> is the owner's email, a link is on its way. Open it on this computer or your phone, then choose a new password. It can take a minute; look in Spam too.</p>
+          <button class="btn primary lg block" id="ok">Back to sign in</button>`));
+        $('#ok').addEventListener('click', () => showOwner('signin', { fromLocal }));
+      } catch (err) { setErr(err.message); btn.disabled = false; btn.textContent = 'Send the link'; }
+    });
+  }
+
+  function showNewPassword(link) {
+    show(card(`${logo}<h1>Choose a new password</h1>
+      <form id="f"><label class="field">New password<input class="input" name="p1" type="password" autocomplete="new-password" minlength="8" required><small class="muted">At least 8 characters.</small></label>
+        <label class="field">New password again<input class="input" name="p2" type="password" autocomplete="new-password" minlength="8" required></label>
+        <button class="btn primary lg block">Save the new password</button>${errBox()}</form>`));
+    $('#f').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const v = formValues(e.target);
+      if (v.p1 !== v.p2) return setErr('The two passwords are not the same.');
+      const btn = e.target.querySelector('button');
+      btn.disabled = true;
+      try {
+        await Cloud.linkSetPassword(link, v.p1);
+        show(card(`${logo}<h1>Password changed</h1><p>Use your new password the next time you sign in as the owner. Computers that are already set up keep working.</p>${back()}`));
+        goOn();
+      } catch (err) { setErr(err.message); btn.disabled = false; }
+    });
+  }
+
+  // The owner opened the link from a PIN request: who is waiting, approve or refuse.
+  async function showApprove(link) {
+    show(card(`${logo}<h1>PIN requests</h1><p class="muted" id="msg">Loading…</p><div id="list"></div>${errBox()}<div style="margin-top:14px">${back('Done')}</div>`));
+    goOn();
+    const draw = async () => {
+      let list;
+      try { list = await Cloud.linkPinRequests(link); } catch (err) { $('#msg').textContent = ''; return setErr(err.message.includes('owner') ? 'Only the owner can approve this.' : err.message); }
+      $('#msg').textContent = list.length ? 'Someone forgot their PIN. Approve only if you know the person is asking.' : 'Nobody is waiting for approval now. The request may have run out of time (30 minutes) or was already decided.';
+      $('#list').innerHTML = list.map((r) => `<div class="alert info flex"><div class="grow"><b>${esc(r.name)}</b> · ${esc(r.place)}<br><span class="muted small">asked ${r.minutes < 1 ? 'just now' : r.minutes + ' min ago'} on ${esc(r.device || 'a computer')}</span></div>
+        <button class="btn primary" data-ok="${r.id}">Approve</button><button class="btn" data-no="${r.id}">Refuse</button></div>`).join('');
+      $$('[data-ok], [data-no]').forEach((b) => b.addEventListener('click', async () => {
+        b.disabled = true;
+        try { await Cloud.linkDecide(link, b.dataset.ok || b.dataset.no, !!b.dataset.ok); toast(b.dataset.ok ? 'Approved. They can choose a new PIN now.' : 'Refused.'); draw(); }
+        catch (err) { setErr(err.message); b.disabled = false; }
+      }));
+    };
+    draw();
+  }
+
+  // ---------- Forgot your PIN? ----------
+  function showForgotPin(u, device) {
+    if (u.role === 'admin' && device.location_id != null) {
+      show(card(`${logo}<h1>Owner's PIN</h1><p>The owner's PIN can only be reset on the owner's own computer or phone. Ask the owner to do it there.</p><button class="btn primary lg block" id="cont">Back</button>`));
+      return $('#cont').addEventListener('click', showLogin);
+    }
+    const who = u.role === 'admin' ? 'We will send a link to <b>your</b> email. Open it and press <b>Approve</b>.' : 'We will send a link to the <b>owner</b>\'s email. The owner opens it and presses <b>Approve</b>.';
+    show(card(`${logo}<h1>Forgot your PIN?</h1>
+      <p>${who} Then you choose a new PIN here.</p>
+      <button class="btn primary lg block" id="send">Send the link</button>${errBox()}
+      <div class="setup-links"><a href="#" id="back">Back</a></div>`));
+    $('#back').addEventListener('click', (e) => { e.preventDefault(); showLogin(); });
+    $('#send').addEventListener('click', async (e) => {
+      const btn = e.target;
+      btn.disabled = true; btn.textContent = 'Please wait…';
+      try { showWaiting(u, device, await Cloud.requestPinReset(u.id)); }
+      catch (err) { setErr(err.message); btn.disabled = false; btn.textContent = 'Send the link'; }
+    });
+  }
+
+  function showWaiting(u, device, r) {
+    show(card(`${logo}<h1>Waiting for approval</h1>
+      <p>A link was sent to <b>${esc(mask(r.email))}</b>. ${u.role === 'admin' ? 'Open it and press Approve.' : 'The owner must open it and press Approve.'} This screen continues by itself.</p>
+      <p class="muted small">The link works for 30 minutes. Look in Spam if it does not arrive.</p>
+      <div class="progress"><div></div></div>${errBox()}
+      <div class="setup-links"><a href="#" id="again">Send the link again</a> · <a href="#" id="back">Cancel</a></div>`));
+    const timer = setInterval(async () => {
+      let st;
+      try { st = await Cloud.checkPinReset(r.id); } catch { return; } // offline: keep waiting
+      if (st === 'approved') { clearInterval(timer); showNewPin(u, r); }
+      else if (st === 'refused' || st === 'expired' || st === 'unknown') {
+        clearInterval(timer);
+        show(card(`${logo}<h1>${st === 'refused' ? 'The owner said no' : 'This request ran out of time'}</h1><p>${st === 'refused' ? 'The PIN was not changed.' : 'Please ask again.'}</p><button class="btn primary lg block" id="cont">Back</button>`));
+        $('#cont').addEventListener('click', showLogin);
+      }
+    }, 3000);
+    App.cleanups.push(() => clearInterval(timer));
+    $('#back').addEventListener('click', (e) => { e.preventDefault(); showLogin(); });
+    $('#again').addEventListener('click', (e) => { e.preventDefault(); showForgotPin(u, device); $('#send').click(); });
+  }
+
+  function showNewPin(u, r) {
+    show(card(`${logo}<h1>Approved</h1><p>${esc(u.name)}, choose your new PIN.</p>
+      <form id="f" autocomplete="off">${pinFields()}<button class="btn primary lg block">Save and open</button>${errBox()}</form>`));
+    $('#f').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const v = formValues(e.target);
+      if (!/^\d{4,6}$/.test(v.pin)) return setErr('The PIN must be 4 to 6 numbers.');
+      if (v.pin !== v.pin2) return setErr('The two PINs are not the same.');
+      const btn = e.target.querySelector('button');
+      btn.disabled = true;
+      try {
+        await Cloud.usePinReset(r.id);           // the approval works once
+        await Engine.system('resetPin', { user_id: u.id, pin: v.pin });
+        await POST('/api/login', { user_id: u.id, pin: v.pin });
+        Cloud.changed();
+        boot();
+      } catch (err) { setErr(err.message); btn.disabled = false; }
     });
   }
 
