@@ -109,11 +109,11 @@ export function resetLocal() {
   });
 }
 
-// Marks some kinds of records as "to send" again (e.g. the places and people the cloud is missing).
+// Marks some kinds of records (or everything) as "to send" again, e.g. when the cloud is missing records.
 // Only on an owner computer, which holds the master copy of these.
 export function requeue(tables) {
   if (D.deviceInfo().location_id != null) throw new Error('Only the owner computer can do this');
-  const ok = (tables || []).filter((t) => ['settings', 'locations', 'users'].includes(t));
+  const ok = (tables || []).filter((t) => D.SYNC_TABLES.includes(t));
   if (!ok.length) throw new Error('Nothing to send');
   return tx(() => { D.beginGroup(); return queueEverything(D.SYNC_TABLES.filter((t) => ok.includes(t))); });
 }

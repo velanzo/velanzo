@@ -22,6 +22,7 @@ export function createSyncer({ system, rpc, now = localNow, onProgress = () => {
     if (info.device.mode !== 'cloud' || info.practice) return { skipped: true };
     const who = { p_device: info.device.id, p_user: info.user_id };
     const out = { sent: 0, refused: 0, received: 0, refusedMessages: [] };
+    let trouble = '';
 
     // 1. Send what was done here (oldest first, each action whole).
     for (let round = 0; round < 200; round++) {
@@ -34,10 +35,13 @@ export function createSyncer({ system, rpc, now = localNow, onProgress = () => {
         const r = byGrp.get(g.grp);
         if (!r) continue;
         if (r.ok) { done.push(...g.seqs); out.sent++; }
+        else if (r.retry) trouble = r.error; // the cloud had a problem (not a refusal): keep the change, send it again later
         else { await system('refused', g, r.error); out.refused++; out.refusedMessages.push(r.error); }
       }
       await system('pushed', done);
+      if (!done.length) break; // nothing moved: do not ask again and again
     }
+    if (trouble) throw new Error(`The cloud had a problem saving (${trouble}). Your changes are kept on this computer and will be sent again.`);
 
     // 2. Download what changed elsewhere.
     let st = info.sync;

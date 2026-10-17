@@ -16,6 +16,7 @@ You need: this project folder, a computer with Chrome, and the owner's email.
    - Open `supabase/migrations/20261016000000_velanzo.sql` from this folder in Notepad, copy all of it, and paste it into the query box.
    - Click **Run**. It should say *Success. No rows returned*.
    - Then do the same with the second file, `supabase/migrations/20261017000000_owner_lock_and_pin_reset.sql` (new query, paste, **Run**). It makes sure only **one approved email** can ever become the owner, and adds forgotten-PIN approval.
+   - And the third file, `supabase/migrations/20261018000000_push_fix.sql` (new query, paste, **Run**). **This one is required**: without it Supabase refuses every save with "DELETE requires a WHERE clause".
    - Now say which email is the owner's. New query, with the owner's real email (the one that will receive the emails):
 
      ```sql

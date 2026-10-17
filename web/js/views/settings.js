@@ -249,12 +249,12 @@ const SETTINGS_RENDER = {
           if (!/not reached the cloud/i.test(err.message)) throw err;
           // The cloud is missing this place: send the places and people from this computer again, then retry once.
           const out = await Cloud.syncNow();
-          await Engine.system('requeue', ['settings', 'locations', 'users']);
+          await Engine.system('requeue', ['settings', 'locations', 'users', 'suppliers', 'products', 'movements', 'purchases', 'purchase_items', 'supplier_payments', 'dispatches', 'dispatch_items', 'sales', 'sale_items', 'expenses']);
           const sent = await Cloud.syncNow();
           if (sent && sent.refused) throw new Error('The cloud did not accept the places: ' + sent.refusedMessages[0]);
           if (!sent && !out) throw new Error(err.message);
           code = await Cloud.createSetupCode(place);
-          toast('The places were sent to the cloud again.');
+          toast('Everything was sent to the cloud again.');
         }
         m.$('#codeBox').innerHTML = `<div class="code-show">${esc(code)}</div>
           <ol class="steps"><li>On the shop or warehouse computer, open <b>${esc(location.href.split('#')[0])}</b> in Chrome or Edge.</li>

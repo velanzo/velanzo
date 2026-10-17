@@ -254,6 +254,27 @@ ok(r.refused === 0 && (await db.query('select 1 from locations where id = $1', [
 ok(typeof (await owner.rpc('create_setup_code', { p_location: S1 })) === 'string', 'a code can be made for it again');
 await assert.rejects(shop.system('requeue', ['locations']), /Only the owner/); checks++;
 
+// ---------- A problem on the cloud's side is not a refusal: the change is kept and sent again ----------
+await owner.call('POST', '/api/expenses', { date: '2026-10-16', category: 'Tea', amount: 55, location_id: S1 });
+const waitingBefore = (await owner.system('outbox', 5000)).length;
+const flaky = createSyncer({ system: (n, ...args) => owner.system(n, ...args),
+  rpc: async (fn, args) => (fn === 'push' ? { results: args.p_groups.map((g) => ({ grp: g.grp, ok: false, retry: true, error: 'the cloud had a hiccup' })) } : owner.rpc(fn, args)) });
+await assert.rejects(flaky.syncOnce(), /had a problem saving/); checks++;
+ok((await owner.system('outbox', 5000)).length === waitingBefore && waitingBefore > 0, 'after a problem on the cloud side the change is still waiting (not thrown away)');
+r = await owner.sync();
+ok(r.refused === 0 && (await owner.system('outbox', 5000)).length === 0, 'and it is sent when the cloud works again');
+
+// ---------- The SQL files must not hold a DELETE with no WHERE (Supabase refuses those) ----------
+const fsm = await import('node:fs');
+const mdir = new URL('../supabase/migrations/', import.meta.url);
+const sqlCode = (f) => fsm.readFileSync(new URL(f, mdir), 'utf8').split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
+const unsafeDelete = /\bdelete\s+from\s+\w+\s*;/i;
+for (const f of fsm.readdirSync(mdir).filter((x) => x.endsWith('.sql') && x >= '20261017')) {
+  ok(!unsafeDelete.test(sqlCode(f)), f + ': no DELETE without WHERE');
+}
+// (the first file was run before this rule existed; part 3 replaces its one function)
+ok(unsafeDelete.test(sqlCode('20261016000000_velanzo.sql')) && !unsafeDelete.test(sqlCode('20261018000000_push_fix.sql')), 'the one old unsafe DELETE is replaced by part 3');
+
 // ---------- A removed device stops working ----------
 await owner.rpc('remove_device', { p_id: (await wh.system('info')).device.id });
 await assert.rejects(wh.sync(), /removed/);
