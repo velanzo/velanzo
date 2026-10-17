@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 470" font-family="Segoe UI, Arial, sans-serif">
+  <title>How the data moves between devices and the cloud</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#3b46c4"/></marker>
+  </defs>
+  <rect width="1200" height="470" fill="#fff"/>
+  <!-- cloud -->
+  <path d="M520 132c-36 0-62-24-62-56 0-30 24-54 56-55 12-26 38-41 68-41 34 0 62 21 70 51 6-2 12-3 18-3 32 0 56 23 56 52 0 29-24 52-56 52z" fill="#eceefe" stroke="#3b46c4" stroke-width="3"/>
+  <text x="600" y="78" text-anchor="middle" font-size="24" font-weight="700" fill="#2a318a">The cloud (Supabase)</text>
+  <text x="600" y="106" text-anchor="middle" font-size="15" fill="#2a318a">One shared copy of everything · checks what each shop may do</text>
+  <!-- devices -->
+  <g font-size="17">
+    <rect x="40" y="290" width="300" height="150" rx="16" fill="#fff" stroke="#c9ced8" stroke-width="2"/>
+    <text x="190" y="328" text-anchor="middle" font-size="21" font-weight="700" fill="#1b1f27">Shop 1 counter</text>
+    <text x="190" y="358" text-anchor="middle" fill="#5b6270">Sells, takes returns,</text>
+    <text x="190" y="382" text-anchor="middle" fill="#5b6270">receives parcels</text>
+    <text x="190" y="418" text-anchor="middle" font-size="15" fill="#15803d" font-weight="600">● its own copy of Shop 1</text>
+
+    <rect x="450" y="290" width="300" height="150" rx="16" fill="#fff" stroke="#c9ced8" stroke-width="2"/>
+    <text x="600" y="328" text-anchor="middle" font-size="21" font-weight="700" fill="#1b1f27">Warehouse PC</text>
+    <text x="600" y="358" text-anchor="middle" fill="#5b6270">Stock arrived, labels,</text>
+    <text x="600" y="382" text-anchor="middle" fill="#5b6270">sends parcels</text>
+    <text x="600" y="418" text-anchor="middle" font-size="15" fill="#15803d" font-weight="600">● its own copy of the warehouse</text>
+
+    <rect x="860" y="290" width="300" height="150" rx="16" fill="#fff" stroke="#3b46c4" stroke-width="2"/>
+    <text x="1010" y="328" text-anchor="middle" font-size="21" font-weight="700" fill="#1b1f27">Owner phone / laptop</text>
+    <text x="1010" y="358" text-anchor="middle" fill="#5b6270">Sees every shop live,</text>
+    <text x="1010" y="382" text-anchor="middle" fill="#5b6270">reports, settings</text>
+    <text x="1010" y="418" text-anchor="middle" font-size="15" fill="#15803d" font-weight="600">● a copy of everything</text>
+  </g>
+  <!-- arrows -->
+  <g stroke="#3b46c4" stroke-width="3" fill="none">
+    <path d="M220 284 C 260 200 400 160 470 140" marker-end="url(#a)" marker-start="url(#a)"/>
+    <path d="M600 284 L 600 150" marker-end="url(#a)" marker-start="url(#a)"/>
+    <path d="M980 284 C 940 200 800 160 730 140" marker-end="url(#a)" marker-start="url(#a)"/>
+  </g>
+  <g font-size="15" fill="#2a318a" font-weight="600">
+    <text x="240" y="205" text-anchor="middle">sends its bills,</text>
+    <text x="240" y="225" text-anchor="middle">gets new items &amp; parcels</text>
+    <text x="960" y="205" text-anchor="middle">gets everything</text>
+    <text x="960" y="225" text-anchor="middle">every few seconds</text>
+  </g>
+  <rect x="300" y="236" width="600" height="38" rx="19" fill="#fff4e0" stroke="#f6d9a8"/>
+  <text x="600" y="261" text-anchor="middle" font-size="16" fill="#7a3e06" font-weight="600">No internet? Keep working — changes wait on the device and go up later.</text>
+</svg>

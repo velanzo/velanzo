@@ -1,0 +1,15 @@
+{
+  "name": "velanzo",
+  "version": "2.0.0",
+  "description": "Simple shop & warehouse software: purchasing, barcodes, dispatch, sales/billing, stock and accounts. Works offline; syncs through Supabase.",
+  "private": true,
+  "scripts": {
+    "test": "node --disable-warning=ExperimentalWarning tools/test-engine.mjs && node --disable-warning=ExperimentalWarning tools/test-sync.mjs && node --disable-warning=ExperimentalWarning tools/test-practice.mjs && node --disable-warning=ExperimentalWarning tools/test-clear.mjs",
+    "dev": "node --disable-warning=ExperimentalWarning tools/dev-server.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.10",
+    "@sqlite.org/sqlite-wasm": "3.53.4-build2",
+    "@supabase/supabase-js": "2.118.0"
+  }
+}

@@ -1,0 +1,45 @@
+# Publishes the website (the web/ folder) to GitHub Pages every time main changes, after the tests pass.
+# One-time: in the GitHub repository, Settings → Pages → Source: "GitHub Actions".
+name: Publish Velanzo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm test
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      # each publish gets its own version, so every device picks up the new files
+      - run: sed -i "s/const VERSION = 'velanzo-[^']*'/const VERSION = 'velanzo-${GITHUB_SHA::10}'/" web/sw.js
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+      - id: deployment
+        uses: actions/deploy-pages@v4

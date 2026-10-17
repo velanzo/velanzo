@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Velanzo — User guide</title>
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<style>
+  :root { --text: #1b1f27; --muted: #5b6270; --line: #e2e5eb; --accent: #3b46c4; --accent-soft: #eceefe; --ok: #15803d; --ok-soft: #e7f6ec; --warn: #b45309; --warn-soft: #fff4e0; --red: #c0262d; }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: #f3f4f7; color: var(--text); font: 16px/1.62 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; }
+  a { color: var(--accent); }
+  .wrap { display: flex; gap: 28px; max-width: 1240px; margin: 0 auto; padding: 24px 20px 80px; align-items: flex-start; }
+  nav.toc { position: sticky; top: 20px; width: 250px; flex: none; max-height: calc(100vh - 40px); overflow-y: auto; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 16px 14px; font-size: 14px; }
+  nav.toc b { display: block; margin-bottom: 8px; font-size: 13px; letter-spacing: .6px; text-transform: uppercase; color: var(--muted); }
+  nav.toc ol { margin: 0; padding-left: 18px; }
+  nav.toc li { margin: 3px 0; }
+  nav.toc ol ol { padding-left: 14px; font-size: 13.5px; }
+  nav.toc a { text-decoration: none; color: var(--text); }
+  nav.toc a:hover { color: var(--accent); }
+  main { flex: 1; min-width: 0; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 36px 44px; }
+  header.cover { border-bottom: 1px solid var(--line); padding-bottom: 22px; margin-bottom: 8px; }
+  header.cover h1 { font-size: 34px; margin: 0 0 4px; letter-spacing: .2px; }
+  header.cover p { margin: 0; color: var(--muted); font-size: 17px; }
+  h2 { font-size: 26px; margin: 46px 0 12px; padding-top: 10px; border-top: 3px solid var(--accent-soft); }
+  h3 { font-size: 20px; margin: 30px 0 8px; }
+  h4 { font-size: 16.5px; margin: 20px 0 6px; }
+  p, li { max-width: 78ch; }
+  figure { margin: 16px 0 22px; }
+  figure img { display: block; width: 100%; height: auto; border: 1px solid #d6dae1; border-radius: 10px; box-shadow: 0 4px 18px rgba(16, 24, 40, .08); background: #fff; }
+  figure.narrow img { width: auto; max-width: 100%; max-height: 640px; margin: 0 auto; }
+  figure.diagram img { border: 0; box-shadow: none; }
+  figcaption { font-size: 14px; color: var(--muted); margin-top: 7px; text-align: center; }
+  ol.steps { counter-reset: s; list-style: none; padding-left: 0; }
+  ol.steps > li { counter-increment: s; position: relative; padding-left: 40px; margin: 10px 0; }
+  ol.steps > li::before { content: counter(s); position: absolute; left: 0; top: 1px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+  .tip, .warn, .note { border-radius: 10px; padding: 12px 16px; margin: 14px 0; max-width: 82ch; }
+  .tip { background: var(--accent-soft); border: 1px solid #d3d7fb; }
+  .warn { background: var(--warn-soft); border: 1px solid #f6d9a8; }
+  .note { background: var(--ok-soft); border: 1px solid #bfe5cc; }
+  .tip b:first-child, .warn b:first-child, .note b:first-child { margin-right: 4px; }
+  kbd { display: inline-block; font: 600 13px/1 Consolas, monospace; padding: 4px 7px; border: 1px solid #c9ced8; border-bottom-width: 2px; border-radius: 6px; background: #fafbfc; }
+  .btn { display: inline-block; font-weight: 600; font-size: 14px; padding: 1px 9px; border-radius: 6px; border: 1px solid #c9ced8; background: #fff; white-space: nowrap; }
+  .btn.p { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.g { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .menu { font-weight: 600; color: var(--accent); white-space: nowrap; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0 18px; font-size: 15px; }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f6f7fa; font-size: 13.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  .checks li { list-style: none; position: relative; padding-left: 28px; }
+  .checks li::before { content: "☐"; position: absolute; left: 0; font-size: 18px; line-height: 1.3; color: var(--accent); }
+  ul.checks { padding-left: 4px; }
+  .formula { font-size: 15.5px; background: #fafbfc; border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; line-height: 1.9; }
+  .formula b { color: var(--accent); }
+  .print-btn { float: right; margin-top: 6px; font: inherit; font-size: 14px; font-weight: 600; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
+  footer { margin-top: 50px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+  @media (max-width: 1050px) { nav.toc { display: none; } main { padding: 26px 22px; } }
+  @media (max-width: 640px) { .wrap { padding: 0; } main { border-radius: 0; border: 0; padding: 20px 16px; } .two { grid-template-columns: 1fr; } header.cover h1 { font-size: 27px; } h2 { font-size: 22px; } }
+  @media print {
+    @page { size: A4; margin: 13mm 12mm; }
+    body { background: #fff; font-size: 11.5pt; }
+    .wrap { display: block; padding: 0; max-width: none; }
+    nav.toc, .print-btn { display: none; }
+    main { border: 0; padding: 0; border-radius: 0; }
+    h2 { break-before: page; border-top: 0; margin-top: 0; }
+    h3, h4 { break-after: avoid; }
+    figure, .tip, .warn, .note, table, ol.steps > li { break-inside: avoid; }
+    figure img { box-shadow: none; max-height: 165mm; width: auto; max-width: 100%; margin: 0 auto; }
+    a { color: inherit; text-decoration: none; }
+    .print-toc { display: block !important; }
+  }
+  .print-toc { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <b>Contents</b>
+  <ol>
+    <li><a href="#how">How Velanzo works</a></li>
+    <li><a href="#start">Starting (owner, once)</a>
+      <ol><li><a href="#owner-account">Your owner account</a></li><li><a href="#places">Shops and their switches</a></li><li><a href="#people">People and PINs</a></li>
+        <li><a href="#computers">Connect the computers</a></li><li><a href="#install">Install on every computer</a></li><li><a href="#business">Business and printing</a></li></ol></li>
+    <li><a href="#daily">Opening Velanzo every day</a></li>
+    <li><a href="#shop">Shop</a>
+      <ol><li><a href="#sell">Make a bill</a></li><li><a href="#return">Return or exchange</a></li><li><a href="#bills">Find a bill</a></li><li><a href="#receive">Receive stock</a></li><li><a href="#expenses">Expenses</a></li></ol></li>
+    <li><a href="#warehouse">Warehouse</a>
+      <ol><li><a href="#arrived">Stock arrived</a></li><li><a href="#items">New items</a></li><li><a href="#labels">Barcode labels</a></li><li><a href="#send">Send stock to a shop</a></li></ol></li>
+    <li><a href="#owner">Owner</a>
+      <ol><li><a href="#home">Home — live</a></li><li><a href="#activity">Activity</a></li><li><a href="#reports">Reports and profit</a></li><li><a href="#stock">Stock and corrections</a></li><li><a href="#devices">Devices</a></li><li><a href="#backup">Backups and Excel</a></li></ol></li>
+    <li><a href="#offline">No internet?</a></li>
+    <li><a href="#hardware">Printers and scanners</a></li>
+    <li><a href="#checklists">Daily checklists</a></li>
+    <li><a href="#faq">Problems and questions</a></li>
+  </ol>
+</nav>
+<main>
+<header class="cover">
+  <button class="print-btn" onclick="window.print()">Print / save as PDF</button>
+  <h1>Velanzo — how to use it</h1>
+  <p>For the owner, the shops and the warehouse. Every screen, with a picture.</p>
+</header>
+
+<!-- ============================================================ -->
+<h2 id="how">1. How Velanzo works</h2>
+<p>Velanzo follows your stock from the supplier to the customer. The warehouse enters what arrives, puts a barcode label on every piece and sends parcels to the shops. The shops receive the parcels, scan items to make bills, and take returns. Everything is recorded on its own, so the owner sees every shop and the warehouse at any time — on a laptop or a phone.</p>
+<figure class="diagram"><img src="img/flow.svg" alt="Flow: supplier → stock arrived → warehouse stock → labels → send stock → receive → scan → sale → bill → customer; the owner sees everything"></figure>
+<table>
+  <tr><th style="width:44px">#</th><th>Step</th><th>Who</th><th>Where in Velanzo</th></tr>
+  <tr><td>1</td><td>Stock comes from a supplier</td><td>Warehouse</td><td><span class="menu">Stock arrived</span></td></tr>
+  <tr><td>2</td><td>It is added to the warehouse stock</td><td>—</td><td>automatic</td></tr>
+  <tr><td>3</td><td>A barcode label goes on every piece</td><td>Warehouse</td><td><span class="menu">Labels</span></td></tr>
+  <tr><td>4</td><td>A parcel is packed and sent to a shop</td><td>Warehouse</td><td><span class="menu">Send stock</span></td></tr>
+  <tr><td>5</td><td>The shop checks the parcel and receives it</td><td>Shop</td><td><span class="menu">Receive stock</span></td></tr>
+  <tr><td>6–8</td><td>Items are scanned, paid and a bill is printed</td><td>Shop</td><td><span class="menu">Sell</span></td></tr>
+</table>
+
+<h3>Every computer keeps its own copy</h3>
+<p>Each shop counter, the warehouse computer and the owner's phone keep their own copy of what they need, and the cloud keeps one shared copy of everything. When there is no internet, <b>keep working</b>: the bills and changes wait on that computer and go up to the cloud by themselves when the internet is back. No computer has to stay on at night.</p>
+<figure class="diagram"><img src="img/sync.svg" alt="Shop counter, warehouse PC and owner phone each keep a copy and share it through the cloud"></figure>
+
+<h3>Who can do what</h3>
+<p>The owner decides what each shop and the warehouse may do with on/off <b>switches</b> (<span class="menu">Settings → Shops &amp; warehouse</span>). Each person can then have fewer switches than their place (<span class="menu">Settings → People</span>). A shop's people only see that shop. Only what is switched on appears on their screen — and the cloud itself refuses anything that is switched off.</p>
+<table>
+  <tr><th>Switch</th><th>A shop (usual)</th><th>The warehouse (usual)</th></tr>
+  <tr><td>Sell and print bills · Returns and exchanges · Give discounts</td><td>On</td><td>Off</td></tr>
+  <tr><td>Change prices on a bill · Cancel bills</td><td>Off</td><td>Off</td></tr>
+  <tr><td>Receive stock</td><td>On</td><td>On</td></tr>
+  <tr><td>Buy from suppliers · Send stock · Add new items and print labels · Correct stock counts</td><td>Off</td><td>On</td></tr>
+  <tr><td>Record expenses</td><td>On</td><td>On</td></tr>
+  <tr><td>See cost price and profit · See reports for this place</td><td>Off</td><td>Cost on</td></tr>
+</table>
+<div class="tip"><b>Example:</b> to stop a shop buying from suppliers itself, keep <b>Buy from suppliers</b> off for that shop. To let one trusted shop manager cancel bills, switch <b>Cancel bills</b> on for the shop, then off for the other people there.</div>
+
+<!-- ============================================================ -->
+<h2 id="start">2. Starting (owner, once)</h2>
+<p>Open your Velanzo address in Google Chrome or Microsoft Edge (for example <b>https://yourname.github.io/velanzo</b>). The same address works on every computer and phone.</p>
+
+<h3 id="owner-account">2.1 Your owner account</h3>
+<figure><img src="img/welcome.webp" alt="Welcome screen"><figcaption>The first screen on a new computer or phone.</figcaption></figure>
+<ol class="steps">
+  <li>Choose <b>I'm the owner</b>.</li>
+  <li>The very first time: click <b>New business? Create an owner account</b>, type your email and a password (at least 8 characters). If an email arrives, open its link, then come back and sign in.</li>
+  <li>Type your business name, your name and choose a <b>PIN</b> (4 to 6 numbers). You type this PIN to open Velanzo, like a phone.</li>
+</ol>
+<figure><img src="img/owner-signin.webp" alt="Owner sign in"><figcaption>On your next phone or laptop, just sign in with the same email and password.</figcaption></figure>
+<div class="warn"><b>Keep your email and password safe.</b> They open Velanzo as the owner on any new phone or computer. Your PIN only works on devices that are already set up.</div>
+
+<h3 id="places">2.2 Shops and their switches</h3>
+<p><span class="menu">More → Settings → Shops &amp; warehouse</span>. Velanzo starts with <b>Main warehouse</b> and <b>Shop 1</b>. Rename them, add their address and phone (printed on their bills), and add more shops when you open them.</p>
+<figure><img src="img/settings-shops.webp" alt="Shops and warehouse"><figcaption>Each card shows what that place may do.</figcaption></figure>
+<figure><img src="img/settings-shop-switches.webp" alt="Switches of a shop"><figcaption>Click a place to change its name, code and switches. The short code starts its bill numbers.</figcaption></figure>
+
+<h3 id="people">2.3 People and PINs</h3>
+<p><span class="menu">Settings → People → Add a person</span>: their name, where they work and a PIN (tell them the PIN). Leave <b>Same as their place</b> ticked, or untick it to switch some things off for this person only.</p>
+<figure><img src="img/settings-people.webp" alt="People list"></figure>
+<figure><img src="img/settings-person.webp" alt="Editing a person"><figcaption>Sara may sell and receive, but not give discounts or take returns. Grey switches are off for the whole shop.</figcaption></figure>
+<div class="tip"><b>Someone leaves?</b> Open them and untick <b>Can log in</b>. Their history stays. <b>Forgot a PIN?</b> Open the person and type a new PIN.</div>
+
+<h3 id="computers">2.4 Connect the shop and warehouse computers</h3>
+<ol class="steps">
+  <li>On your own Velanzo: <span class="menu">Settings → Devices → Add a computer</span>. Choose where the computer is and click <b>Make a code</b>.</li>
+  <li>On the shop or warehouse computer, open the Velanzo address, choose <b>Shop or warehouse computer</b> and type the code. It works once, for 24 hours.</li>
+  <li>Velanzo downloads that place's items and stock, then shows <b>Who's working?</b>.</li>
+</ol>
+<div class="two">
+  <figure><img src="img/settings-device-code.webp" alt="Make a code"><figcaption>The code for one computer.</figcaption></figure>
+  <figure><img src="img/join-code.webp" alt="Type the code"><figcaption>Typing it on the shop computer.</figcaption></figure>
+</div>
+
+<h3 id="install">2.5 Install Velanzo on every computer</h3>
+<p>Installing gives Velanzo its own icon and window and tells the browser to keep its data safe. In Chrome or Edge open the menu <b>⋮</b> and choose <b>Install Velanzo</b> (or <b>Apps → Install</b>). On a phone: <b>Add to Home screen</b>. You can also use the <b>Install Velanzo</b> button on <span class="menu">your name → This device</span>.</p>
+<figure><img src="img/this-device.webp" alt="This device"><figcaption>This device: is everything saved online, install, and printing tips.</figcaption></figure>
+
+<h3 id="business">2.6 Business details and printing</h3>
+<p><span class="menu">Settings → Business</span>: name, phone, currency and when an item counts as "low stock".</p>
+<figure><img src="img/settings-business.webp" alt="Business settings"></figure>
+<p><span class="menu">Settings → Bills &amp; labels</span>: receipt width (80 or 58 mm), the message at the bottom of the bill, and your label size. Use <b>Print test bill</b> and <b>Print test label</b> to check.</p>
+<figure><img src="img/settings-printing.webp" alt="Bills and labels settings"></figure>
+
+<!-- ============================================================ -->
+<h2 id="daily">3. Opening Velanzo every day</h2>
+<p>Open Velanzo, tap your name and type your PIN. When someone else takes over the counter: <span class="menu">your name (top right) → Switch person</span>.</p>
+<div class="two">
+  <figure><img src="img/who-is-working.webp" alt="Who's working"><figcaption>Only the people of this shop (and the owner) appear.</figcaption></figure>
+  <figure><img src="img/pin.webp" alt="Typing the PIN"><figcaption>Type the PIN and press ✓ (or Enter).</figcaption></figure>
+</div>
+<p>The green pill at the top tells you if everything reached the cloud:</p>
+<table>
+  <tr><th>Top bar says</th><th>Meaning</th></tr>
+  <tr><td><span style="color:var(--ok);font-weight:600">● All saved online</span></td><td>Everything done here is in the cloud.</td></tr>
+  <tr><td><span style="color:var(--accent);font-weight:600">● Saving… / 2 waiting</span></td><td>Being sent right now.</td></tr>
+  <tr><td><span style="color:var(--warn);font-weight:600">● No internet · 3 waiting</span></td><td>Keep working. The 3 changes go up when the internet is back.</td></tr>
+  <tr><td><span style="color:var(--red);font-weight:600">● 1 not saved</span></td><td>The cloud refused a change (for example a switch was off). Tap it to see why.</td></tr>
+  <tr><td><span style="color:var(--warn);font-weight:600">● Practice mode</span></td><td>You are in Training. Nothing is real and nothing is sent. See below.</td></tr>
+</table>
+<h3 id="training">Learning by doing: Training</h3>
+<p>New here? Open <span class="menu">More → Training</span> (or your name → Training). Pick a guide — <b>Full overview</b>, <b>Making a bill</b>, <b>Stock arrived</b>, <b>Send stock</b>, <b>Receiving a parcel</b> and more — and Velanzo shows an arrow where to click and says what to do. It moves on by itself when you have done each step, and you only see guides for what your place and your switches allow.</p>
+<p>Guides marked <i>practice</i> use the real screens with <b>DEMO</b> items. An orange bar shows that practice is on; nothing is sent online and nothing prints. When you press <b>Finish &amp; remove practice</b> everything you did is deleted completely, as if it never happened. Do not make real sales while practising — they would be deleted too.</p>
+
+<!-- ============================================================ -->
+<h2 id="shop">4. Shop</h2>
+<h3 id="sell">4.1 Make a bill</h3>
+<ol class="steps">
+  <li>Scan each item (or type its name and press Enter). Scanning the same item again adds one more.</li>
+  <li>Change a number with <b>−</b> and <b>+</b>, or remove a line with ✕.</li>
+  <li>Choose <b>Cash</b>, <b>Card</b> or <b>Online</b>. For cash, type what the customer gave: the change shows in green.</li>
+  <li>Press <span class="btn p">✓ Done — print bill</span> (or <kbd>F9</kbd>). The bill prints.</li>
+</ol>
+<figure><img src="img/sell-cart.webp" alt="Sell screen with items"></figure>
+<div class="two">
+  <figure><img src="img/sell-done.webp" alt="Bill saved"><figcaption>Bill saved — with the change to give.</figcaption></figure>
+  <figure class="narrow"><img src="img/print-bill.webp" alt="Printed bill"><figcaption>The printed bill. Its barcode finds the bill again later.</figcaption></figure>
+</div>
+<p><b>Discount</b> and <b>Customer</b> (name and phone) are the small links under the list. They only show if your switches allow them.</p>
+
+<h3 id="return">4.2 Return or exchange</h3>
+<ol class="steps">
+  <li>Tap <b>↩ Return or exchange</b> (or <kbd>F4</kbd>) and scan what the customer brings back. It shows as <b>Back</b>.</li>
+  <li>Tap it again and scan the new item they take, if any.</li>
+  <li>The total says what the customer pays, or what to <b>give back</b> (in red). Press <b>Done</b>.</li>
+</ol>
+<figure><img src="img/sell-exchange.webp" alt="Exchange"></figure>
+
+<h3 id="bills">4.3 Find a bill and print it again</h3>
+<p><span class="menu">Bills</span>: today's bills, or choose dates. Scan the barcode on the customer's bill, or type its number, name or phone. Click a bill to see it and print it again.</p>
+<figure><img src="img/bills.webp" alt="Bills"></figure>
+
+<h3 id="receive">4.4 Receive stock</h3>
+<p>When the warehouse sends a parcel, <span class="menu">Receive stock</span> shows a number. Open the parcel, then either scan every piece (Velanzo counts them) or correct the <b>Received</b> numbers. Press <span class="btn g">✓ Confirm received</span>. Missing pieces are shown to the owner.</p>
+<figure><img src="img/receive-list.webp" alt="Parcels to receive"></figure>
+<figure><img src="img/receive-check.webp" alt="Checking a parcel"></figure>
+
+<h3 id="expenses">4.5 Expenses</h3>
+<p><span class="menu">Expenses</span>: tea, transport, bills, rent. They are taken off the profit in the owner's reports.</p>
+
+<!-- ============================================================ -->
+<h2 id="warehouse">5. Warehouse</h2>
+<p>The warehouse home has one big button for each job, and shows the parcels on the way.</p>
+<figure><img src="img/warehouse-home.webp" alt="Warehouse home"></figure>
+
+<h3 id="arrived">5.1 Stock arrived</h3>
+<ol class="steps">
+  <li><span class="menu">Stock arrived → New purchase</span>. Choose the supplier and type their bill number.</li>
+  <li>Scan items you already have, or click <b>New item</b> to add a new design with its sizes and colours (Velanzo makes a barcode for each).</li>
+  <li>Type how many came and their cost. Type what you paid the supplier now (0 if later — it shows as owed).</li>
+  <li>Press <span class="btn g">Save purchase &amp; add to stock</span>, then print the labels.</li>
+</ol>
+<figure><img src="img/purchase-new.webp" alt="New purchase"></figure>
+<figure><img src="img/purchases.webp" alt="Purchases list"></figure>
+
+<h3 id="items">5.2 Items</h3>
+<p><span class="menu">More → Items</span>: every item with its barcode and price. Click one to change its price or see where every piece went.</p>
+<figure><img src="img/items.webp" alt="Items"></figure>
+
+<h3 id="labels">5.3 Barcode labels</h3>
+<p><span class="menu">Labels</span>: choose a purchase (or scan items), set how many labels, and print. Stick one on every piece.</p>
+<figure><img src="img/labels.webp" alt="Labels"></figure>
+<figure class="narrow"><img src="img/print-labels.webp" alt="Printed labels"><figcaption>Labels: shop name, item, size/colour, barcode and price.</figcaption></figure>
+
+<h3 id="send">5.4 Send stock to a shop</h3>
+<ol class="steps">
+  <li><span class="menu">Send stock → Send stock</span>. Choose the shop.</li>
+  <li>Scan each piece as you pack it — every scan adds one.</li>
+  <li>Press <span class="btn g">Send dispatch</span> and print the dispatch note for the parcel.</li>
+</ol>
+<figure><img src="img/dispatch-new.webp" alt="Send stock"></figure>
+<figure><img src="img/dispatch-list.webp" alt="Parcels sent"><figcaption>"On the way" until the shop confirms it received the parcel.</figcaption></figure>
+
+<!-- ============================================================ -->
+<h2 id="owner">6. Owner</h2>
+<h3 id="home">6.1 Home — everything live</h3>
+<p>Today's sales, this month's profit and what you owe suppliers. Below, a card for every shop and the warehouse: who is working there now, today's sales or parcels, and the last thing that happened. It updates by itself every few seconds.</p>
+<figure><img src="img/owner-home.webp" alt="Owner home"></figure>
+<figure class="narrow"><img src="img/phone-home.webp" alt="Owner home on a phone"><figcaption>The same on your phone.</figcaption></figure>
+
+<h3 id="activity">6.2 Activity</h3>
+<p><span class="menu">More → Activity</span>: every bill, return, purchase, parcel, stock correction and expense, at every place, with who and when. Choose a day or a place.</p>
+<figure><img src="img/activity.webp" alt="Activity"></figure>
+
+<h3 id="reports">6.3 Reports and profit</h3>
+<p><span class="menu">Reports</span>: sales, returns, discounts, cost, profit, expenses and net profit, for any dates, for the whole business or one shop; plus best sellers, categories and day by day. <b>Print</b> it or take the bill lines to Excel.</p>
+<figure><img src="img/reports.webp" alt="Reports"></figure>
+<div class="formula"><b>Net sales</b> = items sold − returns − discounts<br><b>Gross profit</b> = net sales − what those items cost<br><b>Net profit</b> = gross profit − expenses</div>
+
+<h3 id="stock">6.4 Stock and corrections</h3>
+<p><span class="menu">Stock</span>: every item at every place. After counting the shelves, use <b>Correct</b> to fix a number (damaged, lost, found) with a reason — it is kept in the item's history.</p>
+<figure><img src="img/stock.webp" alt="Stock"></figure>
+
+<h3 id="devices">6.5 Devices</h3>
+<p><span class="menu">Settings → Devices</span> lists every computer and phone, when it was last online and who used it. <b>Remove</b> a lost or replaced device: it stops working at once.</p>
+<figure><img src="img/settings-devices.webp" alt="Devices"></figure>
+
+<h3 id="backup">6.6 Backups and Excel</h3>
+<p><span class="menu">Settings → Backup &amp; data</span>: <b>Download full backup</b> saves one file with everything. Keep copies on Google Drive or a USB stick — Velanzo reminds you on the home screen when your last backup is more than a week old. <b>Restore</b> replaces everything (on every device) with a backup file, also one from the old version of Velanzo. You can also export items, stock, bills, purchases and more to Excel, and import many items at once.</p>
+<figure><img src="img/settings-backup.webp" alt="Backup and data"></figure>
+
+<h3 id="manage">Manage data: clear old data or start fresh</h3>
+<p><span class="menu">Settings → Backup &amp; data → Manage data</span> shows how much of everything is stored, and lets the owner clear it:</p>
+<ul>
+  <li><b>Clear some data</b> — tick what to clear (bills, purchases, stock sent, expenses, stock history) and choose dates: a <i>from</i> and an <i>up to</i> date, or a quick pick like “older than 3 months”. Your items, stock counts, people and settings stay. Parcels still on the way are never cleared.</li>
+  <li><b>Clear all data</b> — deletes all bills, purchases, stock, items and suppliers to start the real business fresh. Shops, warehouse, people, PINs and settings stay.</li>
+</ul>
+<p>Before anything is deleted Velanzo shows exactly what will go, <b>downloads a backup file</b> of everything, and asks you to type <b>CLEAR</b>. The clearing is then done on every computer. To undo it, restore that backup file.</p>
+<!-- ============================================================ -->
+<h2 id="offline">7. No internet?</h2>
+<ul>
+  <li><b>Keep working.</b> Selling, returns, receiving, stock arrived, sending parcels and expenses all work without internet.</li>
+  <li>The top bar shows <b>No internet · N waiting</b>. When the internet is back, everything goes up by itself — you don't have to do anything.</li>
+  <li>Other places don't see your changes until then (for example the owner's sales total, or a parcel you sent).</li>
+  <li><b>Don't clear the browser's data</b> and don't remove Velanzo while something is waiting — it would be lost. Installing Velanzo (2.5) protects it.</li>
+  <li>The very first set-up of a computer needs the internet once.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="hardware">8. Printers and scanners</h2>
+<h3>Barcode scanner</h3>
+<p>Any USB scanner works — it types the barcode and presses Enter, like a keyboard. Plug it in and scan into the box on the Sell screen.</p>
+<h3>Receipt printer (shop)</h3>
+<p>Set the 80 mm (or 58 mm) receipt printer as the <b>default printer</b> in Windows. In the print window choose <b>Margins: None</b> and untick <b>Headers and footers</b> once.</p>
+<p><b>Print without the print window:</b> make a shortcut for Chrome and add <kbd>--kiosk-printing</kbd> at the end of its <b>Target</b>, after the Velanzo address. Bills then go straight to the default printer.</p>
+<h3>Label printer (warehouse)</h3>
+<p>In the printer's Windows settings, make a paper size the same as your labels (for example 50 × 25 mm), and type the same size in <span class="menu">Settings → Bills &amp; labels</span>. A normal printer with A4 sticker sheets also works.</p>
+
+<!-- ============================================================ -->
+<h2 id="checklists">9. Daily checklists</h2>
+<div class="two">
+<div><h3>Shop</h3><ul class="checks">
+  <li>Open Velanzo, tap your name, type your PIN.</li>
+  <li>Check <span class="menu">Receive stock</span> for parcels.</li>
+  <li>Sell; keep the bills' copies if you need them.</li>
+  <li>Add today's expenses.</li>
+  <li>Before leaving: the top bar says <b>All saved online</b>.</li>
+</ul></div>
+<div><h3>Warehouse</h3><ul class="checks">
+  <li>Enter everything that arrived (<span class="menu">Stock arrived</span>).</li>
+  <li>Print and stick labels.</li>
+  <li>Send parcels; print the dispatch note.</li>
+  <li>Before leaving: <b>All saved online</b>.</li>
+</ul></div>
+</div>
+<h3>Owner</h3><ul class="checks">
+  <li>Look at Home: is every shop open and selling?</li>
+  <li>Parcels with missing pieces? (Activity)</li>
+  <li>Once a week: download a backup.</li>
+</ul>
+
+<!-- ============================================================ -->
+<h2 id="faq">10. Problems and questions</h2>
+<h4>Someone forgot their PIN</h4>
+<p>Owner: <span class="menu">Settings → People</span>, open the person, type a new PIN.</p>
+<h4>A computer was lost, stolen or replaced</h4>
+<p><span class="menu">Settings → Devices → Remove</span>. On the new computer, connect it with a new code (2.4).</p>
+<h4>The top bar is red: "1 not saved"</h4>
+<p>Tap it. You will see what the cloud refused and why — usually something switched off for that place or person. Do it again on a device where it's allowed, then clear the list.</p>
+<h4>"Velanzo is already open in another tab"</h4>
+<p>Velanzo can be open only once on a computer. Close the other tab or window.</p>
+<h4>A new shop opens</h4>
+<p><span class="menu">Settings → Shops &amp; warehouse → Add a place</span>, add its people, then connect its computer (2.4).</p>
+<h4>Long barcodes look like 8.9E+12 in Excel</h4>
+<p>Format the barcode column as <b>Text</b> before saving a file to import.</p>
+<h4>Starting again on a computer</h4>
+<p><span class="menu">your name → This device</span>: <b>Download everything again</b> (keeps nothing waiting behind), or <b>Remove Velanzo from this device</b>.</p>
+
+<footer>Velanzo · user guide. The pictures show a made-up business.</footer>
+</main>
+</div>
+</body>
+</html>
