@@ -27,6 +27,7 @@ export function createCloud() {
     const vz = m.match(/^VZ:([a-z]+):([\s\S]*)$/);
     if (vz) return new CloudError(vz[1], vz[2].trim());
     if (/fetch|network|load failed|timed? ?out|offline/i.test(m) || !navigator.onLine) return new CloudError('offline', 'No internet connection');
+    if (/could not find the function|schema cache/i.test(m)) return new CloudError('update', 'The cloud database is not up to date yet. The owner must run supabase/UPDATE-ALL.sql once in Supabase (SQL Editor).');
     if (/invalid login credentials/i.test(m)) return new CloudError('login', 'Wrong email or password');
     if (/email not confirmed/i.test(m)) return new CloudError('confirm', 'Please confirm your email first: open the link we sent you, then sign in.');
     return new CloudError('other', m);
