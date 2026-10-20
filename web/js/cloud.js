@@ -117,7 +117,19 @@ export function createCloud() {
       if (!s) await auth((a) => a.signInAnonymously());
       return rpc('claim_device', { p_code: code, p_label: label, p_now: localNow() });
     },
-    createSetupCode: (locationId) => rpc('create_setup_code', { p_location: locationId }),
+    // A shop or warehouse person signs in with the user ID and password the owner made for them.
+    async loginWithId(login, password, label) {
+      const s = (await client().auth.getSession()).data.session;
+      if (!s) await auth((a) => a.signInAnonymously());
+      const r = await rpc('login_with_id', { p_login: login, p_password: password, p_label: label, p_now: localNow() });
+      if (!r.ok) throw new CloudError('login', r.error);
+      return r;
+    },
+    // The owner makes or changes a person's user ID and password.
+    setUserLogin: (userId, login, password) => rpc('set_user_login', { p_user: userId, p_login: login, p_password: password }),
+    listUserLogins: () => rpc('list_user_logins'),
+    // This computer stops being a device of the business (sign out).
+    releaseDevice: (id) => rpc('release_device', { p_device: id }),
     removeDevice: (id) => rpc('remove_device', { p_id: id }),
     restoreBegin: () => rpc('restore_begin'),
 

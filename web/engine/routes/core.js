@@ -18,21 +18,22 @@ route('GET', '/api/login-users', null, () => ({
   device: D.deviceInfo(),
   location: D.deviceInfo().location_id ? publicLocation(get('SELECT * FROM locations WHERE id = ?', D.deviceInfo().location_id)) : null,
   users: S.loginUsers().map((u) => ({ id: u.id, name: u.name, role: u.role, has_pin: !!u.pin_hash })),
+  bound: !!Number(D.get("SELECT value FROM device WHERE key = 'bound_user'")?.value),
 }));
 
-// Wrong PINs: after 5 tries, wait 30 seconds (then 60, 120 …).
+// Wrong passcodes: after 5 tries, wait 30 seconds (then 60, 120 …).
 const tries = new Map();
 export const clearLockout = (id) => tries.delete(id);
 route('POST', '/api/login', null, async ({ body }) => {
   const id = toInt(body.user_id);
   const t = tries.get(id) || { n: 0, until: 0 };
-  if (Date.now() < t.until) fail(429, `Too many wrong PINs. Wait ${Math.ceil((t.until - Date.now()) / 1000)} seconds.`);
+  if (Date.now() < t.until) fail(429, `Too many wrong passcodes. Wait ${Math.ceil((t.until - Date.now()) / 1000)} seconds.`);
   const u = S.loginUsers().find((x) => x.id === id) || fail(404, 'This person cannot log in on this device');
   if (!(await S.checkPin(String(body.pin || ''), u))) {
     t.n++;
     if (t.n >= 5) t.until = Date.now() + 30000 * 2 ** Math.min(4, t.n - 5);
     tries.set(id, t);
-    fail(401, 'Wrong PIN');
+    fail(401, 'Wrong passcode');
   }
   tries.delete(id);
   S.setCurrent(id);
@@ -51,8 +52,8 @@ route('GET', '/api/me', 'any', ({ user }) => ({
 
 route('POST', '/api/me/pin', 'any', async ({ user, body }) => {
   const u = get('SELECT * FROM users WHERE id = ?', user.id);
-  if (u.pin_hash && !(await S.checkPin(String(body.current || ''), u))) fail(400, 'Your current PIN is wrong');
-  if (!S.validPin(body.pin)) fail(400, 'The new PIN must be 4 to 6 numbers');
+  if (u.pin_hash && !(await S.checkPin(String(body.current || ''), u))) fail(400, 'Your current passcode is wrong');
+  if (!S.validPin(body.pin)) fail(400, 'The new passcode must be 4 numbers');
   const p = await S.makePin(body.pin);
   run('UPDATE users SET pin_salt = ?, pin_hash = ? WHERE id = ?', p.pin_salt, p.pin_hash, user.id);
 });
@@ -140,8 +141,9 @@ const activeOwners = (exceptId) => get("SELECT COUNT(*) AS n FROM users WHERE ro
 route('POST', '/api/users', 'owner', async ({ body }) => {
   const role = body.role === 'admin' ? 'admin' : 'staff';
   const name = need(str(body.name, 80), 'Name');
-  if (!S.validPin(body.pin)) fail(400, 'The PIN must be 4 to 6 numbers');
-  const pin = await S.makePin(body.pin);
+  // (the person chooses their own passcode when they first sign in; an owner may still set one for an owner)
+  if (body.pin && !S.validPin(body.pin)) fail(400, 'The passcode must be 4 numbers');
+  const pin = body.pin ? await S.makePin(body.pin) : { pin_salt: null, pin_hash: null };
   const loc = checkUserLocation(role, body.location_id);
   const perms = role === 'admin' ? null : cleanPerms(body.perms);
   const id = D.newId();
@@ -162,7 +164,7 @@ route('PUT', '/api/users/:id', 'owner', async ({ params, body, user }) => {
   const perms = role === 'admin' ? null : body.perms === undefined ? u.perms : (cleanPerms(body.perms) ? permsJson(cleanPerms(body.perms)) : null);
   let pin = null;
   if (body.pin) {
-    if (!S.validPin(body.pin)) fail(400, 'The PIN must be 4 to 6 numbers');
+    if (!S.validPin(body.pin)) fail(400, 'The passcode must be 4 numbers');
     pin = await S.makePin(body.pin);
   }
   tx(() => {

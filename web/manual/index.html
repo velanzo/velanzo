@@ -81,7 +81,7 @@
   <ol>
     <li><a href="#how">How Velanzo works</a></li>
     <li><a href="#start">Starting (owner, once)</a>
-      <ol><li><a href="#owner-account">Your owner account</a></li><li><a href="#places">Shops and their switches</a></li><li><a href="#people">People and PINs</a></li>
+      <ol><li><a href="#owner-account">Your owner account</a></li><li><a href="#places">Shops and their switches</a></li><li><a href="#people">Users: ID, password and passcode</a></li>
         <li><a href="#computers">Connect the computers</a></li><li><a href="#install">Install on every computer</a></li><li><a href="#business">Business and printing</a></li></ol></li>
     <li><a href="#daily">Opening Velanzo every day</a></li>
     <li><a href="#shop">Shop</a>
@@ -143,49 +143,36 @@
 <ol class="steps">
   <li>Choose <b>I'm the owner</b>.</li>
   <li>The very first time: click <b>New business? Create an owner account</b>, type your email and a password (at least 8 characters). If an email arrives, open its link, then come back and sign in.</li>
-  <li>Type your business name, your name and choose a <b>PIN</b> (4 to 6 numbers). You type this PIN to open Velanzo, like a phone.</li>
+  <li>Type your business name and your name, and choose a <b>passcode</b> on the number pad: exactly <b>4 numbers</b>, typed twice. You type it every time Velanzo opens, like a phone.</li>
 </ol>
 <figure><img src="img/owner-signin.webp" alt="Owner sign in"><figcaption>On your next phone or laptop, just sign in with the same email and password.</figcaption></figure>
-<div class="warn"><b>Keep your email and password safe.</b> They open Velanzo as the owner on any new phone or computer. Your PIN only works on devices that are already set up.</div>
+<div class="warn"><b>Keep your email and password safe.</b> They open Velanzo as the owner on any new phone or computer. Your passcode only works on computers that are already set up.</div>
 
 <h3 id="places">2.2 Shops and their switches</h3>
 <p><span class="menu">More → Settings → Shops &amp; warehouse</span>. Velanzo starts with <b>Main warehouse</b> and <b>Shop 1</b>. Rename them, add their address and phone (printed on their bills), and add more shops when you open them.</p>
 <figure><img src="img/settings-shops.webp" alt="Shops and warehouse"><figcaption>Each card shows what that place may do.</figcaption></figure>
 <figure><img src="img/settings-shop-switches.webp" alt="Switches of a shop"><figcaption>Click a place to change its name, code and switches. The short code starts its bill numbers.</figcaption></figure>
 
-<h3 id="people">2.3 People and PINs</h3>
-<p><span class="menu">Settings → People → Add a person</span>: their name, where they work and a PIN (tell them the PIN). Leave <b>Same as their place</b> ticked, or untick it to switch some things off for this person only.</p>
-<figure><img src="img/settings-people.webp" alt="People list"></figure>
-<figure><img src="img/settings-person.webp" alt="Editing a person"><figcaption>Sara may sell and receive, but not give discounts or take returns. Grey switches are off for the whole shop.</figcaption></figure>
-<div class="tip"><b>Someone leaves?</b> Open them and untick <b>Can log in</b>. Their history stays. <b>Forgot a PIN?</b> Open the person and type a new PIN.</div>
+<h3 id="people">2.3 Users: ID, password and passcode</h3>
+<p>Everyone who works in Velanzo is a <b>user</b>, in one list: <span class="menu">Settings → Users → Add a user</span>. Type their <b>name</b>, <b>where they work</b>, and make up a <b>user ID and password</b> (for example <i>ahmed.shop1</i>). Tell them both. Leave <b>Same as their place</b> ticked, or untick it to switch some things off for this person only.</p>
+<p>The list also shows, for every user, their computer, when it was last online and whether they have chosen their passcode. The passcode is the user's own secret: the owner never types it and never sees it.</p>
+<div class="tip"><b>Someone leaves?</b> Open them and untick <b>Can sign in</b>. Their history stays. <b>A new password?</b> Open them and type one. <b>A computer was lost or replaced?</b> Click <b>Remove computer</b> on their row: it stops working at once.</div>
 
-<h3 id="computers">2.4 Connect the shop and warehouse computers</h3>
+<h3 id="computers">2.4 A user signs in on their computer</h3>
 <ol class="steps">
-  <li>On your own Velanzo: <span class="menu">Settings → Devices → Add a computer</span>. Choose where the computer is and click <b>Make a code</b>.</li>
-  <li>On the shop or warehouse computer, open the Velanzo address, choose <b>Shop or warehouse computer</b> and type the code. It works once, for 24 hours.</li>
-  <li>Velanzo downloads that place's items and stock, then shows <b>Who's working?</b>.</li>
+  <li>On the shop or warehouse computer open the Velanzo address in Chrome or Edge, choose <b>I work at a shop or the warehouse</b> and type the user ID and password.</li>
+  <li>Velanzo downloads that place's items and stock.</li>
+  <li>The user chooses their own <b>4-digit passcode</b> on the number pad (typed twice) and is in.</li>
+  <li>From then on this computer belongs to that user. It stays signed in, but <b>asks the passcode every time Velanzo opens or refreshes</b>. On that screen, <b>Switch account</b> or <b>Sign out</b> lets another person sign in (it first makes sure nothing is waiting to be sent).</li>
 </ol>
-<div class="two">
-  <figure><img src="img/settings-device-code.webp" alt="Make a code"><figcaption>The code for one computer.</figcaption></figure>
-  <figure><img src="img/join-code.webp" alt="Type the code"><figcaption>Typing it on the shop computer.</figcaption></figure>
-</div>
-
-<h3 id="install">2.5 Install Velanzo on every computer</h3>
-<p>Installing gives Velanzo its own icon and window and tells the browser to keep its data safe. In Chrome or Edge open the menu <b>⋮</b> and choose <b>Install Velanzo</b> (or <b>Apps → Install</b>). On a phone: <b>Add to Home screen</b>. You can also use the <b>Install Velanzo</b> button on <span class="menu">your name → This device</span>.</p>
-<figure><img src="img/this-device.webp" alt="This device"><figcaption>This device: is everything saved online, install, and printing tips.</figcaption></figure>
-
-<h3 id="business">2.6 Business details and printing</h3>
-<p><span class="menu">Settings → Business</span>: name, phone, currency and when an item counts as "low stock".</p>
-<figure><img src="img/settings-business.webp" alt="Business settings"></figure>
-<p><span class="menu">Settings → Bills &amp; labels</span>: receipt width (80 or 58 mm), the message at the bottom of the bill, and your label size. Use <b>Print test bill</b> and <b>Print test label</b> to check.</p>
-<figure><img src="img/settings-printing.webp" alt="Bills and labels settings"></figure>
+<p>The owner signs in the same way with their email and password on each owner computer, and also chooses a passcode there.</p>
 
 <!-- ============================================================ -->
 <h2 id="daily">3. Opening Velanzo every day</h2>
-<p>Open Velanzo, tap your name and type your PIN. When someone else takes over the counter: <span class="menu">your name (top right) → Switch person</span>.</p>
+<p>Open Velanzo and type your 4-digit passcode on the number pad (it opens by itself at the 4th number). To step away: <span class="menu">your name (top right) → Lock</span>. When someone else takes over this computer: <b>Switch account</b> or <b>Sign out</b>, on the same menu or on the passcode screen.</p>
 <div class="two">
-  <figure><img src="img/who-is-working.webp" alt="Who's working"><figcaption>Only the people of this shop (and the owner) appear.</figcaption></figure>
-  <figure><img src="img/pin.webp" alt="Typing the PIN"><figcaption>Type the PIN and press ✓ (or Enter).</figcaption></figure>
+  <figure><img src="img/who-is-working.webp" alt="Passcode screen"><figcaption>The computer belongs to one user: only their name and the pad.</figcaption></figure>
+  <figure><img src="img/pin.webp" alt="Typing the passcode"><figcaption>Type the passcode; it opens at the 4th number.</figcaption></figure>
 </div>
 <p>The green pill at the top tells you if everything reached the cloud:</p>
 <table>
@@ -196,12 +183,12 @@
   <tr><td><span style="color:var(--red);font-weight:600">● 1 not saved</span></td><td>The cloud refused a change (for example a switch was off). Tap it to see why.</td></tr>
   <tr><td><span style="color:var(--warn);font-weight:600">● Practice mode</span></td><td>You are in Training. Nothing is real and nothing is sent. See below.</td></tr>
 </table>
-<h3 id="forgot">Forgot your PIN or password?</h3>
-<p>This computer stays connected; only the PIN is asked, each time Velanzo opens. If you forget it:</p>
+<h3 id="forgot">Forgot your passcode or password?</h3>
+<p>This computer stays signed in; only the passcode is asked, each time Velanzo opens. If you forget it:</p>
 <ul>
   <li><b>Shop or warehouse person:</b> on the PIN screen tap <b>Forgot your PIN?</b> → <b>Send the link</b>. A link goes to the <b>owner's email</b>. The owner opens it (on any phone or computer) and presses <b>Approve</b>. Your screen moves on by itself: choose a new PIN. The owner never sees it.</li>
   <li><b>Owner:</b> the same on the owner's computer or phone; the link goes to the owner's own email. Forgot the account <i>password</i>: <span class="menu">Owner sign in → Forgot your password?</span>.</li>
-  <li>The owner can always set a new PIN for someone in <span class="menu">Settings → People</span>.</li>
+  <li>Forgot the <i>password</i> of a user? The owner types a new one in <span class="menu">Settings → Users</span>.</li>
 </ul>
 <p>The owner's email must be a real, working address — it receives these links. Links work for 30 minutes.</p>
 <h3 id="training">Learning by doing: Training</h3>
@@ -297,9 +284,8 @@
 <p><span class="menu">Stock</span>: every item at every place. After counting the shelves, use <b>Correct</b> to fix a number (damaged, lost, found) with a reason — it is kept in the item's history.</p>
 <figure><img src="img/stock.webp" alt="Stock"></figure>
 
-<h3 id="devices">6.5 Devices</h3>
-<p><span class="menu">Settings → Devices</span> lists every computer and phone, when it was last online and who used it. <b>Remove</b> a lost or replaced device: it stops working at once.</p>
-<figure><img src="img/settings-devices.webp" alt="Devices"></figure>
+<h3 id="devices">6.5 Users and their computers</h3>
+<p><span class="menu">Settings → Users</span> lists every user with their user ID, place, computer, when it was last online and whether they chose a passcode. <b>Remove computer</b> on a lost or replaced computer: it stops working at once, and the user signs in again on the new one.</p>
 
 <h3 id="backup">6.6 Backups and Excel</h3>
 <p><span class="menu">Settings → Backup &amp; data</span>: <b>Download full backup</b> saves one file with everything. Keep copies on Google Drive or a USB stick — Velanzo reminds you on the home screen when your last backup is more than a week old. <b>Restore</b> replaces everything (on every device) with a backup file, also one from the old version of Velanzo. You can also export items, stock, bills, purchases and more to Excel, and import many items at once.</p>
@@ -336,7 +322,7 @@
 <h2 id="checklists">9. Daily checklists</h2>
 <div class="two">
 <div><h3>Shop</h3><ul class="checks">
-  <li>Open Velanzo, tap your name, type your PIN.</li>
+  <li>Open Velanzo and type your passcode.</li>
   <li>Check <span class="menu">Receive stock</span> for parcels.</li>
   <li>Sell; keep the bills' copies if you need them.</li>
   <li>Add today's expenses.</li>
@@ -357,10 +343,10 @@
 
 <!-- ============================================================ -->
 <h2 id="faq">10. Problems and questions</h2>
-<h4>Someone forgot their PIN</h4>
-<p>Owner: <span class="menu">Settings → People</span>, open the person, type a new PIN.</p>
+<h4>Someone forgot their passcode</h4>
+<p>On the passcode screen they tap <b>Forgot your passcode?</b>; the owner approves with the link sent to the owner's email. Or: they ask the owner to give them a new password (<span class="menu">Settings → Users</span>), <b>Sign out</b> and sign in again, and choose a new passcode.</p>
 <h4>A computer was lost, stolen or replaced</h4>
-<p><span class="menu">Settings → Devices → Remove</span>. On the new computer, connect it with a new code (2.4).</p>
+<p><span class="menu">Settings → Users → Remove computer</span> on that user's row. On the new computer, the user signs in with their user ID and password (2.4).</p>
 <h4>The top bar is red: "1 not saved"</h4>
 <p>Tap it. You will see what the cloud refused and why — usually something switched off for that place or person. Do it again on a device where it's allowed, then clear the list.</p>
 <h4>"Velanzo is already open in another tab"</h4>

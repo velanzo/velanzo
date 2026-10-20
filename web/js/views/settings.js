@@ -1,10 +1,10 @@
 'use strict';
 // Settings (owner): business details, printing, shops (with their switches), people (PIN + switches),
-// devices, backup & data. Plus "My PIN" for everyone.
+// devices, backup & data. Plus "My passcode" for everyone.
 
 const SETTINGS_TABS = [
-  ['business', 'Business'], ['printing', 'Bills & labels'], ['locations', 'Shops & warehouse'], ['users', 'People'],
-  ['devices', 'Devices'], ['backup', 'Backup & data'],
+  ['business', 'Business'], ['printing', 'Bills & labels'], ['locations', 'Shops & warehouse'], ['users', 'Users'],
+  ['backup', 'Backup & data'],
 ];
 
 async function saveSettings(values, btn) {
@@ -124,7 +124,7 @@ const SETTINGS_RENDER = {
         size: 'wide',
         body: `<div class="form-grid">
           <label class="field">Name<input class="input" name="name" value="${esc(l?.name || '')}" placeholder="Shop 2 — Mall Road"></label>
-          <label class="field">Short code<input class="input mono" name="code" value="${esc(l?.code || nextCode)}" maxlength="6"><span class="hint">Starts its bill numbers, e.g. ${esc(l?.code || nextCode)}-A0001</span></label>
+          <label class="field">Short code<input class="input mono" name="code" value="${esc(l?.code || nextCode)}" maxlength="4"><span class="hint">Starts its bill numbers, e.g. ${esc(l?.code || nextCode)}-A0001</span></label>
           <label class="field">Type<select class="input" name="type">${options([['shop', 'Shop'], ['warehouse', 'Warehouse']], l?.type || 'shop')}</select></label>
           <label class="field">Phone<input class="input" name="phone" value="${esc(l?.phone || '')}"></label>
           <label class="field full">Address (printed on this shop's bills)<input class="input" name="address" value="${esc(l?.address || '')}"></label>
@@ -155,8 +155,17 @@ const SETTINGS_RENDER = {
     $$('.place-card', el).forEach((c) => c.addEventListener('click', () => open(locs.find((l) => l.id === +c.dataset.id))));
   },
 
+  // One list: each person with their user ID, place, computer and passcode. (Computers used to be a separate list.)
   async users(el) {
+    const cloud = Cloud.enabled && App.device.mode === 'cloud';
     const users = await GET('/api/users');
+    let devs = [], logins = {};
+    if (cloud) {
+      devs = await GET('/api/devices');
+      try { logins = await Cloud.listUserLogins(); } catch { /* offline: the IDs are shown when the internet is back */ }
+    }
+    const computerOf = (u) => devs.filter((d) => d.active && d.last_user_id === u.id && d.location_id != null).sort((a, b) => (b.last_seen_at || '').localeCompare(a.last_seen_at || ''))[0];
+    const lastSeen = (d) => (d && d.last_seen_at ? fmtDT(d.last_seen_at) : 'never');
     const what = (u) => {
       if (u.role === 'admin') return 'Everything, everywhere';
       const loc = locById(u.location_id);
@@ -164,109 +173,79 @@ const SETTINGS_RENDER = {
       const list = (loc?.perms || []).filter((k) => u.perms[k]);
       return list.length ? list.map((k) => esc(permLabel(k))).join(', ') : 'Nothing switched on';
     };
-    el.innerHTML = `<div class="alert info">Everyone has their own name and PIN. On a shop's computer they tap their name and type the PIN.</div>
-      <div class="card flush"><div class="card-head pad"><h3>People</h3><div class="actions"><button class="btn primary" id="add">${icon('plus')} Add a person</button></div></div>
-      <div class="table-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Works at</th><th>Can do</th><th>PIN</th><th></th></tr></thead><tbody>
-      ${users.map((u) => `<tr class="click" data-id="${u.id}"><td><b>${esc(u.name)}</b>${u.id === App.user.id ? ' <span class="pill blue">you</span>' : ''}</td>
+    el.innerHTML = `<div class="alert info">You make a <b>user ID and password</b> for each person. They sign in with it once on their computer, then choose their own 4-digit passcode. The computer stays signed in and asks the passcode every time Velanzo opens.</div>
+      <div class="card flush"><div class="card-head pad"><h3>Users</h3><div class="actions"><button class="btn primary" id="add">${icon('plus')} Add a user</button></div></div>
+      <div class="table-wrap"><table class="tbl"><thead><tr><th>Name</th><th>User ID</th><th>Works at</th><th>Can do</th><th>Computer</th><th>Passcode</th><th></th></tr></thead><tbody>
+      ${users.map((u) => { const d = computerOf(u); return `<tr class="click" data-id="${u.id}"><td><b>${esc(u.name)}</b>${u.id === App.user.id ? ' <span class="pill blue">you</span>' : ''}${u.active ? '' : ' <span class="pill">Switched off</span>'}</td>
+        <td>${u.role === 'admin' ? '<span class="muted small">email sign-in</span>' : logins[u.id] ? `<span class="mono">${esc(logins[u.id])}</span>` : '<span class="pill red">No user ID yet</span>'}</td>
         <td>${u.role === 'admin' ? '<span class="pill blue">Owner</span>' : esc(locName(u.location_id))}</td><td class="small">${what(u)}</td>
-        <td>${u.has_pin ? '<span class="pill ok">Set</span>' : '<span class="pill red">Not set</span>'}</td>
-        <td>${u.active ? '' : '<span class="pill">Switched off</span>'}</td></tr>`).join('')}</tbody></table></div></div>`;
+        <td class="small">${u.role === 'admin' ? 'Owner computers' : d ? `${esc(d.label || 'Computer')}<br><span class="muted">online ${esc(lastSeen(d))}</span>` : '<span class="muted">not signed in yet</span>'}</td>
+        <td>${u.has_pin ? '<span class="pill ok">Chosen</span>' : '<span class="muted small">chosen at first sign-in</span>'}</td>
+        <td class="r">${d && u.role !== 'admin' ? `<button class="btn sm danger" data-rm="${d.id}" data-name="${esc(u.name)}">Remove computer</button>` : ''}</td></tr>`; }).join('')}</tbody></table></div></div>
+      ${cloud ? '' : '<div class="alert" style="margin-top:16px">Velanzo keeps its data on this computer only (no cloud), so people do not sign in with an ID here. Connect it to the cloud to use several computers.</div>'}`;
+
     const open = (u) => {
       const places = App.locations.filter((l) => l.active);
+      const isOwnerRow = u?.role === 'admin';
       const m = modal({
-        title: u ? u.name : 'Add a person',
+        title: u ? u.name : 'Add a user',
         size: 'wide',
         body: `<div class="form-grid">
           <label class="field">Name<input class="input" name="name" value="${esc(u?.name || '')}" placeholder="Ahmed"></label>
-          <label class="field">Is this person an owner?<select class="input" name="role">${options([['staff', 'No — works at one place'], ['admin', 'Yes — owner (sees everything)']], u?.role || 'staff')}</select></label>
-          <label class="field" id="locF">Works at<select class="input" name="location_id">${options(places, u?.location_id || places.find((l) => l.type === 'shop')?.id)}</select></label>
-          <label class="field">${u ? 'New PIN (leave empty to keep)' : 'PIN'}<input class="input pin-input" name="pin" inputmode="numeric" maxlength="6" placeholder="4 to 6 numbers" autocomplete="off"></label>
-          ${u ? `<label class="check full"><input type="checkbox" name="active" ${u.active ? 'checked' : ''}> Can log in (untick when someone leaves)</label>` : ''}</div>
-          <div id="permBox"><h3 style="margin:18px 0 4px">What this person can do</h3>
+          ${isOwnerRow ? '' : `<label class="field" id="locF">Works at<select class="input" name="location_id">${options(places, u?.location_id || places.find((l) => l.type === 'shop')?.id)}</select></label>`}
+          ${isOwnerRow || !cloud ? '' : `<label class="field">User ID<input class="input" name="login" value="${esc(u ? (logins[u.id] || '') : '')}" placeholder="ahmed.shop1" autocapitalize="none" autocomplete="off" spellcheck="false"><span class="hint">3 or more letters or numbers, no spaces. They type this to sign in.</span></label>
+          <label class="field">${u && logins[u.id] ? 'New password (leave empty to keep)' : 'Password'}<input class="input" name="password" type="text" autocomplete="off" placeholder="at least 6 characters"><span class="hint">Tell them the password. Only they will know the passcode.</span></label>`}
+          ${cloud || isOwnerRow ? '' : `<label class="field">${u ? 'New passcode (leave empty to keep)' : 'Passcode'}<input class="input pin-input" name="pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="4 numbers"></label>`}
+          ${u ? `<label class="check full"><input type="checkbox" name="active" ${u.active ? 'checked' : ''}> Can sign in (untick when someone leaves)</label>` : ''}</div>
+          ${isOwnerRow ? '<p class="muted small">The owner signs in with their email. They choose their own passcode on each owner computer.</p>' : `<div id="permBox"><h3 style="margin:18px 0 4px">What this person can do</h3>
           <label class="check"><input type="checkbox" id="same" ${!u || !u.perms ? 'checked' : ''}> Same as their place</label>
-          <div id="sw"></div></div>`,
+          <div id="sw"></div></div>`}`,
         footer: `<button class="btn" data-close>Cancel</button><button class="btn primary" id="us">Save</button>`,
       });
-      const role = m.$('[name=role]'), locSel = m.$('[name=location_id]'), same = m.$('#same');
+      const locSel = m.$('[name=location_id]'), same = m.$('#same');
       const paint = () => {
-        const isOwner = role.value === 'admin';
-        m.$('#locF').classList.toggle('hidden', isOwner);
-        m.$('#permBox').classList.toggle('hidden', isOwner);
+        if (!same) return;
         const allowed = locById(locSel.value)?.perms || [];
         const current = u?.perms ? Object.keys(u.perms).filter((k) => u.perms[k]) : allowed;
-        m.$('#sw').innerHTML = same.checked ? `<p class="muted small">${allowed.map(permLabel).join(', ') || 'Nothing is switched on for this place yet.'}</p>`
-          : permSwitchesHtml(current, { allowed });
+        m.$('#sw').innerHTML = same.checked ? `<p class="muted small">${allowed.map(permLabel).join(', ') || 'Nothing is switched on for this place yet.'}</p>` : permSwitchesHtml(current, { allowed });
       };
-      [role, locSel, same].forEach((x) => x.addEventListener('change', paint));
+      [locSel, same].filter(Boolean).forEach((x) => x.addEventListener('change', paint));
       paint();
       const b = m.$('#us');
       b.addEventListener('click', () => busy(b, async () => {
         const v = formValues(m.el);
-        delete v.same;
+        const login = (v.login || '').trim(), password = v.password || '';
+        delete v.same; delete v.login; delete v.password;
         if (!v.pin) delete v.pin;
-        if (v.role === 'admin') v.location_id = null;
-        v.perms = v.role === 'admin' || same.checked ? null : readSwitches(m.$('#sw'));
-        if (u) await PUT('/api/users/' + u.id, v); else await POST('/api/users', v);
-        toast('Saved');
+        if (isOwnerRow) { v.role = 'admin'; v.location_id = null; } else { v.role = 'staff'; v.perms = same.checked ? null : readSwitches(m.$('#sw')); }
+        if (!u && cloud && (!login || password.length < 6)) throw new Error('Type a user ID and a password of at least 6 characters.');
+        if (password && password.length < 6) throw new Error('The password must be at least 6 characters.');
+        const saved = u ? await PUT('/api/users/' + u.id, v) : await POST('/api/users', v);
+        if (cloud && !isOwnerRow && (login || password)) {
+          // the person must be in the cloud before they can get a login
+          await Cloud.syncNow();
+          try { await Cloud.setUserLogin(saved.id, login || logins[saved.id], password || null); }
+          catch (e) { toast(`${u ? 'Saved, but' : 'The user was saved, but'} the sign-in was not set: ${e.message}`, 'error', 9000); m.close(); return SETTINGS_RENDER.users(el); }
+        }
+        toast(!u && cloud ? `Saved. Give ${v.name} the user ID and password.` : 'Saved');
         m.close();
         SETTINGS_RENDER.users(el);
       }));
     };
     $('#add', el).addEventListener('click', () => open(null));
-    $('tbody', el).addEventListener('click', (e) => { const r = e.target.closest('[data-id]'); if (r) open(users.find((u) => u.id === +r.dataset.id)); });
-  },
-
-  async devices(el) {
-    if (!Cloud.enabled || App.device.mode !== 'cloud') {
-      el.innerHTML = `<div class="card" style="max-width:760px"><h3>Not connected to the cloud</h3>
-        <p>Velanzo is keeping its data on this device only. To use several computers (shops, warehouse, your phone) with the same data, Velanzo has to be connected to the cloud (Supabase) first.</p>
-        <p class="muted">This is done once, by whoever looks after the software — see “Connecting to the cloud” in the guide. Your data on this device then moves up to the cloud.</p></div>`;
-      return;
-    }
-    const devs = await GET('/api/devices');
-    const lastSeen = (d) => (d.last_seen_at ? fmtDT(d.last_seen_at) : 'never');
-    el.innerHTML = `<div class="alert info">Every computer and phone that uses Velanzo is listed here. Add a computer for a shop or the warehouse with a one-time code.</div>
-      <div class="card flush"><div class="card-head pad"><h3>Devices</h3><div class="actions"><button class="btn primary" id="add">${icon('plus')} Add a computer</button></div></div>
-      <div class="table-wrap"><table class="tbl"><thead><tr><th>Device</th><th>Place</th><th>Last online</th><th>Last person</th><th></th></tr></thead><tbody>
-      ${devs.map((d) => `<tr><td><b>${esc(d.label || 'Device ' + d.code)}</b> <span class="muted small">(${esc(d.code)})</span>${d.id === App.device.id ? ' <span class="pill blue">this one</span>' : ''}</td>
-        <td>${d.location_id ? esc(d.location_name || '') : '<span class="pill blue">Owner</span>'}</td><td>${esc(lastSeen(d))}</td><td>${esc(d.user_name || '')}</td>
-        <td class="r">${d.active ? (d.id === App.device.id ? '' : `<button class="btn sm danger" data-rm="${d.id}">Remove</button>`) : '<span class="pill">Removed</span>'}</td></tr>`).join('')}
-      </tbody></table></div></div>`;
-    $('#add', el).addEventListener('click', () => {
-      const places = App.locations.filter((l) => l.active);
-      const m = modal({
-        title: 'Add a computer',
-        body: `<label class="field">Where is this computer?<select class="input" id="place">${options(places)}</select></label>
-          <div id="codeBox" class="muted small" style="margin-top:12px">You will get a one-time code to type on that computer.</div>`,
-        footer: `<button class="btn" data-close>Close</button><button class="btn primary" id="mk">Make a code</button>`,
-      });
-      const b = m.$('#mk');
-      b.addEventListener('click', () => busy(b, async () => {
-        const place = Number(m.$('#place').value);
-        let code;
-        try { code = await Cloud.createSetupCode(place); }
-        catch (err) {
-          if (!/not reached the cloud/i.test(err.message)) throw err;
-          // The cloud is missing this place: send the places and people from this computer again, then retry once.
-          const out = await Cloud.syncNow();
-          await Engine.system('requeue', ['settings', 'locations', 'users', 'suppliers', 'products', 'movements', 'purchases', 'purchase_items', 'supplier_payments', 'dispatches', 'dispatch_items', 'sales', 'sale_items', 'expenses']);
-          const sent = await Cloud.syncNow();
-          if (sent && sent.refused) throw new Error('The cloud did not accept the places: ' + sent.refusedMessages[0]);
-          if (!sent && !out) throw new Error(err.message);
-          code = await Cloud.createSetupCode(place);
-          toast('Everything was sent to the cloud again.');
-        }
-        m.$('#codeBox').innerHTML = `<div class="code-show">${esc(code)}</div>
-          <ol class="steps"><li>On the shop or warehouse computer, open <b>${esc(location.href.split('#')[0])}</b> in Chrome or Edge.</li>
-          <li>Choose <b>Shop or warehouse computer</b>.</li><li>Type this code. It works once, for the next 24 hours.</li></ol>`;
-        b.textContent = 'Make another code';
-      }));
+    $('tbody', el).addEventListener('click', (e) => {
+      const rm = e.target.closest('[data-rm]');
+      if (rm) {
+        e.stopPropagation();
+        (async () => {
+          if (!(await confirmBox(`Remove ${rm.dataset.name}'s computer? It stops working at once and must sign in again. Do this if it was lost, stolen or replaced.`, { title: 'Remove computer', ok: 'Remove', danger: true }))) return;
+          await busy(rm, async () => { await Cloud.removeDevice(Number(rm.dataset.rm)); await Cloud.syncNow(); toast('Computer removed'); SETTINGS_RENDER.users(el); });
+        })();
+        return;
+      }
+      const r = e.target.closest('[data-id]');
+      if (r) open(users.find((u) => u.id === +r.dataset.id));
     });
-    $$('[data-rm]', el).forEach((b) => b.addEventListener('click', async () => {
-      const d = devs.find((x) => x.id === +b.dataset.rm);
-      if (!(await confirmBox(`Remove “${d.label}”? It will stop working at once. Do this if it was lost, stolen or replaced.`, { title: 'Remove device', ok: 'Remove', danger: true }))) return;
-      await busy(b, async () => { await Cloud.removeDevice(d.id); await Cloud.syncNow(); toast('Device removed'); SETTINGS_RENDER.devices(el); });
-    }));
   },
 
   async backup(el) {
@@ -338,20 +317,20 @@ const SETTINGS_RENDER = {
 };
 
 View('account', {
-  title: 'My PIN',
+  title: 'My passcode',
   async render({ el }) {
     el.innerHTML = `<div class="card" style="max-width:460px"><form id="pf" autocomplete="off">
-      <label class="field">Current PIN<input class="input pin-input" type="password" name="current" inputmode="numeric" maxlength="6" autofocus></label><br>
-      <label class="field">New PIN<input class="input pin-input" type="password" name="pin" inputmode="numeric" maxlength="6" placeholder="4 to 6 numbers"></label><br>
-      <label class="field">New PIN again<input class="input pin-input" type="password" name="pin2" inputmode="numeric" maxlength="6"></label><br>
-      <button class="btn primary">Change PIN</button></form></div>`;
+      <label class="field">Current passcode<input class="input pin-input" type="password" name="current" inputmode="numeric" maxlength="4" autofocus></label><br>
+      <label class="field">New passcode<input class="input pin-input" type="password" name="pin" inputmode="numeric" maxlength="4" placeholder="4 to 6 numbers"></label><br>
+      <label class="field">New passcode again<input class="input pin-input" type="password" name="pin2" inputmode="numeric" maxlength="4"></label><br>
+      <button class="btn primary">Change passcode</button></form></div>`;
     $('#pf', el).addEventListener('submit', (e) => {
       e.preventDefault();
       const v = formValues(e.target);
-      if (v.pin !== v.pin2) return toast('The two new PINs are different', 'error');
+      if (v.pin !== v.pin2) return toast('The two new passcodes are different', 'error');
       busy(e.target.querySelector('button'), async () => {
         await POST('/api/me/pin', v);
-        toast('PIN changed');
+        toast('Passcode changed');
         e.target.reset();
       });
     });

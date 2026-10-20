@@ -17,6 +17,7 @@ You need: this project folder, a computer with Chrome, and the owner's email.
    - Click **Run**. It should say *Success. No rows returned*.
    - Then do the same with the second file, `supabase/migrations/20261017000000_owner_lock_and_pin_reset.sql` (new query, paste, **Run**). It makes sure only **one approved email** can ever become the owner, and adds forgotten-PIN approval.
    - And the third file, `supabase/migrations/20261018000000_push_fix.sql` (new query, paste, **Run**). **This one is required**: without it Supabase refuses every save with "DELETE requires a WHERE clause".
+   - And the fourth file, `supabase/migrations/20261019000000_purchase_orders.sql`, and the fifth, `supabase/migrations/20261020000000_user_logins.sql` (same way: new query, paste, **Run**). The fifth makes the **user ID and password** sign-in for shop and warehouse people and replaces the one-time device codes.
    - Now say which email is the owner's. New query, with the owner's real email (the one that will receive the emails):
 
      ```sql
@@ -66,28 +67,28 @@ You need: this project folder, a computer with Chrome, and the owner's email.
 ## C. First use
 
 1. Open the address in Chrome or Edge, choose **I'm the owner → New business? Create an owner account**, type the owner's email and a password. Open the email we send, click the link, then sign in and follow the screens (user guide, chapter 2).
-2. Add your shops, people and their PINs, then connect each shop and warehouse computer with a code (**Settings → Devices → Add a computer**).
+2. Add your shops, then your users (**Settings → Users → Add a user**: name, place, and a user ID and password you make up). Each person signs in with them on their own computer and chooses their own 4-digit passcode.
 3. On each computer: Chrome menu ⋮ → **Install Velanzo**.
 
 ## C2. If someone forgets something
 
-- **A shop or warehouse person forgot their PIN.** On the PIN screen they tap **Forgot your PIN?**. A link goes to the owner's email. The owner opens it (on any phone or computer) and presses **Approve**. The person's screen continues by itself and they choose a new PIN. The owner never sees the PIN. (The owner can also set a new PIN directly in **Settings → People**.)
-- **The owner forgot their PIN.** Same: **Forgot your PIN?** on the owner's own computer or phone; the link goes to the owner's email.
+- **A shop or warehouse person forgot their passcode.** On the passcode screen they tap **Forgot your passcode?**. A link goes to the owner's email. The owner opens it (on any phone or computer) and presses **Approve**. The person's screen continues by itself and they choose a new PIN. The owner never sees the PIN. (The owner can also give the person a new password in **Settings → Users**; they sign out, sign in again and choose a new passcode.)
+- **The owner forgot their passcode.** Same: **Forgot your passcode?** on the owner's own computer or phone; the link goes to the owner's email.
 - **The owner forgot the password.** Owner sign-in → **Forgot your password?** → a link to the owner's email → choose a new password.
 - **The owner's email is lost or no longer works.** In Supabase: *Authentication → Users*, find the owner, and choose *Send password recovery* or set the account's email. If that is not possible either, whoever runs the Supabase project can approve a new owner email: run `delete from owners;` and `insert into owner_allow (email) values ('new@example.com');` in the SQL Editor, then that email creates the owner account (**the shop data stays**; the new owner then signs in on a computer and restores a recent backup if people are missing). Keep the Supabase login safe — it can do this.
 
 ## D. Bringing existing data
 
-- **A backup file from the old version:** owner device → **Settings → Backup & data → Restore**. Then give everyone a PIN (**Settings → People**).
+- **A backup file from the old version:** owner device → **Settings → Backup & data → Restore**. Then give each person a user ID and password again (**Settings → Users**).
 - **A computer that already used Velanzo without the cloud** (its `config.js` was empty): sign in there as the owner (**This device → Connect**). Its data is sent up. This only works into an empty cloud.
 
 ## E. Good to know
 
 - **Security.** The website and its code are public. Your data is not: devices can only reach it through the database functions, which check the device, the shop's switches and the person's switches.
-  - Only the approved owner email can become the owner; only the owner can create shops, warehouses, people and computer codes (a shop computer that tries is refused by the database).
+  - Only the approved owner email can become the owner; only the owner can create shops, warehouses and users (a shop computer that tries is refused by the database).
   - Anyone can open the website, but without a one-time code from the owner it shows nothing.
   - Keep the owner's email password and the Supabase login private.
-  - Remove lost devices in **Settings → Devices**.
+  - Remove a lost computer with **Remove computer** in **Settings → Users**.
 - **Updates.** Change the files and push to `main`; GitHub tests and publishes them. Devices update the next time they open with internet.
 - **A new database rule.** Run each new file in `supabase/migrations/` once, in order, in the SQL Editor.
 - **Your own address** (e.g. `pos.yourshop.com`) is possible in GitHub → Settings → Pages → *Custom domain*.

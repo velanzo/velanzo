@@ -266,6 +266,7 @@ route('GET', '/api/purchases', 'buy', ({ query, user }) => {
   if (!user.owner) { where.push('p.location_id = ?'); params.push(user.location_id); }
   if (isDate(query.from)) { where.push('p.date >= ?'); params.push(query.from); }
   if (isDate(query.to)) { where.push('p.date <= ?'); params.push(query.to); }
+  if (['ordered', 'done', 'void'].includes(query.status)) { where.push('p.status = ?'); params.push(query.status); }
   if (toInt(query.supplier_id)) { where.push('p.supplier_id = ?'); params.push(toInt(query.supplier_id)); }
   if (query.q) { where.push('(p.purchase_no LIKE ? OR p.invoice_no LIKE ? OR s.name LIKE ?)'); const l = `%${str(query.q, 60)}%`; params.push(l, l, l); }
   return all(
@@ -304,18 +305,63 @@ route('POST', '/api/purchases', 'buy', ({ body, user }) => tx(() => {
   if (!items.length) fail(400, 'Add at least one item');
   const total = round2(items.reduce((a, i) => a + i.qty * i.cost, 0));
   const qty = items.reduce((a, i) => a + i.qty, 0);
-  const paid = Math.max(0, toMoney(body.paid));
+  const order = !!body.order; // a purchase order: nothing is in stock until the goods arrive (see /receive)
+  const paid = order ? 0 : Math.max(0, toMoney(body.paid));
   const no = D.deviceNo('P-', 'purchase');
   const id = D.newId();
   run(
-    'INSERT INTO purchases(id, purchase_no, supplier_id, location_id, invoice_no, date, total, paid, total_qty, notes, user_id, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    id, no, supplierId, loc, str(body.invoice_no, 60), isDate(body.date) ? body.date : today(), total, paid, qty, str(body.notes, 500), user.id, now());
+    "INSERT INTO purchases(id, purchase_no, supplier_id, location_id, invoice_no, date, total, paid, total_qty, notes, status, expected_date, user_id, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    id, no, supplierId, loc, str(body.invoice_no, 60), isDate(body.date) ? body.date : today(), total, paid, qty, str(body.notes, 500),
+    order ? 'ordered' : 'done', order && isDate(body.expected_date) ? body.expected_date : null, user.id, now());
+  if (order) {
+    for (const i of items) run('INSERT INTO purchase_items(id, purchase_id, product_id, qty, cost, ordered_qty, planned_price) VALUES(?, ?, ?, ?, ?, ?, ?)', D.newId(), id, i.p.id, i.qty, i.cost, i.qty, i.sale);
+    return { id, purchase_no: no };
+  }
   for (const i of items) {
     run('INSERT INTO purchase_items(id, purchase_id, product_id, qty, cost) VALUES(?, ?, ?, ?, ?)', D.newId(), id, i.p.id, i.qty, i.cost);
     D.moveStock(i.p.id, loc, i.qty, 'purchase', 'purchase', id, user.id, null);
     run('UPDATE products SET cost_price = ?, sale_price = COALESCE(?, sale_price), active = 1, updated_at = ? WHERE id = ?', i.cost, i.sale, now(), i.p.id);
   }
   return { id, purchase_no: no };
+}));
+
+// The goods of a purchase order arrived: count them, and only now the pieces are added to stock.
+route('POST', '/api/purchases/:id/receive', 'buy', ({ params, body, user }) => tx(() => {
+  const id = toInt(params.id);
+  const p = get('SELECT * FROM purchases WHERE id = ?', id) || fail(404, 'Purchase order not found');
+  if (!user.owner && p.location_id !== user.location_id) fail(403, 'This order is for another place');
+  if (p.status === 'done') fail(400, 'This order was already received');
+  if (p.status !== 'ordered') fail(400, 'This order was cancelled');
+  const counted = new Map((Array.isArray(body.items) ? body.items : []).map((i) => [toInt(i.id), i]));
+  let total = 0, got = 0;
+  for (const l of all('SELECT * FROM purchase_items WHERE purchase_id = ?', id)) {
+    const c = counted.get(l.id);
+    const qty = c && c.qty !== undefined && c.qty !== '' ? toInt(c.qty) : l.qty;
+    if (qty < 0) fail(400, 'A quantity cannot be negative');
+    if (qty > 100000) fail(400, `Quantity ${qty} looks wrong`);
+    const cost = c && c.cost !== undefined && c.cost !== '' ? toMoney(c.cost) : l.cost;
+    if (cost < 0) fail(400, 'Cost cannot be negative');
+    run('UPDATE purchase_items SET qty = ?, cost = ?, ordered_qty = COALESCE(ordered_qty, ?) WHERE id = ?', qty, cost, l.qty, l.id);
+    if (qty > 0) {
+      D.moveStock(l.product_id, p.location_id, qty, 'purchase', 'purchase', id, user.id, qty !== (l.ordered_qty ?? l.qty) ? `Received ${qty} (ordered ${l.ordered_qty ?? l.qty})` : null);
+      run('UPDATE products SET cost_price = ?, sale_price = COALESCE(?, sale_price), active = 1, updated_at = ? WHERE id = ?', cost, l.planned_price, now(), l.product_id);
+    }
+    total += qty * cost; got += qty;
+  }
+  if (!got) fail(400, 'Nothing arrived, so there is nothing to add. If the order will not come, cancel it instead.');
+  const paid = Math.max(0, toMoney(body.paid));
+  run("UPDATE purchases SET status = 'done', total = ?, total_qty = ?, paid = ?, invoice_no = COALESCE(NULLIF(?, ''), invoice_no), date = ?, received_at = ?, notes = COALESCE(NULLIF(?, ''), notes) WHERE id = ?",
+    round2(total), got, paid, str(body.invoice_no, 60), isDate(body.date) ? body.date : today(), now(), str(body.notes, 500), id);
+  return { id, received_qty: got };
+}));
+
+// Cancel an order that has not arrived. Nothing was in stock, so nothing changes in stock.
+route('POST', '/api/purchases/:id/cancel-order', 'buy', ({ params, body, user }) => tx(() => {
+  const id = toInt(params.id);
+  const p = get('SELECT * FROM purchases WHERE id = ?', id) || fail(404, 'Purchase order not found');
+  if (!user.owner && p.location_id !== user.location_id) fail(403, 'This order is for another place');
+  if (p.status !== 'ordered') fail(400, 'Only an order that has not arrived can be cancelled this way');
+  run("UPDATE purchases SET status = 'void', notes = TRIM(IFNULL(notes, '') || ' [Order cancelled: ' || ? || ']') WHERE id = ?", str(body.reason, 200), id);
 }));
 
 route('POST', '/api/purchases/:id/void', 'owner', ({ params, body, user }) => tx(() => {

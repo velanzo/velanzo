@@ -12,7 +12,8 @@ import { createSyncer } from '../web/engine/syncer.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = (process.argv[2] || 'http://localhost:4000').replace(/\/$/, '');
-const DEMO = { owner_email: 'owner@demo.local', owner_password: 'demo-pass-123', owner_pin: '1234', pins: { Bilal: '1111', Ahmed: '2222', Sara: '3333' } };
+const DEMO = { owner_email: 'owner@demo.local', owner_password: 'demo-pass-123', owner_pin: '1234', pins: { Bilal: '1111', Ahmed: '2222', Sara: '3333' },
+  logins: { Bilal: { login: 'bilal', password: 'bilal-pass-1' }, Ahmed: { login: 'ahmed', password: 'ahmed-pass-1' }, Sara: { login: 'sara', password: 'sara-pass-1' } } };
 
 let seed = 7;
 const rand = () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -94,14 +95,15 @@ for (const c of catalog) {
   for (const p of await owner.call('POST', '/api/products', { name: c.name, category: c.category, cost_price: c.cost, sale_price: c.price, variants })) products.push({ ...p, sup: c.sup, qtyRange: c.qty });
 }
 await owner.sync();
+for (const [who, l] of Object.entries(DEMO.logins)) if (people[who]) await ownerRpc('set_user_login', { p_user: people[who].id, p_login: l.login, p_password: l.password });
 
-// ---------- the warehouse PC and the Shop 1 counter join with codes ----------
+// ---------- the warehouse PC and the Shop 1 counter sign in with their user ID and password ----------
 async function join(name, loc, label, person) {
   const s = await post('/cloud/auth/v1/signup', {});
-  const code = await ownerRpc('create_setup_code', { p_location: loc });
   const d = device(name, s.access_token);
-  const info = await d.rpc('claim_device', { p_code: code, p_label: label, p_now: null });
+  const info = await d.rpc('login_with_id', { p_login: DEMO.logins[person].login, p_password: DEMO.logins[person].password, p_label: label, p_now: null });
   await d.system('setupCloud', { ...info, label });
+  await d.system('bindUser', info.user_id);
   await d.sync();
   await d.call('POST', '/api/login', { user_id: people[person].id, pin: DEMO.pins[person] });
   return d;

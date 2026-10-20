@@ -70,19 +70,23 @@ ok(r.sent > 0 && r.refused === 0, 'owner sent the new business: ' + JSON.stringi
 ok(await cloudStock(WH, km.id) === 50, 'cloud worked out warehouse stock');
 ok((await db.query('select count(*)::int n from users')).rows[0].n === 3, 'people reached the cloud');
 
-// ---------- Shop and warehouse computers join with codes ----------
-async function join(name, uid, loc, label) {
+// ---------- Shop and warehouse people sign in with the user ID and password the owner made ----------
+await owner.rpc('set_user_login', { p_user: ahmed.id, p_login: 'Ahmed', p_password: 'ahmed-pw-1' });
+await owner.rpc('set_user_login', { p_user: bilal.id, p_login: 'bilal', p_password: 'bilal-pw-1' });
+async function join(name, uid, label, login, password) {
   const d = device(name, uid);
-  const code = await owner.rpc('create_setup_code', { p_location: loc });
-  const info = await d.rpc('claim_device', { p_code: code, p_label: label, p_now: '2026-10-16 09:10:00' });
+  const info = await d.rpc('login_with_id', { p_login: login, p_password: password, p_label: label, p_now: '2026-10-16 09:10:00' });
+  assert.ok(info.ok, 'sign in failed: ' + info.error);
   await d.system('setupCloud', { ...info, label });
+  await d.system('bindUser', info.user_id);
   await d.sync();
   return d;
 }
-const shop = await join('shop', 'bbbbbbbb-0000-0000-0000-000000000002', S1, 'Shop 1 counter');
-const wh = await join('warehouse', 'cccccccc-0000-0000-0000-000000000003', WH, 'Warehouse PC');
+const shop = await join('shop', 'bbbbbbbb-0000-0000-0000-000000000002', 'Shop 1 counter', 'AHMED', 'ahmed-pw-1');
+const wh = await join('warehouse', 'cccccccc-0000-0000-0000-000000000003', 'Warehouse PC', 'bilal', 'bilal-pw-1');
 const lu = await shop.call('GET', '/api/login-users');
-ok(lu.users.map((u) => u.name).sort().join() === 'Ahmed,Owner', 'shop sees only its people + owner: ' + lu.users.map((u) => u.name));
+ok(lu.users.map((u) => u.name).join() === 'Ahmed' && lu.bound === true, 'the shop computer belongs to Ahmed alone (bound), the user ID is not case-sensitive');
+ok((await shop.system('info')).device.location_id === S1 && (await wh.system('info')).device.location_id === WH, 'each computer is at its person\'s place');
 await shop.call('POST', '/api/login', { user_id: ahmed.id, pin: '2222' });
 await wh.call('POST', '/api/login', { user_id: bilal.id, pin: '1111' });
 ok((await shop.sql('SELECT cost_price FROM products WHERE id = ?', [km.id]))[0].cost_price == null, 'shop did not receive cost prices');
@@ -155,7 +159,7 @@ const pinBefore = (await db.query('select pin_hash from users where id = $1', [m
 const evil = (await shop.rpc('push', { p_device: shopDev, p_user: me.user.id,
   p_groups: [{ grp: 'evil-owner-pin', rows: [{ t: 'users', r: { id: me.user.id, name: 'Owner', role: 'admin', pin_salt: 'x', pin_hash: 'y', active: 1, created_at: now } }] }] })).results[0];
 ok(!evil.ok && (await db.query('select pin_hash from users where id = $1', [me.user.id])).rows[0].pin_hash === pinBefore, 'a shop computer cannot change the owner\'s PIN, even pretending to be the owner');
-for (const [fn, args] of [['create_setup_code', { p_location: S1 }], ['remove_device', { p_id: shopDev }], ['restore_begin', {}], ['register_owner_device', { p_label: 'x' }]]) {
+for (const [fn, args] of [['set_user_login', { p_user: ahmed.id, p_login: 'hacker', p_password: 'hacker-pw' }], ['list_user_logins', {}], ['remove_device', { p_id: shopDev }], ['restore_begin', {}], ['register_owner_device', { p_label: 'x' }]]) {
   await assert.rejects(shop.rpc(fn, args), /Only the owner/, fn + ' is owner only');
   checks++;
 }
@@ -245,13 +249,14 @@ ok(true, 'the owner can ask too (on an owner computer)');
 await assert.rejects((async () => { for (let i = 0; i < 6; i++) await shop.rpc('request_pin_reset', { p_device: shopDev, p_user: ahmed.id }); })(), /Too many requests/); checks++;
 ok(true, 'too many requests are stopped');
 
-// ---------- The cloud is missing a place: the owner computer can send places and people again ----------
-await db.query('delete from locations where id = $1', [S1]);
-await assert.rejects(owner.rpc('create_setup_code', { p_location: S1 }), /not reached the cloud/); checks++;
+// ---------- The cloud is missing a person: the owner computer can send places and people again ----------
+await db.query('delete from users where id = $1', [bilal.id]);
+await assert.rejects(owner.rpc('set_user_login', { p_user: bilal.id, p_login: 'bilal2', p_password: 'bilal-pw-2' }), /not saved in the cloud yet/); checks++;
 await owner.system('requeue', ['settings', 'locations', 'users']);
 r = await owner.sync();
-ok(r.refused === 0 && (await db.query('select 1 from locations where id = $1', [S1])).rows.length === 1, 'the place is back in the cloud after sending again');
-ok(typeof (await owner.rpc('create_setup_code', { p_location: S1 })) === 'string', 'a code can be made for it again');
+ok(r.refused === 0 && (await db.query('select 1 from users where id = $1', [bilal.id])).rows.length === 1, 'the person is back in the cloud after sending again');
+await owner.rpc('set_user_login', { p_user: bilal.id, p_login: 'bilal', p_password: 'bilal-pw-1' });
+ok(true, 'and a login can be made for them again');
 await assert.rejects(shop.system('requeue', ['locations']), /Only the owner/); checks++;
 
 // ---------- A problem on the cloud's side is not a refusal: the change is kept and sent again ----------
@@ -274,6 +279,121 @@ for (const f of fsm.readdirSync(mdir).filter((x) => x.endsWith('.sql') && x >= '
 }
 // (the first file was run before this rule existed; part 3 replaces its one function)
 ok(unsafeDelete.test(sqlCode('20261016000000_velanzo.sql')) && !unsafeDelete.test(sqlCode('20261018000000_push_fix.sql')), 'the one old unsafe DELETE is replaced by part 3');
+
+// ---------- Purchase orders: ordered today, counted into stock when the goods arrive ----------
+const henley = (await wh.call('POST', '/api/products', { name: 'Henley Shirt', category: 'Shirt', cost_price: 800, sale_price: 1800, variants: [{ color: 'Black' }] }))[0];
+const order = await wh.call('POST', '/api/purchases', { order: true, expected_date: '2026-10-30', supplier_id: sup.id, location_id: WH, items: [{ product_id: henley.id, qty: 10, cost: 800, sale_price: 1850 }] });
+ok(await stockOf(wh, WH, henley.id) === 0, 'an order adds nothing to stock');
+const ordRow = (await wh.sql('SELECT status, expected_date, total, total_qty FROM purchases WHERE id = ?', [order.id]))[0];
+ok(ordRow.status === 'ordered' && ordRow.expected_date === '2026-10-30' && ordRow.total === 8000 && ordRow.total_qty === 10, 'the order is saved: 10 pieces, 8000, due 30 Oct');
+r = await wh.sync();
+ok(r.refused === 0, 'the order reaches the cloud');
+ok((await db.query("select status from purchases where id = $1", [order.id])).rows[0].status === 'ordered' && await cloudStock(WH, henley.id) === 0, 'cloud: ordered, no stock');
+const dueBefore = Number((await wh.call('GET', '/api/suppliers/' + sup.id)).supplier.purchased);
+// ten days later: 9 arrive
+const lines = (await wh.call('GET', '/api/purchases/' + order.id)).items;
+await wh.call('POST', `/api/purchases/${order.id}/receive`, { invoice_no: 'SUP-77', paid: 3000, items: [{ id: lines[0].id, qty: 9, cost: 820 }] });
+ok(await stockOf(wh, WH, henley.id) === 9, 'received 9 of the 10 ordered: stock is 9');
+const got = await wh.call('GET', '/api/purchases/' + order.id);
+ok(got.status === 'done' && got.total_qty === 9 && got.total === 7380 && got.paid === 3000 && got.invoice_no === 'SUP-77' && got.items[0].ordered_qty === 10 && got.received_at, 'order is now a received purchase: 9 pieces, 7380, ordered 10 kept');
+ok((await wh.sql('SELECT cost_price, sale_price FROM products WHERE id = ?', [henley.id]))[0].sale_price === 1850, 'the planned sale price is applied on arrival');
+await assert.rejects(wh.call('POST', `/api/purchases/${order.id}/receive`, { items: [] }), /already received/); checks++;
+r = await wh.sync();
+ok(r.refused === 0, 'receiving reaches the cloud without a refusal: ' + JSON.stringify(r));
+ok(await cloudStock(WH, henley.id) === 9, 'cloud stock is 9 after receiving');
+const cp = (await db.query('select status, total_qty, total, paid from purchases where id = $1', [order.id])).rows[0];
+ok(cp.status === 'done' && cp.total_qty === 9 && Number(cp.total) === 7380, 'cloud purchase updated');
+ok((await db.query('select qty, cost, ordered_qty from purchase_items where purchase_id = $1', [order.id])).rows[0].qty === 9, 'cloud purchase line updated');
+await owner.sync();
+ok(await stockOf(owner, WH, henley.id) === 9, 'the owner computer sees the stock too');
+ok(Number((await wh.call('GET', '/api/suppliers/' + sup.id)).supplier.purchased) - dueBefore === 7380, 'it counts as bought (7380) only once received, not when ordered');
+// nothing arrived / cancel
+const o2 = await wh.call('POST', '/api/purchases', { order: true, location_id: WH, items: [{ product_id: henley.id, qty: 5, cost: 800 }] });
+const l2 = (await wh.call('GET', '/api/purchases/' + o2.id)).items;
+await assert.rejects(wh.call('POST', `/api/purchases/${o2.id}/receive`, { items: [{ id: l2[0].id, qty: 0 }] }), /Nothing arrived/); checks++;
+await wh.call('POST', `/api/purchases/${o2.id}/cancel-order`, { reason: 'supplier ran out' });
+ok(await stockOf(wh, WH, henley.id) === 9 && (await wh.call('GET', '/api/purchases/' + o2.id)).status === 'void', 'a cancelled order changes no stock');
+await assert.rejects(wh.call('POST', `/api/purchases/${o2.id}/cancel-order`, {}), /not arrived/); checks++;
+r = await wh.sync();
+ok(r.refused === 0 && (await db.query('select status from purchases where id = $1', [o2.id])).rows[0].status === 'void', 'the cancellation reaches the cloud');
+// the cloud keeps its rules: a shop cannot order or receive, and a normal purchase line never changes
+await assert.rejects(shop.call('POST', '/api/purchases', { order: true, items: [{ product_id: henley.id, qty: 1, cost: 1 }] }), /./); checks++;
+const normal = (await db.query("select i.id, i.purchase_id, i.qty from purchase_items i join purchases p on p.id = i.purchase_id where i.ordered_qty is null limit 1")).rows[0];
+const evilLine = (await wh.rpc('push', { p_device: whDev, p_user: bilal.id, p_groups: [{ grp: 'evil-line-' + Math.random(), rows: [{ t: 'purchase_items', r: { id: normal.id, purchase_id: normal.purchase_id, product_id: km.id, qty: 999, cost: 1 } }] }] })).results[0];
+ok((await db.query('select qty from purchase_items where id = $1', [normal.id])).rows[0].qty === normal.qty, 'a line of a normal purchase cannot be changed afterwards');
+const o3 = await wh.call('POST', '/api/purchases', { order: true, location_id: WH, items: [{ product_id: henley.id, qty: 4, cost: 800 }] });
+await wh.sync();
+const evilStatus = (await shop.rpc('push', { p_device: shopDev, p_user: ahmed.id, p_groups: [{ grp: 'evil-po-' + Math.random(), rows: [{ t: 'purchases', r: { ...(await db.query('select * from purchases where id = $1', [o3.id])).rows[0], status: 'done' } }] }] })).results[0];
+ok(!evilStatus.ok, 'a shop cannot receive the warehouse order: ' + evilStatus.error);
+
+// ---------- User ID and password: the rules ----------
+await assert.rejects(owner.rpc('set_user_login', { p_user: ahmed.id, p_login: 'bilal', p_password: 'whatever1' }), /already taken/); checks++;
+await assert.rejects(owner.rpc('set_user_login', { p_user: ahmed.id, p_login: 'a b', p_password: 'whatever1' }), /3 to 30/); checks++;
+await assert.rejects(owner.rpc('set_user_login', { p_user: ahmed.id, p_login: 'ahmed', p_password: '123' }), /at least 6/); checks++;
+await owner.rpc('set_user_login', { p_user: ahmed.id, p_login: 'ahmed.shop1', p_password: null });
+const ids = await owner.rpc('list_user_logins', {});
+ok(ids[ahmed.id] === 'ahmed.shop1' && ids[bilal.id] === 'bilal' && !JSON.stringify(ids).includes('pw'), 'the owner sees the user IDs (never the passwords); the ID can change without a new password');
+ok(!(await db.query('select pw_hash from user_logins where user_id = $1', [ahmed.id])).rows[0].pw_hash.includes('ahmed-pw-1'), 'passwords are stored hashed');
+const guest = device('guest', 'dddddddd-0000-0000-0000-0000000000a1');
+let bad = await guest.rpc('login_with_id', { p_login: 'ahmed.shop1', p_password: 'wrong-password', p_label: 'x' });
+ok(bad.ok === false && /Wrong user ID or password/.test(bad.error), 'a wrong password is refused');
+bad = await guest.rpc('login_with_id', { p_login: 'nobody', p_password: 'wrong-password', p_label: 'x' });
+ok(bad.ok === false && /Wrong user ID or password/.test(bad.error), 'an unknown user ID gives the same answer');
+for (let i = 0; i < 8; i++) await guest.rpc('login_with_id', { p_login: 'ahmed.shop1', p_password: 'wrong-' + i, p_label: 'x' });
+bad = await guest.rpc('login_with_id', { p_login: 'ahmed.shop1', p_password: 'ahmed-pw-1', p_label: 'x' });
+ok(bad.ok === false && /Too many wrong tries/.test(bad.error), 'after 8 wrong tries even the right password waits (counted per user ID, so a new anonymous account does not help)');
+await db.query('delete from login_attempts');
+const guestIn = await guest.rpc('login_with_id', { p_login: 'AHMED.SHOP1', p_password: 'ahmed-pw-1', p_label: 'Second computer' });
+ok(guestIn.ok && guestIn.location_id === S1 && guestIn.user_id === ahmed.id, 'the right password signs in (any capitals in the ID)');
+const guestIn2 = await guest.rpc('login_with_id', { p_login: 'ahmed.shop1', p_password: 'ahmed-pw-1', p_label: 'Second computer' });
+ok((await db.query('select count(*)::int n from devices where auth_uid = $1 and active = 1', ['dddddddd-0000-0000-0000-0000000000a1'])).rows[0].n === 1 && guestIn2.id !== guestIn.id, 'one computer, one sign-in: an earlier sign-in of the same computer is closed');
+await owner.rpc('set_user_login', { p_user: ahmed.id, p_login: 'ahmed.shop1', p_password: 'new-password-2' });
+bad = await guest.rpc('login_with_id', { p_login: 'ahmed.shop1', p_password: 'ahmed-pw-1', p_label: 'x' });
+ok(bad.ok === false, 'after the owner sets a new password the old one stops working');
+await db.query("update users set active = 0 where id = $1", [bilal.id]);
+bad = await guest.rpc('login_with_id', { p_login: 'bilal', p_password: 'bilal-pw-1', p_label: 'x' });
+ok(bad.ok === false && /switched off/.test(bad.error), 'a switched-off user cannot sign in');
+await db.query("update users set active = 1 where id = $1", [bilal.id]);
+await guest.rpc('release_device', { p_device: guestIn2.id });
+ok((await db.query('select active from devices where id = $1', [guestIn2.id])).rows[0].active === 0, 'signing out closes the computer in the cloud');
+await shop.rpc('release_device', { p_device: guestIn.id });
+await shop.rpc('release_device', { p_device: guestIn2.id });
+ok((await db.query('select active from devices where id = $1', [shopDev])).rows[0].active === 1, 'a computer cannot sign out another one');
+// a brand-new user: signs in, chooses their own passcode, and it reaches the cloud
+const newbie = await owner.call('POST', '/api/users', { name: 'Newbie', role: 'staff', location_id: S1 });
+await owner.sync();
+await owner.rpc('set_user_login', { p_user: newbie.id, p_login: 'newbie', p_password: 'newbie-pw-1' });
+const nb = device('newbie', 'dddddddd-0000-0000-0000-0000000000a2');
+const nbIn = await nb.rpc('login_with_id', { p_login: 'newbie', p_password: 'newbie-pw-1', p_label: 'Newbie computer' });
+await nb.system('setupCloud', { ...nbIn, label: 'Newbie computer' });
+await nb.system('bindUser', nbIn.user_id);
+await nb.sync();
+const nbUsers = await nb.call('GET', '/api/login-users');
+ok(nbUsers.bound && nbUsers.users.length === 1 && nbUsers.users[0].name === 'Newbie' && nbUsers.users[0].has_pin === false, 'a newly signed-in computer shows the one user, who has no passcode yet');
+await assert.rejects(nb.system('setFirstPin', { user_id: ahmed.id, pin: '1111' }), /Not allowed/); checks++;
+await assert.rejects(nb.system('setFirstPin', { user_id: newbie.id, pin: '12' }), /4 numbers/); checks++;
+await assert.rejects(nb.system('setFirstPin', { user_id: newbie.id, pin: '123456' }), /4 numbers/); checks++;
+await nb.system('setFirstPin', { user_id: newbie.id, pin: '4321' });
+await nb.call('POST', '/api/login', { user_id: newbie.id, pin: '4321' });
+r = await nb.sync();
+ok(r.refused === 0 && (await db.query('select pin_hash from users where id = $1', [newbie.id])).rows[0].pin_hash, 'the passcode they chose reached the cloud (a person may change their own passcode)');
+await assert.rejects(nb.system('setFirstPin', { user_id: newbie.id, pin: '9999' }), /Not allowed/); checks++;
+await nb.system('lock');
+await nb.system('forgetDevice', {});
+ok((await nb.sql('SELECT COUNT(*) AS n FROM users'))[0].n === 0 && (await nb.system('info')).device.id === 0, 'signing out clears the computer (nothing was waiting)');
+await nb.stop();
+await guest.stop();
+
+// ---------- The computer asks for the passcode every time; while it waits nothing is sent ----------
+await shop.call('POST', '/api/sales', { items: [{ product_id: km.id, qty: 1 }] });
+await shop.system('lock');
+const heldBefore = (await shop.system('outbox', 5000)).length;
+await shop.sync();
+ok(heldBefore > 0 && (await shop.system('outbox', 5000)).length === heldBefore, 'while the passcode screen is up the changes wait on the computer (the cloud would not know who made them)');
+await assert.rejects(shop.system('forgetDevice', {}), /have not reached the cloud/); checks++;
+await shop.call('POST', '/api/login', { user_id: ahmed.id, pin: '2222' });
+r = await shop.sync();
+ok(r.refused === 0 && (await shop.system('outbox', 5000)).length === 0, 'after the passcode they are sent');
 
 // ---------- A removed device stops working ----------
 await owner.rpc('remove_device', { p_id: (await wh.system('info')).device.id });

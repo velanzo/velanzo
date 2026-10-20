@@ -24,7 +24,7 @@ const H = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { const v = fn(); if (v) return v; await sleep(100); } throw new Error('timed out'); };
   const click = (sel) => { const e = typeof sel === 'string' ? document.querySelector(sel) : sel; if (!e) throw new Error('missing ' + sel); e.click(); };
   const set = (s, v) => { const e = document.querySelector(s); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); };
-  const typePin = (d) => { for (const k of d) click('.pin-pad [data-k="' + k + '"]'); click('.pin-pad [data-k="ok"]'); };`;
+  const typePin = (d) => { for (const k of d) click('.pin-pad [data-k="' + k + '"]'); };`;
 const open = async (name) => {
   const dir = path.join(os.tmpdir(), 'velanzo-test-recovery-' + name);
   fs.rmSync(dir, { recursive: true, force: true });
@@ -41,9 +41,7 @@ async function join(name, { owner = false, who }) {
     await p.run(`click('#cOwner'); await sleep(200); set('#f [name=email]', ${JSON.stringify(demo.owner_email)}); set('#f [name=password]', ${JSON.stringify(demo.owner_password)}); click('#f button');
       await until(() => document.querySelector('.people'), 60000);`);
   } else {
-    const t = (await login(demo.owner_email, demo.owner_password)).access_token;
-    const code = await (await fetch(`${BASE}/cloud/rest/v1/rpc/create_setup_code`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ p_location: demo.shop_location }) })).json();
-    await p.run(`click('#cShop'); await sleep(200); set('#f [name=code]', ${JSON.stringify(code)}); click('#f button'); await until(() => document.querySelector('.people'), 30000);`);
+    await p.run(`click('#cShop'); await sleep(200); set('#f [name=login]', ${JSON.stringify(demo.logins[who].login)}); set('#f [name=password]', ${JSON.stringify(demo.logins[who].password)}); click('#f button'); await until(() => document.querySelector('.people'), 30000);`);
   }
   await p.run(`click([...document.querySelectorAll('.person')].find((x) => x.textContent.includes(${JSON.stringify(who)}))); await sleep(300);`);
   return b;
@@ -72,11 +70,11 @@ try {
   await approveFrom(mail.link, 'Ahmed');
   await s.run(`await until(() => [...document.querySelectorAll('h1')].some((h) => h.textContent === 'Approved'), 20000);`);
   ok(true, 'the shop computer noticed the approval by itself');
-  await s.run(`set('#f [name=pin]', '5555'); set('#f [name=pin2]', '5555'); click('#f button'); await until(() => document.querySelector('#shell'), 20000); await sleep(1500);`);
+  await s.run(`for (const k of '55555555') click('#pinSetup .pin-pad [data-k="' + k + '"]'); await sleep(300); click('#f button.primary'); await until(() => document.querySelector('#shell'), 20000); await sleep(1500);`);
   ok(await s.run(`return App.user.name === 'Ahmed';`), 'Ahmed chose a new PIN and is in');
   // the old PIN no longer works, the new one does
   await s.run(`click('#userMenu summary'); click('#switchBtn'); await until(() => document.querySelector('.person')); click([...document.querySelectorAll('.person')].find((x) => x.textContent.includes('Ahmed'))); await sleep(300); typePin(${JSON.stringify(demo.pins.Ahmed)}); await sleep(800);`);
-  ok(await s.run(`return /Wrong PIN/.test(document.querySelector('#pinErr').textContent);`), 'the old PIN is refused');
+  ok(await s.run(`return /Wrong passcode/.test(document.querySelector('#pinErr').textContent);`), 'the old PIN is refused');
   await s.run(`typePin('5555'); await until(() => document.querySelector('#shell'));`);
   ok(true, 'the new PIN works');
   await s.run('await Cloud.syncNow();');
@@ -92,7 +90,12 @@ try {
   await o.run(`click('#forgotPin'); await until(() => document.querySelector('#send')); click('#send'); await until(() => document.querySelector('.progress'));`);
   const m2 = await lastMail('magiclink');
   await approveFrom(m2.link, 'Owner');
-  await o.run(`await until(() => [...document.querySelectorAll('h1')].some((h) => h.textContent === 'Approved'), 20000); set('#f [name=pin]', '7777'); set('#f [name=pin2]', '7777'); click('#f button'); await until(() => document.querySelector('#shell'), 20000);`);
+  try {
+    await o.run(`await until(() => [...document.querySelectorAll('h1')].some((h) => h.textContent === 'Approved'), 20000); for (const k of '77777777') click('#pinSetup .pin-pad [data-k="' + k + '"]'); await sleep(300); click('#f button.primary'); await until(() => document.querySelector('#shell'), 20000);`);
+  } catch (e) {
+    console.log('  (the owner computer shows: ' + String(await o.run('return document.body.innerText;')).replace(/\n/g, ' | ').slice(0, 400) + ')');
+    throw e;
+  }
   ok(await o.run(`return App.user.owner === true;`), 'the owner chose a new PIN with the emailed link');
   await ownerB.close(); ownerB = null;
 

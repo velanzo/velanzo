@@ -58,7 +58,7 @@ View('device', {
     const cb = $('#connectBtn', el);
     if (cb) cb.addEventListener('click', () => Setup.showOwner('signup', { fromLocal: true }));
     const re = $('#reBtn', el);
-    if (re) re.addEventListener('click', () => (d.location_id == null ? Setup.showOwner('signin') : Setup.showJoin()));
+    if (re) re.addEventListener('click', () => (d.location_id == null ? Setup.showOwner('signin') : Setup.showSignIn()));
     const ce = $('#clrErr', el);
     if (ce) ce.addEventListener('click', () => busy(ce, async () => { await POST('/api/sync/errors/clear'); router(); }));
     const ib = $('#instBtn', el);

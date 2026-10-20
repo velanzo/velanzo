@@ -27,6 +27,7 @@ const cloudCounts = async () => {
 
 const H = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const until = async (fn, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { const v = fn(); if (v) return v; await sleep(100); } throw new Error('timed out'); };
+  const set = (s, v) => { const e = document.querySelector(s); if (!e) throw new Error('missing ' + s); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); };
   const click = (sel) => { const e = typeof sel === 'string' ? document.querySelector(sel) : sel; if (!e) throw new Error('missing ' + sel); e.click(); };`;
 
 const profile = (n) => path.join(os.tmpdir(), 'velanzo-test-training-' + n);
@@ -74,8 +75,13 @@ function stepJs(tries) {
 async function drive(p, id, { shotAt = [], label = id } = {}) {
   const seen = [];
   const bad = [];
-  await p.run(`Tour.start(${JSON.stringify(id)}); await sleep(600);
-    const go = document.querySelector('#prGo'); if (go) { go.click(); await until(() => !document.querySelector('.modal-wrap')); }`);
+  try {
+    await p.run(`Tour.start(${JSON.stringify(id)}); await sleep(600);
+      const go = document.querySelector('#prGo'); if (go) { go.click(); await until(() => !document.querySelector('.modal-wrap')); }`);
+  } catch (e) {
+    console.log('  (start error: ' + JSON.stringify(await p.run("try { await Engine.system('practiceStart'); return 'no error now'; } catch (e) { return e.message; }")) + ') (screen: ' + String(await p.run('return document.body.innerText;')).replace(/\n/g, ' | ').slice(-500) + ')');
+    throw e;
+  }
   let tries = 0, last = '';
   for (let i = 0; i < 90; i++) {
     await sleep(380);
@@ -105,16 +111,14 @@ async function join(name, { owner = false, who, pin, width = 1280, height = 800 
   await p.run("await until(() => document.querySelector('#cShop'), 30000);");
   if (owner) {
     await p.run(`click('#cOwner'); await sleep(200);
-      const set = (s, v) => { const e = document.querySelector(s); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); };
       set('#f [name=email]', ${JSON.stringify(demo.owner_email)}); set('#f [name=password]', ${JSON.stringify(demo.owner_password)}); click('#f button');
       await until(() => document.querySelector('.people'), 60000);`);
   } else {
-    const code = await rpc('create_setup_code', { p_location: demo.shop_location });
-    await p.run(`click('#cShop'); await sleep(200); const i = document.querySelector('#f [name=code]'); i.value = ${JSON.stringify(code)};
+    await p.run(`click('#cShop'); await sleep(200); set('#f [name=login]', ${JSON.stringify(demo.logins[who].login)}); set('#f [name=password]', ${JSON.stringify(demo.logins[who].password)});
       click('#f button'); await until(() => document.querySelector('.people'), 30000);`);
   }
   await p.run(`click([...document.querySelectorAll('.person')].find((x) => x.textContent.includes(${JSON.stringify(who)})));
-    await sleep(200); for (const d of ${JSON.stringify(pin)}) click('.pin-pad [data-k="' + d + '"]'); click('.pin-pad [data-k="ok"]');
+    await sleep(200); for (const d of ${JSON.stringify(pin)}) click('.pin-pad [data-k="' + d + '"]');
     await until(() => document.querySelector('#shell')); await sleep(1500);`);
   return { b, p };
 }
@@ -153,8 +157,8 @@ try {
 
   // finish: everything goes
   await p.run('Practice.finishAsk(); await until(() => document.querySelector("#cOk")); click("#cOk");');
-  await sleep(3500);
-  await p.run('await until(() => document.querySelector("#shell")); await sleep(500);');
+  await sleep(3500); // (Velanzo reloads, so it asks for the passcode)
+  await p.run(`await until(() => document.querySelector('.pin-pad')); for (const d of ${JSON.stringify(demo.pins.Ahmed)}) click('.pin-pad [data-k="' + d + '"]'); await until(() => document.querySelector('#shell')); await sleep(500);`);
   ok(!(await p.run('return Practice.on || App.practice || !!document.getElementById("practiceBar");')), 'after finishing: practice is off and the bar is gone');
   ok((await p.run(`return (await GET('/api/products', { q: 'DEMO' })).length;`)) === 0, 'no DEMO items left');
   ok((await localSales()) === salesBefore, 'the practice bill is gone: as if it never happened');
@@ -178,7 +182,7 @@ try {
   ok((await products()) > pBefore, 'the new DEMO items exist during practice');
   await o.run('Practice.finishAsk(); await until(() => document.querySelector("#cOk")); click("#cOk");');
   await sleep(3500);
-  await o.run('await until(() => document.querySelector("#shell")); await sleep(500);');
+  await o.run(`await until(() => document.querySelector('.pin-pad')); for (const d of ${JSON.stringify(demo.owner_pin)}) click('.pin-pad [data-k="' + d + '"]'); await until(() => document.querySelector('#shell')); await sleep(500);`);
   ok((await products()) === pBefore, 'owner: all practice items removed again');
   ok((await o.run(`return (await GET('/api/purchases', { from: '2000-01-01' })).every((x) => !/DEMO/.test(x.invoice_no || ''));`)), 'owner: no DEMO purchase left');
   const after = await cloudCounts();

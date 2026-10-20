@@ -18,11 +18,18 @@ export async function checkPin(pin, user) {
   if (!user.pin_hash || !user.pin_salt) return false;
   return (await hashPin(pin, user.pin_salt)) === user.pin_hash;
 }
-export const validPin = (pin) => /^\d{4,6}$/.test(String(pin || ''));
+// The passcode is exactly 4 numbers, chosen by the person themselves.
+export const validPin = (pin) => /^\d{4}$/.test(String(pin || ''));
 
 // People who may log in on this device: the owner(s), plus staff of this device's place.
 export function loginUsers() {
   const dev = D.deviceInfo();
+  // A computer belongs to the person who signed in on it: only they can unlock it.
+  const bound = Number(D.get("SELECT value FROM device WHERE key = 'bound_user'")?.value) || 0;
+  if (bound) {
+    const one = D.all('SELECT * FROM users WHERE id = ? AND active = 1', bound);
+    if (one.length) return one;
+  }
   if (dev.location_id == null) return D.all("SELECT * FROM users WHERE active = 1 AND role = 'admin' ORDER BY name");
   return D.all("SELECT * FROM users WHERE active = 1 AND (role = 'admin' OR location_id = ?) ORDER BY role = 'admin', name", dev.location_id);
 }

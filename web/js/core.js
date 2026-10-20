@@ -315,7 +315,8 @@ function renderShell() {
         <button class="sync-pill" id="syncPill" type="button"></button>
         <details class="user-menu" id="userMenu"><summary><span class="avatar">${esc((u.name || '?').slice(0, 1).toUpperCase())}</span><span class="uname">${esc(u.name)}</span></summary>
           <div class="more-list right">
-            <a href="#" id="switchBtn">${icon('users')}<span>Switch person</span></a>
+            <a href="#" id="switchBtn">${icon('lock')}<span>Lock (type the passcode again)</span></a>
+            ${App.device.mode === 'cloud' ? `<a href="#" id="signOutBtn">${icon('device')}<span>Sign out / switch account</span></a>` : ''}
             <a href="#/account">${icon('lock')}<span>My PIN</span></a>
             <a href="#/device">${icon('device')}<span>This device</span></a>
             <a href="#/training">${icon('help')}<span>Training</span></a>
@@ -328,6 +329,8 @@ function renderShell() {
       <div class="view" id="view"></div>
     </main>
   </div>`;
+  const so = $('#signOutBtn');
+  if (so) so.addEventListener('click', (e) => { e.preventDefault(); closeMenus(); Setup.signOut(true); });
   $('#switchBtn').addEventListener('click', async (e) => {
     e.preventDefault();
     try { await POST('/api/logout'); } catch { /* ignore */ }

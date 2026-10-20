@@ -21,14 +21,9 @@ const want = (name) => !only.length || only.includes(name);
 const PROFILES = path.join(os.tmpdir(), 'velanzo-shot-profiles');
 fs.rmSync(PROFILES, { recursive: true, force: true });
 
-// The owner's account, to make device codes.
 async function ownerToken() {
   const r = await fetch(`${BASE}/cloud/auth/v1/token?grant_type=password`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: demo.owner_email, password: demo.owner_password }) });
   return (await r.json()).access_token;
-}
-async function setupCode(loc) {
-  const r = await fetch(`${BASE}/cloud/rest/v1/rpc/create_setup_code`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await ownerToken() }, body: JSON.stringify({ p_location: loc }) });
-  return r.json();
 }
 
 // ---------- page helpers (run inside the page) ----------
@@ -73,14 +68,13 @@ fs.mkdirSync(OUT, { recursive: true });
   const { b, p } = await newDevice('shop');
   await p.goto(BASE + '/', 2500);
   await p.snap('welcome', { clip: await cardClip(p) });
-  const code = await setupCode(demo.shop_location);
-  await p.run(`click('#cShop'); await sleep(200); set('#f [name=code]', ${JSON.stringify(code)});`);
+  await p.run(`click('#cShop'); await sleep(200); set('#f [name=login]', ${JSON.stringify(demo.logins.Ahmed.login)}); set('#f [name=password]', ${JSON.stringify(demo.logins.Ahmed.password)});`);
   await p.snap('join-code', { clip: await cardClip(p) });
-  await p.run(`click('#f button'); await until(() => document.querySelector('.people'), 30000); await sleep(500);`);
+  await p.run(`click('#f button.primary'); await until(() => document.querySelector('.pin-pad'), 40000); await sleep(500);`);
   await p.snap('who-is-working', { clip: await cardClip(p) });
-  await p.run(`click(byText('.person', 'Ahmed')); await sleep(200); for (const d of '22') click(document.querySelector('.pin-pad [data-k="' + d + '"]'));`);
+  await p.run(`for (const d of '22') click(document.querySelector('.pin-pad [data-k="' + d + '"]'));`);
   await p.snap('pin', { clip: await cardClip(p) });
-  await p.run(`for (const d of '22') click(document.querySelector('.pin-pad [data-k="' + d + '"]')); click('.pin-pad [data-k="ok"]'); await until(() => document.querySelector('#scan')); await sleep(1500);`);
+  await p.run(`for (const d of '22') click(document.querySelector('.pin-pad [data-k="' + d + '"]')); await until(() => document.querySelector('#scan')); await sleep(1500);`);
   await p.run(`const list = ProductCache.list.filter((x) => x.loc_qty > 1); scan(list[0].barcode); await sleep(400); scan(list[3].barcode); await sleep(400); scan(list[0].barcode); await sleep(400); set('#paid', '11000'); await sleep(300);`);
   await p.snap('sell-cart');
   await p.run(`click('#doneBtn'); await until(() => document.querySelector('.modal-wrap')); await sleep(500);`);
@@ -106,8 +100,7 @@ fs.mkdirSync(OUT, { recursive: true });
 {
   const { b, p } = await newDevice('warehouse');
   await p.goto(BASE + '/', 2500);
-  const code = await setupCode(demo.warehouse_location);
-  await p.run(`click('#cShop'); await sleep(200); set('#f [name=code]', ${JSON.stringify(code)}); click('#f button'); await until(() => document.querySelector('.people'), 30000); await pin('Bilal', '1111');`);
+  await p.run(`click('#cShop'); await sleep(200); set('#f [name=login]', ${JSON.stringify(demo.logins.Bilal.login)}); set('#f [name=password]', ${JSON.stringify(demo.logins.Bilal.password)}); click('#f button.primary'); await until(() => document.querySelector('.pin-pad'), 40000); for (const d of '1111') click('.pin-pad [data-k="' + d + '"]');`);
   await p.snap('warehouse-home');
   await p.go('#/purchases');
   await p.snap('purchases');
@@ -138,7 +131,7 @@ fs.mkdirSync(OUT, { recursive: true });
   await p.run(`click('#cOwner'); await sleep(200);`);
   await p.snap('owner-signin', { clip: await cardClip(p) });
   await p.run(`set('#f [name=email]', ${JSON.stringify(demo.owner_email)}); set('#f [name=password]', ${JSON.stringify(demo.owner_password)}); click('#f button');
-    await until(() => document.querySelector('.people'), 60000); await pin('Owner', '1234'); await sleep(1500);`);
+    await until(() => document.querySelector('.pin-pad'), 60000); for (const d of '1234') click('.pin-pad [data-k="' + d + '"]'); await sleep(1500);`);
   await p.snap('owner-home');
   await p.go('#/activity');
   await p.snap('activity');
@@ -156,10 +149,9 @@ fs.mkdirSync(OUT, { recursive: true });
   await p.run(`click(byText('tbody tr', 'Sara')); await sleep(500);`);
   await p.snap('settings-person');
   await p.run(`document.querySelector('.modal-wrap [data-close]').click(); await sleep(200);`);
-  await p.go('#/settings/devices');
-  await p.snap('settings-devices');
-  await p.run(`click('#add'); await sleep(300); click('#mk'); await sleep(1200);`);
+  await p.run(`click('#add'); await sleep(500);`);
   await p.snap('settings-device-code');
+  await p.run(`document.querySelector('.modal-wrap [data-close]').click(); await sleep(200);`);
   await p.run(`document.querySelector('.modal-wrap [data-close]').click(); await sleep(200);`);
   await p.go('#/settings/business');
   await p.snap('settings-business');
@@ -177,7 +169,7 @@ fs.mkdirSync(OUT, { recursive: true });
   const { b, p } = await newDevice('phone', { width: 390, height: 844, mobile: true });
   await p.goto(BASE + '/', 2500);
   await p.run(`click('#cOwner'); await sleep(200); set('#f [name=email]', ${JSON.stringify(demo.owner_email)}); set('#f [name=password]', ${JSON.stringify(demo.owner_password)}); click('#f button');
-    await until(() => document.querySelector('.people'), 60000); await pin('Owner', '1234'); await sleep(1500);`);
+    await until(() => document.querySelector('.pin-pad'), 60000); for (const d of '1234') click('.pin-pad [data-k="' + d + '"]'); await sleep(1500);`);
   await p.snap('phone-home');
   await b.close();
 }

@@ -223,6 +223,13 @@ const MIGRATIONS = [
   CREATE TABLE sync_errors (id INTEGER PRIMARY KEY AUTOINCREMENT, grp TEXT, message TEXT, rows TEXT, created_at TEXT);
   ${SYNC_TABLES.map(outboxTriggers).join('\n')}
   `,
+  // Purchase orders: ordered today, counted into stock when the goods arrive.
+  `
+  ALTER TABLE purchases ADD COLUMN expected_date TEXT;
+  ALTER TABLE purchases ADD COLUMN received_at TEXT;
+  ALTER TABLE purchase_items ADD COLUMN ordered_qty INTEGER;
+  ALTER TABLE purchase_items ADD COLUMN planned_price REAL;
+  `,
 ];
 export const SCHEMA_VERSION = MIGRATIONS.length;
 

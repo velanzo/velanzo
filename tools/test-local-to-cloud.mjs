@@ -34,8 +34,8 @@ try {
   const p = await device('owner');
   await p.goto(BASE + '/', 2500);
   ok(await p.run(`return document.body.innerText.includes('Start Velanzo');`), 'no cloud set up: Velanzo offers to start on this device');
-  await p.run(`set('#f [name=business_name]', 'Local Shop'); set('#f [name=owner_name]', 'Owner'); set('#f [name=pin]', '1234'); set('#f [name=pin2]', '1234');
-    document.querySelector('#f button').click(); await until(() => document.querySelector('#view')); await sleep(1500);`);
+  await p.run(`set('#f [name=business_name]', 'Local Shop'); set('#f [name=owner_name]', 'Owner'); for (const d of '12341234') document.querySelector('#pinSetup .pin-pad [data-k="' + d + '"]').click();
+    await sleep(300); document.querySelector('#f button.primary').click(); await until(() => document.querySelector('.pin-pad')); for (const d of '1234') document.querySelector('.pin-pad [data-k="' + d + '"]').click(); await until(() => document.querySelector('#view')); await sleep(1500);`);
   const bill = await p.run(`const s1 = App.locations.find((l) => l.type === 'shop').id;
     const [pr] = await POST('/api/products', { name: 'Test Kurta', cost_price: 500, sale_price: 1000, variants: [{ size: 'M', opening_qty: 5 }], opening_location_id: s1 });
     const s = await POST('/api/sales', { location_id: s1, items: [{ product_id: pr.id, qty: 2 }] });
@@ -46,24 +46,28 @@ try {
   // the cloud is switched on (config.js filled in) and the page opened again
   fs.rmSync(NOCONF);
   await p.reload(BASE + '/#/device', 3500);
+  await p.run(`await until(() => document.querySelector('.pin-pad')); for (const d of '1234') document.querySelector('.pin-pad [data-k="' + d + '"]').click(); await until(() => document.querySelector('#connectBtn'));`);
   await p.run(`await until(() => document.querySelector('#connectBtn')); document.querySelector('#connectBtn').click(); await sleep(300);
     set('#f [name=email]', 'local.owner@test.local'); set('#f [name=password]', 'local-pass-123'); document.querySelector('#f button').click();
     await until(() => document.querySelector('.people')); await sleep(300);
-    document.querySelector('.person').click(); await sleep(200); for (const d of '1234') document.querySelector('.pin-pad [data-k="' + d + '"]').click();
-    document.querySelector('.pin-pad [data-k="ok"]').click(); await until(() => document.querySelector('#view')); await sleep(1000); await Cloud.syncNow(); await refreshBadges();`);
+    document.querySelector('.person').click(); await sleep(200); for (const d of '1234') document.querySelector('.pin-pad [data-k="' + d + '"]').click(); await until(() => document.querySelector('#view')); await sleep(1000); await Cloud.syncNow(); await refreshBadges();`);
   ok(await p.run(`return document.querySelector('#syncPill').textContent === 'All saved online';`), 'connected: All saved online');
   ok(await p.run(`return App.device.mode === 'cloud' && App.device.id >= 2;`), 'the device is now a cloud device');
 
   // a shop computer joins and finds the data that was made before the cloud existed
   const tok = (await post('/cloud/auth/v1/token?grant_type=password', { email: 'local.owner@test.local', password: 'local-pass-123' })).access_token;
   const s1 = await p.run(`return App.locations.find((l) => l.type === 'shop').id;`);
-  const code = await post('/cloud/rest/v1/rpc/create_setup_code', { p_location: s1 }, tok);
+  // the owner makes a user for the shop (saved on the owner computer, then given a user ID and password in the cloud)
+  const shopper = await p.run(`const u = await POST('/api/users', { name: 'Shopper', role: 'staff', location_id: ${JSON.stringify(s1)} }); await Cloud.syncNow(); await Cloud.setUserLogin(u.id, 'shopper', 'shopper-pass-1'); return u.id;`);
   const shop = await device('shop');
   await shop.goto(BASE + '/', 2500);
-  await shop.run(`document.querySelector('#cShop').click(); await sleep(200); set('#f [name=code]', ${JSON.stringify(code)}); document.querySelector('#f button').click(); await until(() => document.querySelector('.people'));`);
+  await shop.run(`document.querySelector('#cShop').click(); await sleep(200); set('#f [name=login]', 'shopper'); set('#f [name=password]', 'shopper-pass-1'); document.querySelector('#f button').click(); await until(() => document.querySelector('.people'));`);
   const seen = await shop.run(`const r = await Engine.api({ method: 'GET', path: '/api/login-users' }); return r.body.business_name;`);
   ok(seen === 'Local Shop', 'the shop computer downloaded the business made before the cloud');
-  const sale = await shop.run(`await Engine.system('info'); const rows = await Engine.api({ method: 'POST', path: '/api/login', body: { user_id: (await Engine.api({ method: 'GET', path: '/api/login-users' })).body.users[0].id, pin: '1234' } });
+  // the new user chooses their own passcode (4 numbers, twice), then is in
+  await shop.run(`await until(() => document.querySelector('#pinSetup')); for (const d of '12341234') document.querySelector('#pinSetup .pin-pad [data-k="' + d + '"]').click(); await sleep(300); document.querySelector('#fp button.primary').click(); await until(() => document.querySelector('#view'));`);
+  ok(await shop.run(`return App.user.name === 'Shopper';`), 'the new user chose a passcode and is in');
+  const sale = await shop.run(`await Engine.system('info');
     return (await Engine.api({ method: 'GET', path: '/api/sales', query: {} })).body.map((x) => x.bill_no);`);
   ok(sale.includes(bill), `the shop sees bill ${bill}`);
   console.log(`\nAll ${checks} checks passed.`);

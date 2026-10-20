@@ -1,6 +1,7 @@
 // A stand-in for the Supabase database, for tests and the local preview: Postgres (PGlite) running in Node,
 // with the real migration and a small stand-in for Supabase's auth.uid().
 import { PGlite } from '@electric-sql/pglite';
+import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export async function startCloud(dataDir) {
-  const db = new PGlite(dataDir);
+  const db = dataDir ? new PGlite(dataDir, { extensions: { pgcrypto } }) : new PGlite({ extensions: { pgcrypto } });
   const fresh = !(await db.query("select 1 from pg_tables where tablename = 'meta'")).rows.length;
   if (fresh) {
     await db.exec(`

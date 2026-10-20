@@ -87,7 +87,15 @@ export async function openBrowser({ profile, width = 1366, height = 800, scale =
   };
   return {
     page,
-    async close() { try { cdp.close(); } catch { /* closed */ } proc.kill(); await sleep(300); },
+    async close() {
+      try { cdp.close(); } catch { /* closed */ }
+      proc.kill();
+      await sleep(600);
+      // a browser profile in the temp folder is only for this run: remove it (each holds ~100 MB and they add up)
+      if (path.resolve(dir).startsWith(path.resolve(os.tmpdir()))) {
+        for (let i = 0; i < 5; i++) { try { fs.rmSync(dir, { recursive: true, force: true }); break; } catch { await sleep(500); } }
+      }
+    },
   };
 }
 

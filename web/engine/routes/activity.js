@@ -19,8 +19,8 @@ const PARTS = [
     FROM sales s WHERE {W}` },
   { col: 's.voided_at', loc: 's.location_id', sql: `SELECT s.voided_at, 'bill_void', s.location_id, s.voided_by, s.bill_no, s.items_qty, NULL, s.total, s.void_reason, NULL, 'sale', s.id
     FROM sales s WHERE s.voided_at IS NOT NULL AND {W}` },
-  { col: 'p.created_at', loc: 'p.location_id', sql: `SELECT p.created_at, 'purchase', p.location_id, p.user_id, p.purchase_no, p.total_qty, NULL, p.total, NULL, sup.name, 'purchase', p.id
-    FROM purchases p LEFT JOIN suppliers sup ON sup.id = p.supplier_id WHERE {W}` },
+  { col: 'COALESCE(p.received_at, p.created_at)', loc: 'p.location_id', sql: `SELECT COALESCE(p.received_at, p.created_at), 'purchase', p.location_id, p.user_id, p.purchase_no, p.total_qty, NULL, p.total, NULL, sup.name, 'purchase', p.id
+    FROM purchases p LEFT JOIN suppliers sup ON sup.id = p.supplier_id WHERE p.status <> 'ordered' AND {W}` },
   { col: 'd.created_at', loc: 'd.from_location_id', sql: `SELECT d.created_at, 'dispatch', d.from_location_id, d.created_by, d.dispatch_no, d.total_qty, NULL, d.total_value, d.notes, tl.name, 'dispatch', d.id
     FROM dispatches d JOIN locations tl ON tl.id = d.to_location_id WHERE {W}` },
   { col: 'd.received_at', loc: 'd.to_location_id', sql: `SELECT d.received_at, 'received', d.to_location_id, d.received_by, d.dispatch_no, d.received_qty, d.total_qty, d.total_value, NULL, fl.name, 'dispatch', d.id

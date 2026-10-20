@@ -106,7 +106,8 @@ async function handleAuth(req, res, url, body) {
 // ---------- Cloud functions stand-in (PostgREST /rpc) ----------
 async function handleRpc(req, res, url, body) {
   const fn = url.pathname.split('/').pop();
-  const allowed = ['push', 'pull', 'velanzo_whoami', 'create_owner', 'register_owner_device', 'create_setup_code', 'claim_device', 'remove_device', 'restore_begin',
+  const allowed = ['push', 'pull', 'velanzo_whoami', 'create_owner', 'register_owner_device', 'remove_device', 'restore_begin',
+    'set_user_login', 'login_with_id', 'release_device', 'list_user_logins',
     'request_pin_reset', 'check_pin_reset', 'use_pin_reset', 'list_pin_resets', 'decide_pin_reset'];
   if (!allowed.includes(fn)) return send(res, 404, { code: 'PGRST202', message: `Could not find the function public.${fn}` });
   try {

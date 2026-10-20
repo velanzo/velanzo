@@ -1,0 +1,161 @@
+  // ---------- The passcode screen ----------
+  // Shown every time Velanzo opens (the computer stays signed in, but locked). It belongs to one person.
+  async function showLogin() {
+    App.user = null;
+    let d;
+    try { d = await GET('/api/login-users'); } catch (e) { return showError(e.message); }
+    const place = d.location ? d.location.name : 'Owner device';
+    const people = d.users;
+    const cloud = App.device.mode === 'cloud' && Cloud.enabled;
+    show(card(`${logo}<h1>${esc(d.business_name)}</h1><p class="muted">${esc(place)}${d.bound ? '' : ' · Who\'s working?'}</p>
+      ${people.length ? `<div class="people${d.bound ? ' hidden' : ''}">${people.map((u) => `<button class="person" data-id="${u.id}">
+        <span class="avatar big${u.role === 'admin' ? ' owner' : ''}">${u.role === 'admin' ? icon('lock') : esc(u.name.slice(0, 1).toUpperCase())}</span>
+        <span>${esc(u.name)}</span><small>${u.role === 'admin' ? 'Owner' : ''}</small></button>`).join('')}</div>`
+        : '<div class="alert">Nobody can log in on this device yet. The owner adds users in <b>Settings → Users</b>.</div>'}
+      <div id="pinArea"></div>
+      <div class="setup-links">${cloud ? '<a href="#" id="swAcc">Switch account</a> · <a href="#" id="soBtn">Sign out</a> · ' : ''}<a href="manual/index.html" target="_blank" rel="noopener">How to use Velanzo</a></div>`, true));
+    $$('.person').forEach((b) => b.addEventListener('click', () => {
+      $$('.person').forEach((x) => x.classList.toggle('on', x === b));
+      const u = people.find((x) => x.id === Number(b.dataset.id));
+      pinPad(u, d.device, d.bound);
+    }));
+    if (people.length === 1) $('.person').click();
+    const sw = $('#swAcc'), so = $('#soBtn');
+    if (sw) sw.addEventListener('click', (e) => { e.preventDefault(); signOut(true); });
+    if (so) so.addEventListener('click', (e) => { e.preventDefault(); signOut(false); });
+    Cloud.syncNow(); // new people or passcode changes arrive here
+  }
+
+  // The digit pad (also for touch screens). The passcode is exactly 4 numbers and opens by itself at the 4th.
+  const padHtml = () => `<div class="pin-pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button type="button" data-k="${n}">${n}</button>`).join('')}
+    <button type="button" data-k="del" aria-label="Delete">⌫</button><button type="button" data-k="0">0</button><button type="button" data-k="ok" class="ok" aria-label="OK">${icon('check')}</button></div>`;
+  const dotsHtml = (n) => Array.from({ length: 4 }, (_, i) => `<span class="${i < n ? 'on' : ''}"></span>`).join('');
+
+  function pinPad(u, device, bound) {
+    const area = $('#pinArea');
+    if (!u.has_pin) {
+      // Just signed in (or the owner on the owner's own computer): choose a passcode now.
+      if (bound || (u.role === 'admin' && device.location_id == null)) return setFirstPin(u);
+      area.innerHTML = `<div class="alert">${esc(u.name)} has not chosen a passcode yet. They do it when they first sign in.</div>`;
+      return;
+    }
+    let pin = '';
+    area.innerHTML = `<div class="pin-box"><div class="pin-label">${esc(u.name)}, type your passcode</div>
+      <div class="pin-dots" id="dots"></div>${padHtml()}${errBox('pinErr')}
+      ${App.device.mode === 'cloud' && Cloud.enabled ? '<a href="#" class="forgot-pin" id="forgotPin">Forgot your passcode?</a>' : ''}</div>`;
+    const fp = $('#forgotPin');
+    if (fp) fp.addEventListener('click', (e) => { e.preventDefault(); document.removeEventListener('keydown', onKey); showForgotPin(u, device); });
+    const dots = () => { $('#dots').innerHTML = dotsHtml(pin.length); };
+    const submit = async () => {
+      if (pin.length < 4) return;
+      try {
+        await POST('/api/login', { user_id: u.id, pin });
+        document.removeEventListener('keydown', onKey);
+        boot();
+      } catch (e) {
+        pin = ''; dots(); setErr(e.message, 'pinErr');
+        const box = $('.pin-box'); box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake');
+      }
+    };
+    const press = (k) => {
+      setErr('', 'pinErr');
+      if (k === 'del') pin = pin.slice(0, -1);
+      else if (k === 'ok') return submit();
+      else if (pin.length < 4) pin += k;
+      dots();
+      if (pin.length === 4 && k !== 'del') submit();
+    };
+    const onKey = (e) => {
+      if (!$('#dots')) return document.removeEventListener('keydown', onKey);
+      if (/^\d$/.test(e.key)) press(e.key);
+      else if (e.key === 'Backspace') press('del');
+      else if (e.key === 'Enter') press('ok');
+    };
+    document.addEventListener('keydown', onKey);
+    App.cleanups.push(() => document.removeEventListener('keydown', onKey));
+    $$('.pin-pad button', area).forEach((b) => b.addEventListener('click', () => press(b.dataset.k)));
+    dots();
+  }
+
+  // Choosing a passcode: type 4 numbers on the pad, then once more. Fills the hidden fields pin and pin2 and
+  // switches on the form's main button. (Works with the keyboard too.)
+  function pinSetupHtml(label = 'Choose a 4-digit passcode') {
+    return `<div class="pin-setup" id="pinSetup"><div class="pin-label" id="psLabel">${esc(label)}</div><div class="pin-dots" id="psDots">${dotsHtml(0)}</div>${padHtml()}
+      <input type="hidden" name="pin"><input type="hidden" name="pin2">
+      <p class="muted small" id="psHint">You type it every time Velanzo opens, like a phone.</p></div>`;
+  }
+  function bindPinSetup(form, label = 'Choose a 4-digit passcode') {
+    const root = $('#pinSetup', form);
+    const main = form.querySelector('button.primary');
+    if (main) main.disabled = true;
+    let first = '', cur = '';
+    const paint = () => { $('#psDots', root).innerHTML = dotsHtml(cur.length); };
+    const say = (t, bad) => { const h = $('#psHint', root); h.textContent = t; h.classList.toggle('neg', !!bad); };
+    const done = () => {
+      if (!first) { first = cur; cur = ''; $('#psLabel', root).textContent = 'Type it again to be sure'; say(''); return paint(); }
+      if (cur !== first) {
+        first = ''; cur = ''; $('#psLabel', root).textContent = label; say('The two were not the same. Start again.', true);
+        const box = root; box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake');
+        return paint();
+      }
+      form.querySelector('[name=pin]').value = first; form.querySelector('[name=pin2]').value = cur;
+      $('#psLabel', root).textContent = '✓ Passcode chosen'; say('Now press the button below.');
+      if (main) { main.disabled = false; main.focus(); }
+      document.removeEventListener('keydown', onKey);
+    };
+    const press = (k) => {
+      if (form.querySelector('[name=pin]').value) return; // already chosen
+      if (k === 'del') cur = cur.slice(0, -1);
+      else if (k === 'ok') return;
+      else if (cur.length < 4) cur += k;
+      paint();
+      if (cur.length === 4 && k !== 'del') done();
+    };
+    const onKey = (e) => {
+      if (!document.body.contains(root)) return document.removeEventListener('keydown', onKey);
+      if (/^\d$/.test(e.key) && !/INPUT|TEXTAREA|SELECT/.test((e.target.tagName || ''))) press(e.key);
+      else if (e.key === 'Backspace' && !/INPUT|TEXTAREA|SELECT/.test((e.target.tagName || ''))) press('del');
+    };
+    document.addEventListener('keydown', onKey);
+    App.cleanups.push(() => document.removeEventListener('keydown', onKey));
+    $$('.pin-pad button', root).forEach((b) => b.addEventListener('click', () => press(b.dataset.k)));
+  }
+
+  // The first time (right after signing in): the person chooses their own passcode.
+  function setFirstPin(u) {
+    $('#pinArea').innerHTML = `<form id="fp" class="pin-box" autocomplete="off"><div class="pin-label">Welcome, ${esc(u.name)}</div>${pinSetupHtml()}
+      <button class="btn primary lg block">Save and open</button>${errBox('pinErr')}</form>`;
+    bindPinSetup($('#fp'));
+    $('#fp').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const v = formValues(e.target);
+      if (!/^\d{4}$/.test(v.pin)) return setErr('The passcode must be 4 numbers.', 'pinErr');
+      if (v.pin !== v.pin2) return setErr('The two passcodes are not the same.', 'pinErr');
+      try {
+        await Engine.system('setFirstPin', { user_id: u.id, pin: v.pin });
+        await POST('/api/login', { user_id: u.id, pin: v.pin });
+        Cloud.changed();
+        boot();
+      } catch (err) { setErr(err.message, 'pinErr'); }
+    });
+  }
+
+  // Sign out of this computer (or switch to another account). Everything saved online stays; what is on this computer is
+  // removed, so it first makes sure nothing is waiting to be sent.
+  async function signOut(toSignIn) {
+    if (typeof Practice !== 'undefined' && Practice.on) return toast('Finish practising first (the orange bar at the top).', 'error', 6000);
+    let waiting = (await Engine.system('outbox', 1)).length;
+    if (waiting && App.user) { try { await Cloud.syncNow(); } catch { /* offline */ } waiting = (await Engine.system('outbox', 1)).length; }
+    if (waiting) return toast('Some changes have not reached the cloud yet. Unlock, connect to the internet, wait until "All saved online" shows, then sign out.', 'error', 9000);
+    const ok = await confirmBox(toSignIn
+      ? 'Switch account?\n\nThis computer will forget the current account, and another person can sign in. Everything is safe in the cloud.'
+      : 'Sign out of this computer?\n\nEverything is safe in the cloud. To use Velanzo here again, sign in with your user ID and password.',
+    { title: toSignIn ? 'Switch account' : 'Sign out', ok: toSignIn ? 'Switch account' : 'Sign out' });
+    if (!ok) return;
+    try { if (App.device.id && Cloud.enabled && App.device.mode === 'cloud') await Cloud.releaseDevice(App.device.id); } catch { /* the cloud is not reachable: fine */ }
+    try { Cloud.stop(); await Cloud.signOut(); } catch { /* ignore */ }
+    try { await Engine.system('forgetDevice', {}); } catch (e) { return toast(e.message, 'error', 8000); }
+    App.device = {}; App.user = null; App.settings = {}; App.locations = [];
+    toSignIn ? showSignIn() : showWelcome();
+  }
+

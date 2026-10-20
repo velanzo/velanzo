@@ -39,11 +39,10 @@ async function join(name, { owner = false, who, pin }) {
     await p.run(`click('#cOwner'); await sleep(200); set('#f [name=email]', ${JSON.stringify(demo.owner_email)}); set('#f [name=password]', ${JSON.stringify(demo.owner_password)}); click('#f button');
       await until(() => document.querySelector('.people'), 60000);`);
   } else {
-    const code = await rpc('create_setup_code', { p_location: demo.shop_location });
-    await p.run(`click('#cShop'); await sleep(200); set('#f [name=code]', ${JSON.stringify(code)}); click('#f button'); await until(() => document.querySelector('.people'), 30000);`);
+    await p.run(`click('#cShop'); await sleep(200); set('#f [name=login]', ${JSON.stringify(demo.logins[who].login)}); set('#f [name=password]', ${JSON.stringify(demo.logins[who].password)}); click('#f button'); await until(() => document.querySelector('.people'), 30000);`);
   }
   await p.run(`click([...document.querySelectorAll('.person')].find((x) => x.textContent.includes(${JSON.stringify(who)}))); await sleep(200);
-    for (const d of ${JSON.stringify(pin)}) click('.pin-pad [data-k="' + d + '"]'); click('.pin-pad [data-k="ok"]');
+    for (const d of ${JSON.stringify(pin)}) click('.pin-pad [data-k="' + d + '"]');
     await until(() => document.querySelector('#shell')); await sleep(1500);`);
   return { b, p };
 }
@@ -84,7 +83,9 @@ try {
   ok(shopMid < shopBefore, `the shop computer followed (${shopBefore} → ${shopMid} bills)`);
 
   // ---- clear everything ----
-  await o.run(`location.hash = '#/settings/backup'; await until(() => document.querySelector('#clAll')); click('#clAll');
+  // (Velanzo reloaded itself after the first clearing, so it asks for the passcode again)
+  await o.run(`await until(() => document.querySelector('.pin-pad')); for (const d of ${JSON.stringify(demo.owner_pin)}) click('.pin-pad [data-k="' + d + '"]'); await until(() => document.querySelector('#shell')); await sleep(500);`);
+  await o.run(`window.alert = () => {}; location.hash = '#/settings/backup'; await until(() => document.querySelector('#clAll')); click('#clAll');
     await until(() => document.querySelector('#cOk')); click('#cOk');
     await until(() => document.querySelector('#pIn')); set('#pIn', 'clear'); click('#pOk');`);
   await settle();

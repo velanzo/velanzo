@@ -24,8 +24,10 @@ export function createSyncer({ system, rpc, now = localNow, onProgress = () => {
     const out = { sent: 0, refused: 0, received: 0, refusedMessages: [] };
     let trouble = '';
 
-    // 1. Send what was done here (oldest first, each action whole).
-    for (let round = 0; round < 200; round++) {
+    // 1. Send what was done here (oldest first, each action whole). Nothing is sent while the passcode screen is up
+    //    (nobody is working, so the cloud could not tell who did it); it all goes once someone unlocks.
+    const mayPush = info.user_id || info.device.location_id == null;
+    for (let round = 0; mayPush && round < 200; round++) {
       const groups = await system('outbox', 3000);
       if (!groups.length) break;
       const res = await rpc('push', { ...who, p_groups: groups.map((g) => ({ grp: g.grp, rows: g.rows })), p_now: now() });

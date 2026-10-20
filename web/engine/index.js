@@ -45,6 +45,7 @@ export const system = {
     device: D.deviceInfo(),
     has_users: D.get('SELECT COUNT(*) AS n FROM users').n > 0,
     user_id: S.currentUser()?.id || null,
+    bound_user: Number(D.get("SELECT value FROM device WHERE key = 'bound_user'")?.value) || null,
     sync: Sync.state(),
     practice: Practice.isActive(),
   }),
@@ -64,8 +65,11 @@ export const system = {
   // An owner with no PIN yet (e.g. after restoring a backup from the old version) chooses one on an owner device.
   setFirstPin: async ({ user_id, pin }) => {
     const u = D.get('SELECT * FROM users WHERE id = ? AND active = 1', user_id);
-    if (!u || u.role !== 'admin' || u.pin_hash || D.deviceInfo().location_id != null) throw new Error('Not allowed');
-    if (!S.validPin(pin)) throw new Error('The PIN must be 4 to 6 numbers');
+    // right after signing in: the person this computer belongs to (or an owner on an owner computer) chooses a passcode
+    const bound = Number(D.get("SELECT value FROM device WHERE key = 'bound_user'")?.value) || 0;
+    const mine = u && (u.id === bound || (u.role === 'admin' && D.deviceInfo().location_id == null));
+    if (!mine || u.pin_hash) throw new Error('Not allowed');
+    if (!S.validPin(pin)) throw new Error('The passcode must be 4 numbers');
     const p = await S.makePin(pin);
     D.beginGroup();
     D.run('UPDATE users SET pin_salt = ?, pin_hash = ? WHERE id = ?', p.pin_salt, p.pin_hash, user_id);
@@ -73,7 +77,7 @@ export const system = {
   // A person who forgot their PIN chooses a new one. The page has checked first that the owner approved it
   // (a link sent to the owner's email); this only changes the PIN of someone who can sign in on this device.
   resetPin: async ({ user_id, pin }) => {
-    if (!S.validPin(pin)) throw new Error('The PIN must be 4 to 6 numbers');
+    if (!S.validPin(pin)) throw new Error('The passcode must be 4 numbers');
     const u = S.loginUsers().find((x) => x.id === Number(user_id));
     if (!u) throw new Error('This person cannot sign in on this device');
     const p = await S.makePin(pin);
@@ -81,8 +85,20 @@ export const system = {
     D.run('UPDATE users SET pin_salt = ?, pin_hash = ? WHERE id = ?', p.pin_salt, p.pin_hash, u.id);
     clearLockout(u.id);
   },
-  forgetDevice: () => {
-    // "Remove this device": everything on it is deleted (the cloud keeps the data).
+  // The owner's computer belongs to the owner who signed in on it (found by their email).
+  bindOwner: (email) => {
+    const u = D.get("SELECT id FROM users WHERE role = 'admin' AND active = 1 AND lower(email) = ?", String(email || '').toLowerCase());
+    if (u) D.setDevice({ bound_user: u.id });
+    return !!u;
+  },
+  // This computer now belongs to this person (they signed in on it).
+  bindUser: (userId) => D.setDevice({ bound_user: userId }),
+  // Lock: nobody is working until the passcode is typed.
+  lock: () => S.setCurrent(null),
+  forgetDevice: (opts = {}) => {
+    // "Sign out" / "Remove this device": everything on it is deleted (the cloud keeps the data).
+    // Changes still waiting to go to the cloud would be lost, so this refuses while any wait (unless forced).
+    if (!opts.force && D.get('SELECT COUNT(*) AS n FROM outbox').n) throw new Error('Some changes have not reached the cloud yet. Connect to the internet and wait until "All saved online" shows, then sign out.');
     for (const t of [...D.SYNC_TABLES, 'stock', 'devices', 'device', 'counters', 'outbox', 'sync_errors']) D.run(`DELETE FROM ${t}`);
   },
 };

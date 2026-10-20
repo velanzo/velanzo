@@ -30,11 +30,10 @@ await p.cdp.send('Network.enable');
 try {
   // join as the Shop 1 counter and log in as Ahmed
   await p.goto(BASE + '/', 2500);
-  const code = await rpc('create_setup_code', { p_location: demo.shop_location });
-  await run(`document.querySelector('#cShop').click(); await sleep(200); const i = document.querySelector('#f [name=code]'); i.value = ${JSON.stringify(code)};
+  await run(`document.querySelector('#cShop').click(); await sleep(200); const set = (s, v) => { const e = document.querySelector(s); e.value = v; e.dispatchEvent(new Event('input', { bubbles: true })); }; set('#f [name=login]', ${JSON.stringify(demo.logins.Ahmed.login)}); set('#f [name=password]', ${JSON.stringify(demo.logins.Ahmed.password)});
     document.querySelector('#f button').click(); await until(() => document.querySelector('.people'));
     [...document.querySelectorAll('.person')].find((x) => x.textContent.includes('Ahmed')).click(); await sleep(200);
-    for (const d of '2222') document.querySelector('.pin-pad [data-k="' + d + '"]').click(); document.querySelector('.pin-pad [data-k="ok"]').click();
+    for (const d of '2222') document.querySelector('.pin-pad [data-k="' + d + '"]').click();
     await until(() => document.querySelector('#scan')); await sleep(1500);`);
   ok(await run(`return document.querySelector('#syncPill').textContent === 'All saved online';`), 'shop computer set up and online');
   await sleep(1500); // let the service worker finish keeping its files
@@ -49,6 +48,8 @@ try {
 
   // reopen Velanzo while still offline (the files come from this computer)
   await p.reload(BASE + '/#/sales', 4500);
+  await run(`await until(() => document.querySelector('.pin-pad')); for (const d of '2222') document.querySelector('.pin-pad [data-k="' + d + '"]').click(); await until(() => document.querySelector('#shell')); await sleep(800);`);
+  ok(true, 'reopened offline: Velanzo asked for the passcode first');
   ok(await run(`await until(() => document.querySelector('#view .tbl, #view .empty')); return document.body.innerText.includes(${JSON.stringify(bill)});`), 'reopened offline: the bill is still there');
 
   // the internet is back

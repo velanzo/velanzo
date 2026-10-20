@@ -1,0 +1,25 @@
+  // A shop or warehouse person signs in with the user ID and password the owner made for them.
+  function showSignIn() {
+    show(card(`${logo}<h1>Sign in</h1><p class="muted">Type the user ID and password the owner gave you.</p>
+      <form id="f" autocomplete="on">
+        <label class="field">User ID<input class="input" name="login" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
+        <label class="field">Password<input class="input" name="password" type="password" autocomplete="current-password" required></label>
+        <button class="btn primary lg block">Sign in</button>${errBox()}
+      </form>
+      <div class="setup-links"><a href="#" id="back">Back</a></div>`));
+    $('#back').addEventListener('click', (e) => { e.preventDefault(); showWelcome(); });
+    $('#f').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const v = formValues(e.target);
+      const btn = e.target.querySelector('button');
+      btn.disabled = true; btn.textContent = 'Signing in…';
+      try {
+        const d = await Cloud.loginWithId(v.login, v.password, deviceLabel());
+        await connect({ ...d, label: deviceLabel() });
+      } catch (err) {
+        setErr(err.message);
+        btn.disabled = false; btn.textContent = 'Sign in';
+      }
+    });
+  }
+

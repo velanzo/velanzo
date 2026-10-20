@@ -1,6 +1,6 @@
 'use strict';
 // First start on a device (owner sign-in, shop/warehouse code, or one device without the cloud)
-// and the "Who's working?" screen with PINs.
+// and the "Who's working?" screen with passcodes.
 const Setup = (() => {
   const card = (inner, wide) => `<div class="login"><div class="login-card${wide ? ' wide' : ''}">${inner}</div></div>`;
   const logo = '<div class="setup-logo">V</div>';
@@ -29,7 +29,8 @@ const Setup = (() => {
     App.device = info.device;
     if (!info.device.id) return emailConfirmed ? showOwner('signin') : showWelcome();
     Cloud.start();
-    if (info.user_id) return boot();
+    // The computer stays signed in, but the passcode is asked every time Velanzo opens.
+    if (info.user_id) await Engine.system('lock');
     showLogin();
   }
 
@@ -37,9 +38,9 @@ const Setup = (() => {
   function showWelcome() {
     if (!Cloud.enabled) return showLocalStart();
     show(card(`${logo}<h1>Welcome to Velanzo</h1><p class="muted">How will this device be used?</p>
-      <button class="choice" id="cShop">${icon('inbox')}<span><b>Shop or warehouse computer</b><small>I have a code from the owner</small></span></button>
+      <button class="choice" id="cShop">${icon('inbox')}<span><b>I work at a shop or the warehouse</b><small>Sign in with my user ID and password</small></span></button>
       <button class="choice" id="cOwner">${icon('users')}<span><b>I'm the owner</b><small>Sign in, or start a new business</small></span></button>`));
-    $('#cShop').addEventListener('click', showJoin);
+    $('#cShop').addEventListener('click', showSignIn);
     $('#cOwner').addEventListener('click', () => showOwner('signin'));
   }
 
@@ -49,9 +50,10 @@ const Setup = (() => {
       <form id="f" autocomplete="off">
         <label class="field">Business name<input class="input" name="business_name" placeholder="Velanzo Clothing" required></label>
         <label class="field">Your name<input class="input" name="owner_name" placeholder="Owner" required></label>
-        ${pinFields()}
+        ${pinSetupHtml()}
         <button class="btn primary lg block">Start</button>${errBox()}
       </form>`));
+    bindPinSetup($('#f'));
     $('#f').addEventListener('submit', (e) => submitBusiness(e, async (v) => {
       await Engine.system('setupLocal', { business_name: v.business_name, owner_name: v.owner_name, pin: v.pin });
       App.device = (await Engine.system('info')).device;
@@ -59,15 +61,12 @@ const Setup = (() => {
     }));
   }
 
-  const pinFields = () => `<div class="form-grid"><label class="field">Choose a PIN<input class="input pin-input" name="pin" inputmode="numeric" type="password" maxlength="6" placeholder="4 to 6 numbers" required></label>
-    <label class="field">PIN again<input class="input pin-input" name="pin2" inputmode="numeric" type="password" maxlength="6" required></label></div>
-    <p class="muted small">You type this PIN to open Velanzo, like a phone.</p>`;
   async function submitBusiness(e, fn) {
     e.preventDefault();
     const v = formValues(e.target);
-    if (!/^\d{4,6}$/.test(v.pin)) return setErr('The PIN must be 4 to 6 numbers.');
-    if (v.pin !== v.pin2) return setErr('The two PINs are not the same.');
-    const btn = e.target.querySelector('button');
+    if (!/^\d{4}$/.test(v.pin)) return setErr('The passcode must be 4 numbers.');
+    if (v.pin !== v.pin2) return setErr('The two passcodes are not the same.');
+    const btn = e.target.querySelector('button.primary');
     btn.disabled = true;
     try { await fn(v); } catch (err) { setErr(err.message); btn.disabled = false; }
   }
@@ -92,7 +91,7 @@ const Setup = (() => {
     $('#f').addEventListener('submit', async (e) => {
       e.preventDefault();
       const v = formValues(e.target);
-      const btn = e.target.querySelector('button');
+      const btn = e.target.querySelector('button.primary');
       btn.disabled = true; btn.textContent = 'Please wait…';
       try {
         if (signup) {
@@ -118,30 +117,27 @@ const Setup = (() => {
     });
   }
 
-  // A shop or warehouse computer joins with the owner's code.
-  function showJoin() {
-    show(card(`${logo}<h1>Connect this computer</h1>
-      <p class="muted">Ask the owner for a code. On their Velanzo: <b>Settings → Devices → Add a computer</b>.</p>
-      <form id="f" autocomplete="off">
-        <label class="field">Code from the owner<input class="input code-input" name="code" placeholder="ABCD-1234" maxlength="9" required autofocus></label>
-        <button class="btn primary lg block">Connect</button>${errBox()}
+  // A shop or warehouse person signs in with the user ID and password the owner made for them.
+  function showSignIn() {
+    show(card(`${logo}<h1>Sign in</h1><p class="muted">Type the user ID and password the owner gave you.</p>
+      <form id="f" autocomplete="on">
+        <label class="field">User ID<input class="input" name="login" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
+        <label class="field">Password<input class="input" name="password" type="password" autocomplete="current-password" required></label>
+        <button class="btn primary lg block">Sign in</button>${errBox()}
       </form>
       <div class="setup-links"><a href="#" id="back">Back</a></div>`));
     $('#back').addEventListener('click', (e) => { e.preventDefault(); showWelcome(); });
-    $('#f [name=code]').addEventListener('input', (e) => {
-      const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-      e.target.value = v.length > 4 ? v.slice(0, 4) + '-' + v.slice(4) : v;
-    });
     $('#f').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const btn = e.target.querySelector('button');
-      btn.disabled = true; btn.textContent = 'Connecting…';
+      const v = formValues(e.target);
+      const btn = e.target.querySelector('button.primary');
+      btn.disabled = true; btn.textContent = 'Signing in…';
       try {
-        const d = await Cloud.joinWithCode(formValues(e.target).code, deviceLabel());
+        const d = await Cloud.loginWithId(v.login, v.password, deviceLabel());
         await connect({ ...d, label: deviceLabel() });
       } catch (err) {
         setErr(err.message);
-        btn.disabled = false; btn.textContent = 'Connect';
+        btn.disabled = false; btn.textContent = 'Sign in';
       }
     });
   }
@@ -156,67 +152,80 @@ const Setup = (() => {
     Cloud.onProgress = null;
     if (!out) throw new Error(Cloud.status().problem?.text || 'Could not download the data. Check the internet and try again.');
     Cloud.start();
+    // this computer now belongs to the person who signed in on it
+    if (d.user_id) await Engine.system('bindUser', d.user_id);
+    else if (email) await Engine.system('bindOwner', email);
     const info = await Engine.system('info');
     if (!info.has_users && d.location_id == null) return showNewBusiness(email);
     showLogin();
   }
 
-  // The owner's first device on an empty cloud: name the business and choose a PIN.
+  // The owner's first device on an empty cloud: name the business and choose a passcode.
   function showNewBusiness(email) {
     show(card(`${logo}<h1>Your business</h1><p class="muted">A few details to start.</p>
       <form id="f" autocomplete="off">
         <label class="field">Business name<input class="input" name="business_name" placeholder="Velanzo Clothing" required></label>
         <label class="field">Your name<input class="input" name="owner_name" placeholder="Owner" required></label>
-        ${pinFields()}
+        ${pinSetupHtml()}
         <button class="btn primary lg block">Start</button>${errBox()}
       </form>`));
+    bindPinSetup($('#f'));
     $('#f').addEventListener('submit', (e) => submitBusiness(e, async (v) => {
       await Engine.system('startBusiness', { business_name: v.business_name, owner_name: v.owner_name, pin: v.pin, email });
+      await Engine.system('bindOwner', email);
       Cloud.changed();
       boot();
     }));
   }
 
-  // ---------- Who's working? ----------
+  // ---------- The passcode screen ----------
+  // Shown every time Velanzo opens (the computer stays signed in, but locked). It belongs to one person.
   async function showLogin() {
     App.user = null;
     let d;
     try { d = await GET('/api/login-users'); } catch (e) { return showError(e.message); }
     const place = d.location ? d.location.name : 'Owner device';
     const people = d.users;
-    show(card(`${logo}<h1>${esc(d.business_name)}</h1><p class="muted">${esc(place)} · Who's working?</p>
-      ${people.length ? `<div class="people">${people.map((u) => `<button class="person" data-id="${u.id}">
+    const cloud = App.device.mode === 'cloud' && Cloud.enabled;
+    show(card(`${logo}<h1>${esc(d.business_name)}</h1><p class="muted">${esc(place)}${d.bound ? '' : ' · Who\'s working?'}</p>
+      ${people.length ? `<div class="people${d.bound ? ' hidden' : ''}">${people.map((u) => `<button class="person" data-id="${u.id}">
         <span class="avatar big${u.role === 'admin' ? ' owner' : ''}">${u.role === 'admin' ? icon('lock') : esc(u.name.slice(0, 1).toUpperCase())}</span>
         <span>${esc(u.name)}</span><small>${u.role === 'admin' ? 'Owner' : ''}</small></button>`).join('')}</div>`
-        : '<div class="alert">Nobody can log in on this device yet. The owner adds people in <b>Settings → People</b>.</div>'}
+        : '<div class="alert">Nobody can log in on this device yet. The owner adds users in <b>Settings → Users</b>.</div>'}
       <div id="pinArea"></div>
-      <div class="setup-links"><a href="manual/index.html" target="_blank" rel="noopener">How to use Velanzo</a></div>`, true));
+      <div class="setup-links">${cloud ? '<a href="#" id="swAcc">Switch account</a> · <a href="#" id="soBtn">Sign out</a> · ' : ''}<a href="manual/index.html" target="_blank" rel="noopener">How to use Velanzo</a></div>`, true));
     $$('.person').forEach((b) => b.addEventListener('click', () => {
       $$('.person').forEach((x) => x.classList.toggle('on', x === b));
       const u = people.find((x) => x.id === Number(b.dataset.id));
-      pinPad(u, d.device);
+      pinPad(u, d.device, d.bound);
     }));
     if (people.length === 1) $('.person').click();
-    Cloud.syncNow(); // new people or PIN changes from the owner arrive here
+    const sw = $('#swAcc'), so = $('#soBtn');
+    if (sw) sw.addEventListener('click', (e) => { e.preventDefault(); signOut(true); });
+    if (so) so.addEventListener('click', (e) => { e.preventDefault(); signOut(false); });
+    Cloud.syncNow(); // new people or passcode changes arrive here
   }
 
-  function pinPad(u, device) {
+  // The digit pad (also for touch screens). The passcode is exactly 4 numbers and opens by itself at the 4th.
+  const padHtml = () => `<div class="pin-pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button type="button" data-k="${n}">${n}</button>`).join('')}
+    <button type="button" data-k="del" aria-label="Delete">⌫</button><button type="button" data-k="0">0</button><button type="button" data-k="ok" class="ok" aria-label="OK">${icon('check')}</button></div>`;
+  const dotsHtml = (n) => Array.from({ length: 4 }, (_, i) => `<span class="${i < n ? 'on' : ''}"></span>`).join('');
+
+  function pinPad(u, device, bound) {
     const area = $('#pinArea');
     if (!u.has_pin) {
-      if (u.role === 'admin' && device.location_id == null) return setFirstPin(u);
-      area.innerHTML = `<div class="alert">${esc(u.name)} has no PIN yet. The owner sets it in <b>Settings → People</b>.</div>`;
+      // Just signed in (or the owner on the owner's own computer): choose a passcode now.
+      if (bound || (u.role === 'admin' && device.location_id == null)) return setFirstPin(u);
+      area.innerHTML = `<div class="alert">${esc(u.name)} has not chosen a passcode yet. They do it when they first sign in.</div>`;
       return;
     }
     let pin = '';
-    area.innerHTML = `<div class="pin-box"><div class="pin-label">${esc(u.name)}, type your PIN</div>
-      <div class="pin-dots" id="dots"></div>
-      <div class="pin-pad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button data-k="${n}">${n}</button>`).join('')}
-        <button data-k="del" aria-label="Delete">⌫</button><button data-k="0">0</button><button data-k="ok" class="ok" aria-label="OK">${icon('check')}</button></div>
-      ${errBox('pinErr')}
-      ${App.device.mode === 'cloud' && Cloud.enabled ? '<a href="#" class="forgot-pin" id="forgotPin">Forgot your PIN?</a>' : ''}</div>`;
+    area.innerHTML = `<div class="pin-box"><div class="pin-label">${esc(u.name)}, type your passcode</div>
+      <div class="pin-dots" id="dots"></div>${padHtml()}${errBox('pinErr')}
+      ${App.device.mode === 'cloud' && Cloud.enabled ? '<a href="#" class="forgot-pin" id="forgotPin">Forgot your passcode?</a>' : ''}</div>`;
     const fp = $('#forgotPin');
     if (fp) fp.addEventListener('click', (e) => { e.preventDefault(); document.removeEventListener('keydown', onKey); showForgotPin(u, device); });
-    const dots = () => { $('#dots').innerHTML = Array.from({ length: Math.max(4, pin.length) }, (_, i) => `<span class="${i < pin.length ? 'on' : ''}"></span>`).join(''); };
+    const dots = () => { $('#dots').innerHTML = dotsHtml(pin.length); };
     const submit = async () => {
       if (pin.length < 4) return;
       try {
@@ -232,8 +241,9 @@ const Setup = (() => {
       setErr('', 'pinErr');
       if (k === 'del') pin = pin.slice(0, -1);
       else if (k === 'ok') return submit();
-      else if (pin.length < 6) pin += k;
+      else if (pin.length < 4) pin += k;
       dots();
+      if (pin.length === 4 && k !== 'del') submit();
     };
     const onKey = (e) => {
       if (!$('#dots')) return document.removeEventListener('keydown', onKey);
@@ -247,21 +257,86 @@ const Setup = (() => {
     dots();
   }
 
-  // An owner without a PIN (e.g. right after restoring a backup from the old version) chooses one on their own device.
+  // Choosing a passcode: type 4 numbers on the pad, then once more. Fills the hidden fields pin and pin2 and
+  // switches on the form's main button. (Works with the keyboard too.)
+  function pinSetupHtml(label = 'Choose a 4-digit passcode') {
+    return `<div class="pin-setup" id="pinSetup"><div class="pin-label" id="psLabel">${esc(label)}</div><div class="pin-dots" id="psDots">${dotsHtml(0)}</div>${padHtml()}
+      <input type="hidden" name="pin"><input type="hidden" name="pin2">
+      <p class="muted small" id="psHint">You type it every time Velanzo opens, like a phone.</p></div>`;
+  }
+  function bindPinSetup(form, label = 'Choose a 4-digit passcode') {
+    const root = $('#pinSetup', form);
+    const main = form.querySelector('button.primary');
+    if (main) main.disabled = true;
+    let first = '', cur = '';
+    const paint = () => { $('#psDots', root).innerHTML = dotsHtml(cur.length); };
+    const say = (t, bad) => { const h = $('#psHint', root); h.textContent = t; h.classList.toggle('neg', !!bad); };
+    const done = () => {
+      if (!first) { first = cur; cur = ''; $('#psLabel', root).textContent = 'Type it again to be sure'; say(''); return paint(); }
+      if (cur !== first) {
+        first = ''; cur = ''; $('#psLabel', root).textContent = label; say('The two were not the same. Start again.', true);
+        const box = root; box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake');
+        return paint();
+      }
+      form.querySelector('[name=pin]').value = first; form.querySelector('[name=pin2]').value = cur;
+      $('#psLabel', root).textContent = '✓ Passcode chosen'; say('Now press the button below.');
+      if (main) { main.disabled = false; main.focus(); }
+      document.removeEventListener('keydown', onKey);
+    };
+    const press = (k) => {
+      if (form.querySelector('[name=pin]').value) return; // already chosen
+      if (k === 'del') cur = cur.slice(0, -1);
+      else if (k === 'ok') return;
+      else if (cur.length < 4) cur += k;
+      paint();
+      if (cur.length === 4 && k !== 'del') done();
+    };
+    const onKey = (e) => {
+      if (!document.body.contains(root)) return document.removeEventListener('keydown', onKey);
+      if (/^\d$/.test(e.key) && !/INPUT|TEXTAREA|SELECT/.test((e.target.tagName || ''))) press(e.key);
+      else if (e.key === 'Backspace' && !/INPUT|TEXTAREA|SELECT/.test((e.target.tagName || ''))) press('del');
+    };
+    document.addEventListener('keydown', onKey);
+    App.cleanups.push(() => document.removeEventListener('keydown', onKey));
+    $$('.pin-pad button', root).forEach((b) => b.addEventListener('click', () => press(b.dataset.k)));
+  }
+
+  // The first time (right after signing in): the person chooses their own passcode.
   function setFirstPin(u) {
-    $('#pinArea').innerHTML = `<form id="fp" class="pin-box" autocomplete="off"><div class="pin-label">${esc(u.name)}, choose your PIN</div>${pinFields()}
+    $('#pinArea').innerHTML = `<form id="fp" class="pin-box" autocomplete="off"><div class="pin-label">Welcome, ${esc(u.name)}</div>${pinSetupHtml()}
       <button class="btn primary lg block">Save and open</button>${errBox('pinErr')}</form>`;
+    bindPinSetup($('#fp'));
     $('#fp').addEventListener('submit', async (e) => {
       e.preventDefault();
       const v = formValues(e.target);
-      if (!/^\d{4,6}$/.test(v.pin)) return setErr('The PIN must be 4 to 6 numbers.', 'pinErr');
-      if (v.pin !== v.pin2) return setErr('The two PINs are not the same.', 'pinErr');
+      if (!/^\d{4}$/.test(v.pin)) return setErr('The passcode must be 4 numbers.', 'pinErr');
+      if (v.pin !== v.pin2) return setErr('The two passcodes are not the same.', 'pinErr');
       try {
         await Engine.system('setFirstPin', { user_id: u.id, pin: v.pin });
         await POST('/api/login', { user_id: u.id, pin: v.pin });
+        Cloud.changed();
         boot();
       } catch (err) { setErr(err.message, 'pinErr'); }
     });
+  }
+
+  // Sign out of this computer (or switch to another account). Everything saved online stays; what is on this computer is
+  // removed, so it first makes sure nothing is waiting to be sent.
+  async function signOut(toSignIn) {
+    if (typeof Practice !== 'undefined' && Practice.on) return toast('Finish practising first (the orange bar at the top).', 'error', 6000);
+    let waiting = (await Engine.system('outbox', 1)).length;
+    if (waiting && App.user) { try { await Cloud.syncNow(); } catch { /* offline */ } waiting = (await Engine.system('outbox', 1)).length; }
+    if (waiting) return toast('Some changes have not reached the cloud yet. Unlock, connect to the internet, wait until "All saved online" shows, then sign out.', 'error', 9000);
+    const ok = await confirmBox(toSignIn
+      ? 'Switch account?\n\nThis computer will forget the current account, and another person can sign in. Everything is safe in the cloud.'
+      : 'Sign out of this computer?\n\nEverything is safe in the cloud. To use Velanzo here again, sign in with your user ID and password.',
+    { title: toSignIn ? 'Switch account' : 'Sign out', ok: toSignIn ? 'Switch account' : 'Sign out' });
+    if (!ok) return;
+    try { if (App.device.id && Cloud.enabled && App.device.mode === 'cloud') await Cloud.releaseDevice(App.device.id); } catch { /* the cloud is not reachable: fine */ }
+    try { Cloud.stop(); await Cloud.signOut(); } catch { /* ignore */ }
+    try { await Engine.system('forgetDevice', {}); } catch (e) { return toast(e.message, 'error', 8000); }
+    App.device = {}; App.user = null; App.settings = {}; App.locations = [];
+    toSignIn ? showSignIn() : showWelcome();
   }
 
   // ---------- Email links ----------
@@ -292,7 +367,7 @@ const Setup = (() => {
     $('#f').addEventListener('submit', async (e) => {
       e.preventDefault();
       const email = formValues(e.target).email;
-      const btn = e.target.querySelector('button');
+      const btn = e.target.querySelector('button.primary');
       btn.disabled = true; btn.textContent = 'Please wait…';
       try {
         await Cloud.resetPassword(email);
@@ -312,7 +387,7 @@ const Setup = (() => {
       e.preventDefault();
       const v = formValues(e.target);
       if (v.p1 !== v.p2) return setErr('The two passwords are not the same.');
-      const btn = e.target.querySelector('button');
+      const btn = e.target.querySelector('button.primary');
       btn.disabled = true;
       try {
         await Cloud.linkSetPassword(link, v.p1);
@@ -322,34 +397,34 @@ const Setup = (() => {
     });
   }
 
-  // The owner opened the link from a PIN request: who is waiting, approve or refuse.
+  // The owner opened the link from a passcode request: who is waiting, approve or refuse.
   async function showApprove(link) {
-    show(card(`${logo}<h1>PIN requests</h1><p class="muted" id="msg">Loading…</p><div id="list"></div>${errBox()}<div style="margin-top:14px">${back('Done')}</div>`));
+    show(card(`${logo}<h1>passcode requests</h1><p class="muted" id="msg">Loading…</p><div id="list"></div>${errBox()}<div style="margin-top:14px">${back('Done')}</div>`));
     goOn();
     const draw = async () => {
       let list;
       try { list = await Cloud.linkPinRequests(link); } catch (err) { $('#msg').textContent = ''; return setErr(err.message.includes('owner') ? 'Only the owner can approve this.' : err.message); }
-      $('#msg').textContent = list.length ? 'Someone forgot their PIN. Approve only if you know the person is asking.' : 'Nobody is waiting for approval now. The request may have run out of time (30 minutes) or was already decided.';
+      $('#msg').textContent = list.length ? 'Someone forgot their passcode. Approve only if you know the person is asking.' : 'Nobody is waiting for approval now. The request may have run out of time (30 minutes) or was already decided.';
       $('#list').innerHTML = list.map((r) => `<div class="alert info flex"><div class="grow"><b>${esc(r.name)}</b> · ${esc(r.place)}<br><span class="muted small">asked ${r.minutes < 1 ? 'just now' : r.minutes + ' min ago'} on ${esc(r.device || 'a computer')}</span></div>
         <button class="btn primary" data-ok="${r.id}">Approve</button><button class="btn" data-no="${r.id}">Refuse</button></div>`).join('');
       $$('[data-ok], [data-no]').forEach((b) => b.addEventListener('click', async () => {
         b.disabled = true;
-        try { await Cloud.linkDecide(link, b.dataset.ok || b.dataset.no, !!b.dataset.ok); toast(b.dataset.ok ? 'Approved. They can choose a new PIN now.' : 'Refused.'); draw(); }
+        try { await Cloud.linkDecide(link, b.dataset.ok || b.dataset.no, !!b.dataset.ok); toast(b.dataset.ok ? 'Approved. They can choose a new passcode now.' : 'Refused.'); draw(); }
         catch (err) { setErr(err.message); b.disabled = false; }
       }));
     };
     draw();
   }
 
-  // ---------- Forgot your PIN? ----------
+  // ---------- Forgot your passcode? ----------
   function showForgotPin(u, device) {
     if (u.role === 'admin' && device.location_id != null) {
-      show(card(`${logo}<h1>Owner's PIN</h1><p>The owner's PIN can only be reset on the owner's own computer or phone. Ask the owner to do it there.</p><button class="btn primary lg block" id="cont">Back</button>`));
+      show(card(`${logo}<h1>Owner's passcode</h1><p>The owner's passcode can only be reset on the owner's own computer or phone. Ask the owner to do it there.</p><button class="btn primary lg block" id="cont">Back</button>`));
       return $('#cont').addEventListener('click', showLogin);
     }
     const who = u.role === 'admin' ? 'We will send a link to <b>your</b> email. Open it and press <b>Approve</b>.' : 'We will send a link to the <b>owner</b>\'s email. The owner opens it and presses <b>Approve</b>.';
-    show(card(`${logo}<h1>Forgot your PIN?</h1>
-      <p>${who} Then you choose a new PIN here.</p>
+    show(card(`${logo}<h1>Forgot your passcode?</h1>
+      <p>${who} Then you choose a new passcode here.</p>
       <button class="btn primary lg block" id="send">Send the link</button>${errBox()}
       <div class="setup-links"><a href="#" id="back">Back</a></div>`));
     $('#back').addEventListener('click', (e) => { e.preventDefault(); showLogin(); });
@@ -373,7 +448,7 @@ const Setup = (() => {
       if (st === 'approved') { clearInterval(timer); showNewPin(u, r); }
       else if (st === 'refused' || st === 'expired' || st === 'unknown') {
         clearInterval(timer);
-        show(card(`${logo}<h1>${st === 'refused' ? 'The owner said no' : 'This request ran out of time'}</h1><p>${st === 'refused' ? 'The PIN was not changed.' : 'Please ask again.'}</p><button class="btn primary lg block" id="cont">Back</button>`));
+        show(card(`${logo}<h1>${st === 'refused' ? 'The owner said no' : 'This request ran out of time'}</h1><p>${st === 'refused' ? 'The passcode was not changed.' : 'Please ask again.'}</p><button class="btn primary lg block" id="cont">Back</button>`));
         $('#cont').addEventListener('click', showLogin);
       }
     }, 3000);
@@ -383,14 +458,15 @@ const Setup = (() => {
   }
 
   function showNewPin(u, r) {
-    show(card(`${logo}<h1>Approved</h1><p>${esc(u.name)}, choose your new PIN.</p>
-      <form id="f" autocomplete="off">${pinFields()}<button class="btn primary lg block">Save and open</button>${errBox()}</form>`));
+    show(card(`${logo}<h1>Approved</h1><p>${esc(u.name)}, choose your new passcode.</p>
+      <form id="f" autocomplete="off">${pinSetupHtml()}<button class="btn primary lg block">Save and open</button>${errBox()}</form>`));
+    bindPinSetup($('#f'));
     $('#f').addEventListener('submit', async (e) => {
       e.preventDefault();
       const v = formValues(e.target);
-      if (!/^\d{4,6}$/.test(v.pin)) return setErr('The PIN must be 4 to 6 numbers.');
-      if (v.pin !== v.pin2) return setErr('The two PINs are not the same.');
-      const btn = e.target.querySelector('button');
+      if (!/^\d{4}$/.test(v.pin)) return setErr('The passcode must be 4 numbers.');
+      if (v.pin !== v.pin2) return setErr('The two passcodes are not the same.');
+      const btn = e.target.querySelector('button.primary');
       btn.disabled = true;
       try {
         await Cloud.usePinReset(r.id);           // the approval works once
@@ -406,5 +482,5 @@ const Setup = (() => {
     show(card(`${logo}<h1>${esc(title)}</h1><p>${esc(message)}</p><button class="btn primary lg block" onclick="location.reload()">Try again</button>`));
   }
 
-  return { start, showLogin, showError, showJoin, showOwner, connect };
+  return { start, showLogin, showError, showSignIn, showOwner, connect, signOut };
 })();
