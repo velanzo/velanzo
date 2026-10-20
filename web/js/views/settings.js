@@ -194,8 +194,8 @@ const SETTINGS_RENDER = {
           <label class="field">Name<input class="input" name="name" value="${esc(u?.name || '')}" placeholder="Ahmed"></label>
           ${isOwnerRow ? '' : `<label class="field" id="locF">Works at<select class="input" name="location_id">${options(places, u?.location_id || places.find((l) => l.type === 'shop')?.id)}</select></label>`}
           ${isOwnerRow || !cloud ? '' : `<label class="field">User ID<input class="input" name="login" value="${esc(u ? (logins[u.id] || '') : '')}" placeholder="ahmed.shop1" autocapitalize="none" autocomplete="off" spellcheck="false"><span class="hint">3 or more letters or numbers, no spaces. They type this to sign in.</span></label>
-          <label class="field">${u && logins[u.id] ? 'New password (leave empty to keep)' : 'Password'}<input class="input" name="password" type="text" autocomplete="off" placeholder="at least 6 characters"><span class="hint">Tell them the password. Only they will know the passcode.</span></label>`}
-          ${cloud || isOwnerRow ? '' : `<label class="field">${u ? 'New passcode (leave empty to keep)' : 'Passcode'}<input class="input pin-input" name="pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="4 numbers"></label>`}
+          <label class="field">${u && logins[u.id] ? 'New password (leave empty to keep)' : 'Password'}<input class="input" name="password" type="text" autocomplete="off" placeholder="at least 6 characters"><span class="hint">Tell them the password.</span></label>`}
+          ${isOwnerRow ? '' : `<label class="field">${u ? 'New passcode (leave empty to keep)' : 'Passcode (optional)'}<input class="input pin-input" name="pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="4 numbers"><span class="hint">${cloud ? 'Leave empty and the person chooses it themselves when they first sign in (then only they know it).' : '4 numbers.'}</span></label>`}
           ${u ? `<label class="check full"><input type="checkbox" name="active" ${u.active ? 'checked' : ''}> Can sign in (untick when someone leaves)</label>` : ''}</div>
           ${isOwnerRow ? '<p class="muted small">The owner signs in with their email. They choose their own passcode on each owner computer.</p>' : `<div id="permBox"><h3 style="margin:18px 0 4px">What this person can do</h3>
           <label class="check"><input type="checkbox" id="same" ${!u || !u.perms ? 'checked' : ''}> Same as their place</label>
@@ -217,6 +217,7 @@ const SETTINGS_RENDER = {
         const login = (v.login || '').trim(), password = v.password || '';
         delete v.same; delete v.login; delete v.password;
         if (!v.pin) delete v.pin;
+        else if (!/^[0-9]{4}$/.test(v.pin)) throw new Error('The passcode must be exactly 4 numbers.');
         if (isOwnerRow) { v.role = 'admin'; v.location_id = null; } else { v.role = 'staff'; v.perms = same.checked ? null : readSwitches(m.$('#sw')); }
         if (!u && cloud && (!login || password.length < 6)) throw new Error('Type a user ID and a password of at least 6 characters.');
         if (password && password.length < 6) throw new Error('The password must be at least 6 characters.');

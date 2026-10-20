@@ -34,7 +34,7 @@ async function open(name) {
   return b;
 }
 
-let bo, bs;
+let bo, bs, bn;
 try {
   // ---- the owner ----
   bo = await open('owner');
@@ -52,7 +52,7 @@ try {
   // add a user
   await o.run(`click('#add'); await until(() => document.querySelector('.modal-wrap [name=name]'));
     set('.modal-wrap [name=name]', 'Mina'); set('.modal-wrap [name=login]', 'Mina.Shop1'); set('.modal-wrap [name=password]', 'mina-pass-1');`);
-  ok(await o.run(`return !document.querySelector('.modal-wrap [name=pin]') && /User ID/.test(document.querySelector('.modal-wrap').innerText);`), 'the form asks for a user ID and password (no passcode: the user chooses it)');
+  ok(await o.run(`return !!document.querySelector('.modal-wrap [name=pin]') && /User ID/.test(document.querySelector('.modal-wrap').innerText) && /Passcode [(]optional[)]/.test(document.querySelector('.modal-wrap').innerText);`), 'the form asks for a user ID and password, and has an optional passcode');
   if (SHOTS) await o.shot(path.join(SHOTS, 'users-add.png'));
   await o.run(`click('.modal-wrap #us'); await until(() => !document.querySelector('.modal-wrap')); await sleep(800);`);
   ok(await o.run(`return /Mina/.test(document.querySelector('.tbl').innerText) && /mina.shop1/.test(document.querySelector('.tbl').innerText);`), 'Mina is in the list with her user ID (saved in lower case)');
@@ -110,9 +110,23 @@ try {
   await o.run(`const b = [...document.querySelectorAll('.tbl tbody tr')].find((x) => x.innerText.includes('Ahmed')).querySelector('[data-rm]'); b.click(); await until(() => document.querySelector('#cOk')); click('#cOk'); await sleep(2500);`);
   await s.run(`await Cloud.syncNow();`);
   ok(await s.run(`return /removed/i.test(Cloud.status().problem?.text || '') || /Device removed/.test(document.querySelector('#syncPill').textContent);`), 'the removed computer is told: “The owner removed this device”');
+  // ---- the owner sets the passcode for a new user ----
+  await o.run(`location.hash = '#/settings/users'; await until(() => document.querySelector('#add')); click('#add'); await until(() => document.querySelector('.modal-wrap [name=name]'));
+    set('.modal-wrap [name=name]', 'Neha'); set('.modal-wrap [name=login]', 'neha.shop1'); set('.modal-wrap [name=password]', 'neha-pass-1'); set('.modal-wrap [name=pin]', '12');
+    click('.modal-wrap #us'); await sleep(600);`);
+  ok(/exactly 4 numbers/.test(await o.run(`return document.body.innerText;`)), 'a passcode that is not 4 numbers is refused');
+  await o.run(`set('.modal-wrap [name=pin]', '5555'); click('.modal-wrap #us'); await until(() => !document.querySelector('.modal-wrap')); await sleep(800);`);
+  ok(await o.run(`const r = [...document.querySelectorAll('.tbl tbody tr')].find((x) => x.innerText.includes('Neha')); return !!r && /Chosen/.test(r.innerText);`), 'Neha shows a passcode as Chosen right away');
+  bn = await open('neha');
+  const n = bn.page;
+  await n.run(`click('#cShop'); await sleep(200); set('#f [name=login]', 'neha.shop1'); set('#f [name=password]', 'neha-pass-1'); click('#f button.primary'); await until(() => document.querySelector('.pin-pad'), 40000);`);
+  ok(await n.run(`return !document.querySelector('#pinSetup') && /type your passcode/.test(text());`), 'Neha is asked for her passcode straight away (not asked to choose one)');
+  await n.run(`await pad('5555'); await until(() => document.querySelector('#shell'));`);
+  ok(await n.run(`return App.user.name === 'Neha';`), 'the passcode the owner set opens Velanzo for Neha');
   console.log(`\nAll ${checks} users checks passed.`);
 } finally {
   if (bo) await bo.close();
   if (bs) await bs.close();
+  if (bn) await bn.close();
 }
 process.exit(0);
