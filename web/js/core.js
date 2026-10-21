@@ -105,6 +105,22 @@ function confirmBox(message, { title = 'Please confirm', ok = 'Yes', danger = fa
   });
 }
 
+// The steps of a purchase order or a parcel, like a status bar: done steps ticked, the current one in colour.
+function flowBar(steps, current, { cancelled = false } = {}) {
+  const at = steps.indexOf(current);
+  return `<div class="flow" aria-label="Steps">${steps.map((st, k) => `${k ? '<i>›</i>' : ''}<span class="${cancelled ? '' : k < at ? 'done' : k === at ? 'on' : ''}">${k < at && !cancelled ? '✓ ' : ''}${esc(st)}</span>`).join('')}${cancelled ? '<i>›</i><span class="on bad">Cancelled</span>' : ''}</div>`;
+}
+
+// Held bills: bills parked at the sale screen of this computer, to finish later.
+const HeldBills = {
+  key: () => `vz_held_${App.device?.id || 0}`,
+  all() { try { return JSON.parse(localStorage.getItem(this.key()) || '[]'); } catch { return []; } },
+  save(list) { try { localStorage.setItem(this.key(), JSON.stringify(list)); } catch { /* storage off */ } },
+  add(loc, cart) { const h = { id: Date.now() * 1000 + Math.floor(Math.random() * 1000), at: nowStr(), loc, cart }; this.save([...this.all(), h]); return h; },
+  take(id) { const list = this.all(); this.save(list.filter((x) => x.id !== id)); return list.find((x) => x.id === id); },
+  total: (cart) => cart.items.reduce((a, l) => a + (l.ret ? -l.qty : l.qty) * l.price, 0),
+};
+
 // Before saving: asks the engine what looks unusual (a price of Rs 0, selling below cost, a big discount …).
 // If anything does, shows it with "Go back" or "Continue anyway". Resolves true to go ahead.
 // (Nothing is blocked: the owner sees these afterwards in Reports → Things to check.)

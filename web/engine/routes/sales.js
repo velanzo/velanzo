@@ -99,6 +99,17 @@ route('POST', '/api/sales/:id/void', 'void_bills', ({ params, body, user }) => t
   run("UPDATE sales SET status = 'void', void_reason = ?, voided_by = ?, voided_at = ? WHERE id = ?", reason, user.id, now(), s.id);
 }));
 
+// Reset a bill to draft (owner only): the bill is cancelled (its pieces go back into stock) and its lines come back,
+// so the sale screen can hold them as a draft bill to change and finish (it then gets a new bill number).
+route('POST', '/api/sales/:id/reset', 'owner', ({ params, user }) => tx(() => {
+  const s = saleDetail(toInt(params.id));
+  if (s.status !== 'done') fail(400, 'This bill is already cancelled');
+  for (const i of s.items) D.moveStock(i.product_id, s.location_id, i.qty, 'void', 'sale', s.id, user.id, 'Bill reset to draft');
+  run("UPDATE sales SET status = 'void', void_reason = 'Reset to draft', voided_by = ?, voided_at = ? WHERE id = ?", user.id, now(), s.id);
+  return { bill_no: s.bill_no, location_id: s.location_id, discount: s.discount, payment_method: s.payment_method, customer_name: s.customer_name, customer_phone: s.customer_phone,
+    items: s.items.map((i) => ({ product_id: i.product_id, qty: i.qty, price: i.price })) };
+}));
+
 // ---------- Expenses ----------
 route('GET', '/api/expenses', 'any', ({ query, user }) => {
   const where = ['1 = 1'], params = [];

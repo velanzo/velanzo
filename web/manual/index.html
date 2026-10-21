@@ -210,6 +210,7 @@
   <figure class="narrow"><img src="img/print-bill.webp" alt="Printed bill"><figcaption>The printed bill. Its barcode finds the bill again later.</figcaption></figure>
 </div>
 <p><b>Discount</b> and <b>Customer</b> (name and phone) are the small links under the list. They only show if your switches allow them.</p>
+<p><b>Hold bill</b>: the customer went to try something on? Press <b>Hold bill</b>, serve the next customer, and open it again from <b>Held bills</b> to finish it. Nothing is sold and no stock changes until you press Done. (Held bills stay on this computer.)</p>
 
 <h3 id="return">4.2 Return or exchange</h3>
 <ol class="steps">
@@ -220,6 +221,7 @@
 <figure><img src="img/sell-exchange.webp" alt="Exchange"></figure>
 
 <h3 id="bills">4.3 Find a bill and print it again</h3>
+<p>The owner can also press <b>Reset to draft</b> on a bill: it is cancelled (the pieces go back into stock) and opens in the sale screen as a held bill to change and finish. It then gets a new bill number.</p>
 <p><span class="menu">Bills</span>: today's bills, or choose dates. Scan the barcode on the customer's bill, or type its number, name or phone. Click a bill to see it and print it again.</p>
 <figure><img src="img/bills.webp" alt="Bills"></figure>
 
@@ -245,6 +247,13 @@
 </ol>
 <figure><img src="img/purchase-new.webp" alt="New purchase"></figure>
 <figure><img src="img/purchases.webp" alt="Purchases list"></figure>
+<h4>Purchase orders: Draft → Confirmed → Received</h4>
+<ol class="steps">
+  <li><span class="menu">Purchase → New purchase order</span>. Add the items. Press <b>Save draft</b> if you are not sure yet: a draft orders nothing and you can <b>Edit</b> it as often as you like.</li>
+  <li>Press <span class="btn g">✓ Confirm order</span> when you order from the supplier. Still nothing is in stock.</li>
+  <li>When the goods arrive, open the order and press <b>Receive stock</b>: count what came. Now the pieces are in stock.</li>
+</ol>
+<p>The bar at the top of the order shows where it is. <b>Reset to draft</b> takes a confirmed order back to Draft to change it. After the goods were received, only the <b>owner</b> can reset it: the pieces then come out of stock again until it is received again.</p>
 
 <h3 id="items">5.2 Items</h3>
 <p><span class="menu">More → Items</span>: every item with its barcode and price. Click one to change its price or see where every piece went.</p>
@@ -259,8 +268,9 @@
 <ol class="steps">
   <li><span class="menu">Send stock → Dispatch order</span>. Choose the shop.</li>
   <li>Scan each piece as you pack it — every scan adds one.</li>
-  <li>Press <span class="btn g">Send dispatch</span> and print the dispatch note for the parcel.</li>
+  <li>Press <span class="btn g">Send dispatch</span> and print the dispatch note for the parcel. Not ready to send yet? Press <b>Save draft</b>: nothing leaves your stock and the shop does not see it. Open it later, <b>Edit</b> it, and press <b>Send now</b>.</li>
 </ol>
+<p>A parcel goes <b>Draft → On the way → Received</b>. While it is on the way, <b>Reset to draft</b> puts the pieces back into your stock. Once the shop received it, only the <b>owner</b> can reset it (the pieces go back from the shop to you).</p>
 <figure><img src="img/dispatch-new.webp" alt="Send stock"></figure>
 <figure><img src="img/dispatch-list.webp" alt="Parcels sent"><figcaption>"On the way" until the shop confirms it received the parcel.</figcaption></figure>
 

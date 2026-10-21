@@ -20,9 +20,9 @@ const PARTS = [
   { col: 's.voided_at', loc: 's.location_id', sql: `SELECT s.voided_at, 'bill_void', s.location_id, s.voided_by, s.bill_no, s.items_qty, NULL, s.total, s.void_reason, NULL, 'sale', s.id
     FROM sales s WHERE s.voided_at IS NOT NULL AND {W}` },
   { col: 'COALESCE(p.received_at, p.created_at)', loc: 'p.location_id', sql: `SELECT COALESCE(p.received_at, p.created_at), 'purchase', p.location_id, p.user_id, p.purchase_no, p.total_qty, NULL, p.total, NULL, sup.name, 'purchase', p.id
-    FROM purchases p LEFT JOIN suppliers sup ON sup.id = p.supplier_id WHERE p.status <> 'ordered' AND {W}` },
+    FROM purchases p LEFT JOIN suppliers sup ON sup.id = p.supplier_id WHERE p.status NOT IN ('ordered', 'draft') AND {W}` },
   { col: 'd.created_at', loc: 'd.from_location_id', sql: `SELECT d.created_at, 'dispatch', d.from_location_id, d.created_by, d.dispatch_no, d.total_qty, NULL, d.total_value, d.notes, tl.name, 'dispatch', d.id
-    FROM dispatches d JOIN locations tl ON tl.id = d.to_location_id WHERE {W}` },
+    FROM dispatches d JOIN locations tl ON tl.id = d.to_location_id WHERE d.status <> 'draft' AND {W}` },
   { col: 'd.received_at', loc: 'd.to_location_id', sql: `SELECT d.received_at, 'received', d.to_location_id, d.received_by, d.dispatch_no, d.received_qty, d.total_qty, d.total_value, NULL, fl.name, 'dispatch', d.id
     FROM dispatches d JOIN locations fl ON fl.id = d.from_location_id WHERE d.received_at IS NOT NULL AND {W}` },
   // Cancelled purchases and dispatches (bills have their own row above)
@@ -85,7 +85,7 @@ function locationsToday() {
   const t = today() + ' 00:00:00';
   const by = (sql) => new Map(all(sql, t).map((r) => [r.id, r]));
   const sales = by(`SELECT location_id AS id, COUNT(*) AS bills, COALESCE(SUM(total), 0) AS total FROM sales WHERE status = 'done' AND created_at >= ? GROUP BY location_id`);
-  const sent = by(`SELECT from_location_id AS id, SUM(total_qty) AS n FROM dispatches WHERE status <> 'cancelled' AND created_at >= ? GROUP BY from_location_id`);
+  const sent = by(`SELECT from_location_id AS id, SUM(total_qty) AS n FROM dispatches WHERE status NOT IN ('cancelled', 'draft') AND created_at >= ? GROUP BY from_location_id`);
   const got = by(`SELECT to_location_id AS id, SUM(received_qty) AS n FROM dispatches WHERE received_at >= ? GROUP BY to_location_id`);
   const bought = by(`SELECT location_id AS id, SUM(total_qty) AS n FROM purchases WHERE status = 'done' AND created_at >= ? GROUP BY location_id`);
   const coming = new Map(all("SELECT to_location_id AS id, COUNT(*) AS n FROM dispatches WHERE status = 'in_transit' GROUP BY to_location_id").map((r) => [r.id, r.n]));

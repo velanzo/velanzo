@@ -266,7 +266,7 @@ route('GET', '/api/purchases', 'buy', ({ query, user }) => {
   if (!user.owner) { where.push('p.location_id = ?'); params.push(user.location_id); }
   if (isDate(query.from)) { where.push('p.date >= ?'); params.push(query.from); }
   if (isDate(query.to)) { where.push('p.date <= ?'); params.push(query.to); }
-  if (['ordered', 'done', 'void'].includes(query.status)) { where.push('p.status = ?'); params.push(query.status); }
+  if (['draft', 'ordered', 'done', 'void'].includes(query.status)) { where.push('p.status = ?'); params.push(query.status); }
   if (toInt(query.supplier_id)) { where.push('p.supplier_id = ?'); params.push(toInt(query.supplier_id)); }
   if (query.q) { where.push('(p.purchase_no LIKE ? OR p.invoice_no LIKE ? OR s.name LIKE ?)'); const l = `%${str(query.q, 60)}%`; params.push(l, l, l); }
   return all(
@@ -288,11 +288,7 @@ route('GET', '/api/purchases/:id', 'buy', ({ params, user }) => {
   return p;
 });
 
-route('POST', '/api/purchases', 'buy', ({ body, user }) => tx(() => {
-  const loc = userLocation(user, body.location_id) || defaultWarehouseId();
-  location(loc);
-  const supplierId = toInt(body.supplier_id) || null;
-  if (supplierId) get('SELECT id FROM suppliers WHERE id = ?', supplierId) || fail(400, 'Unknown supplier');
+function purchaseItems(body) {
   const items = (Array.isArray(body.items) ? body.items : []).map((it) => {
     const p = get('SELECT * FROM products WHERE id = ?', toInt(it.product_id)) || fail(400, 'An item in the list no longer exists');
     const qty = toInt(it.qty);
@@ -303,26 +299,86 @@ route('POST', '/api/purchases', 'buy', ({ body, user }) => tx(() => {
     return { p, qty, cost, sale: it.sale_price === undefined || it.sale_price === '' ? null : toMoney(it.sale_price) };
   });
   if (!items.length) fail(400, 'Add at least one item');
+  return items;
+}
+const purchaseLine = (id, i) => run('INSERT INTO purchase_items(id, purchase_id, product_id, qty, cost, ordered_qty, planned_price) VALUES(?, ?, ?, ?, ?, ?, ?)', D.newId(), id, i.p.id, i.qty, i.cost, i.qty, i.sale);
+
+// A purchase: a draft (nothing happens yet), an order (confirmed with the supplier; stock only when it arrives)
+// or goods that arrived now (stock is added at once).
+route('POST', '/api/purchases', 'buy', ({ body, user }) => tx(() => {
+  const loc = userLocation(user, body.location_id) || defaultWarehouseId();
+  location(loc);
+  const supplierId = toInt(body.supplier_id) || null;
+  if (supplierId) get('SELECT id FROM suppliers WHERE id = ?', supplierId) || fail(400, 'Unknown supplier');
+  const items = purchaseItems(body);
   const total = round2(items.reduce((a, i) => a + i.qty * i.cost, 0));
   const qty = items.reduce((a, i) => a + i.qty, 0);
-  const order = !!body.order; // a purchase order: nothing is in stock until the goods arrive (see /receive)
+  const status = body.draft ? 'draft' : body.order ? 'ordered' : 'done';
+  const order = status !== 'done';
   const paid = order ? 0 : Math.max(0, toMoney(body.paid));
   const no = D.deviceNo('P-', 'purchase');
   const id = D.newId();
   run(
     "INSERT INTO purchases(id, purchase_no, supplier_id, location_id, invoice_no, date, total, paid, total_qty, notes, status, expected_date, user_id, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     id, no, supplierId, loc, str(body.invoice_no, 60), isDate(body.date) ? body.date : today(), total, paid, qty, str(body.notes, 500),
-    order ? 'ordered' : 'done', order && isDate(body.expected_date) ? body.expected_date : null, user.id, now());
+    status, order && isDate(body.expected_date) ? body.expected_date : null, user.id, now());
   if (order) {
-    for (const i of items) run('INSERT INTO purchase_items(id, purchase_id, product_id, qty, cost, ordered_qty, planned_price) VALUES(?, ?, ?, ?, ?, ?, ?)', D.newId(), id, i.p.id, i.qty, i.cost, i.qty, i.sale);
-    return { id, purchase_no: no };
+    for (const i of items) purchaseLine(id, i);
+    return { id, purchase_no: no, status };
   }
   for (const i of items) {
     run('INSERT INTO purchase_items(id, purchase_id, product_id, qty, cost) VALUES(?, ?, ?, ?, ?)', D.newId(), id, i.p.id, i.qty, i.cost);
     D.moveStock(i.p.id, loc, i.qty, 'purchase', 'purchase', id, user.id, null);
     run('UPDATE products SET cost_price = ?, sale_price = COALESCE(?, sale_price), active = 1, updated_at = ? WHERE id = ?', i.cost, i.sale, now(), i.p.id);
   }
-  return { id, purchase_no: no };
+  return { id, purchase_no: no, status };
+}));
+
+const ownPurchase = (user, id) => {
+  const p = get('SELECT * FROM purchases WHERE id = ?', toInt(id)) || fail(404, 'Purchase not found');
+  if (!user.owner && p.location_id !== user.location_id) fail(403, 'This purchase is for another place');
+  return p;
+};
+
+// Change a draft: its supplier, dates, notes and lines (the lines are written again).
+route('PUT', '/api/purchases/:id', 'buy', ({ params, body, user }) => tx(() => {
+  const p = ownPurchase(user, params.id);
+  if (p.status !== 'draft') fail(400, 'Only a draft can be changed. Use Reset to draft first.');
+  const supplierId = toInt(body.supplier_id) || null;
+  if (supplierId) get('SELECT id FROM suppliers WHERE id = ?', supplierId) || fail(400, 'Unknown supplier');
+  const items = purchaseItems(body);
+  const loc = user.owner ? (toInt(body.location_id) || p.location_id) : p.location_id;
+  if (loc !== p.location_id) location(loc);
+  for (const l of all('SELECT id FROM purchase_items WHERE purchase_id = ?', p.id)) run('DELETE FROM purchase_items WHERE id = ?', l.id);
+  for (const i of items) purchaseLine(p.id, i);
+  run('UPDATE purchases SET supplier_id = ?, location_id = ?, invoice_no = ?, date = ?, expected_date = ?, notes = ?, total = ?, total_qty = ? WHERE id = ?',
+    supplierId, loc, str(body.invoice_no, 60), isDate(body.date) ? body.date : p.date, isDate(body.expected_date) ? body.expected_date : null, str(body.notes, 500),
+    round2(items.reduce((a, i) => a + i.qty * i.cost, 0)), items.reduce((a, i) => a + i.qty, 0), p.id);
+  return { id: p.id, purchase_no: p.purchase_no, status: 'draft' };
+}));
+
+// Draft → confirmed order (sent to the supplier). Stock still comes only when the goods arrive.
+route('POST', '/api/purchases/:id/confirm', 'buy', ({ params, user }) => tx(() => {
+  const p = ownPurchase(user, params.id);
+  if (p.status !== 'draft') fail(400, 'This purchase is not a draft');
+  if (!get('SELECT 1 FROM purchase_items WHERE purchase_id = ?', p.id)) fail(400, 'Add at least one item');
+  run("UPDATE purchases SET status = 'ordered' WHERE id = ?", p.id);
+}));
+
+// Back to draft. A confirmed order: by whoever may buy there. Received goods: only the owner, and the pieces come
+// out of stock again (they go back in when it is received again).
+route('POST', '/api/purchases/:id/reset', 'buy', ({ params, user }) => tx(() => {
+  const p = ownPurchase(user, params.id);
+  if (p.status === 'draft') fail(400, 'This is already a draft');
+  if (p.status === 'void') fail(400, 'This purchase was cancelled');
+  if (p.status === 'done') {
+    if (!user.owner) fail(403, 'Only the owner can reset a purchase whose goods arrived');
+    for (const l of all('SELECT * FROM purchase_items WHERE purchase_id = ?', p.id)) {
+      if (l.qty) D.moveStock(l.product_id, p.location_id, -l.qty, 'void', 'purchase', p.id, user.id, 'Reset to draft');
+      if (l.ordered_qty == null) run('UPDATE purchase_items SET ordered_qty = ? WHERE id = ?', l.qty, l.id);
+    }
+  }
+  run("UPDATE purchases SET status = 'draft', received_at = NULL WHERE id = ?", p.id);
 }));
 
 // The goods of a purchase order arrived: count them, and only now the pieces are added to stock.
@@ -331,6 +387,7 @@ route('POST', '/api/purchases/:id/receive', 'buy', ({ params, body, user }) => t
   const p = get('SELECT * FROM purchases WHERE id = ?', id) || fail(404, 'Purchase order not found');
   if (!user.owner && p.location_id !== user.location_id) fail(403, 'This order is for another place');
   if (p.status === 'done') fail(400, 'This order was already received');
+  if (p.status === 'draft') fail(400, 'This is still a draft: confirm the order first');
   if (p.status !== 'ordered') fail(400, 'This order was cancelled');
   const counted = new Map((Array.isArray(body.items) ? body.items : []).map((i) => [toInt(i.id), i]));
   let total = 0, got = 0;
@@ -360,8 +417,8 @@ route('POST', '/api/purchases/:id/cancel-order', 'buy', ({ params, body, user })
   const id = toInt(params.id);
   const p = get('SELECT * FROM purchases WHERE id = ?', id) || fail(404, 'Purchase order not found');
   if (!user.owner && p.location_id !== user.location_id) fail(403, 'This order is for another place');
-  if (p.status !== 'ordered') fail(400, 'Only an order that has not arrived can be cancelled this way');
-  run("UPDATE purchases SET status = 'void', notes = TRIM(IFNULL(notes, '') || ' [Order cancelled: ' || ? || ']') WHERE id = ?", str(body.reason, 200), id);
+  if (!['ordered', 'draft'].includes(p.status)) fail(400, 'Only a draft or an order that has not arrived can be cancelled this way');
+  run("UPDATE purchases SET status = 'void', notes = TRIM(IFNULL(notes, '') || ' [' || ? || ': ' || ? || ']') WHERE id = ?", p.status === 'draft' ? 'Draft cancelled' : 'Order cancelled', str(body.reason, 200), id);
 }));
 
 route('POST', '/api/purchases/:id/void', 'owner', ({ params, body, user }) => tx(() => {
@@ -382,7 +439,7 @@ function canSeeDispatch(user, d) {
 route('GET', '/api/dispatches', 'any', ({ query, user }) => {
   const where = ['1 = 1'], params = [];
   if (query.status) { where.push('d.status = ?'); params.push(query.status); }
-  if (!user.owner) { where.push('(d.from_location_id = ? OR d.to_location_id = ?)'); params.push(user.location_id, user.location_id); }
+  if (!user.owner) { where.push("(d.from_location_id = ? OR (d.to_location_id = ? AND d.status <> 'draft'))"); params.push(user.location_id, user.location_id); }
   if (query.direction === 'incoming' && !user.owner) { where.push('d.to_location_id = ?'); params.push(user.location_id); }
   if (query.direction === 'outgoing' && !user.owner) { where.push('d.from_location_id = ?'); params.push(user.location_id); }
   if (toInt(query.location_id)) { where.push('(d.from_location_id = ? OR d.to_location_id = ?)'); params.push(toInt(query.location_id), toInt(query.location_id)); }
@@ -400,7 +457,7 @@ route('GET', '/api/dispatches/:id', 'any', ({ params, user }) => {
     `SELECT d.*, f.name AS from_name, t.name AS to_name, u.name AS created_by_name, r.name AS received_by_name
      FROM dispatches d JOIN locations f ON f.id = d.from_location_id JOIN locations t ON t.id = d.to_location_id
      LEFT JOIN users u ON u.id = d.created_by LEFT JOIN users r ON r.id = d.received_by WHERE d.id = ?`, id) || fail(404, 'Dispatch not found');
-  if (!canSeeDispatch(user, d)) fail(403, 'This dispatch is not for your shop');
+  if (!canSeeDispatch(user, d) || (d.status === 'draft' && !user.owner && d.from_location_id !== user.location_id)) fail(403, 'This dispatch is not for your shop');
   d.items = all(
     `SELECT i.*, p.name, p.size, p.color, p.barcode, p.category FROM dispatch_items i JOIN products p ON p.id = i.product_id
      WHERE i.dispatch_id = ? ORDER BY p.name, p.color, i.id`, id);
@@ -408,14 +465,14 @@ route('GET', '/api/dispatches/:id', 'any', ({ params, user }) => {
   return d;
 });
 
-route('POST', '/api/dispatches', 'send', ({ body, user }) => tx(() => {
-  const from = userLocation(user, body.from_location_id) || defaultWarehouseId();
-  const to = toInt(body.to_location_id);
-  location(from);
+function dispatchTo(from, to) {
   const toLoc = location(to);
   if (!toLoc.active) fail(400, `${toLoc.name} is switched off`);
   if (from === to) fail(400, 'Choose a different destination');
-  // combine repeated scans of the same item into one line
+  return toLoc;
+}
+// the lines of a dispatch (repeated scans of the same item become one line)
+function dispatchLines(body) {
   const merged = new Map();
   for (const it of Array.isArray(body.items) ? body.items : []) {
     const pid = toInt(it.product_id), qty = toInt(it.qty);
@@ -424,33 +481,92 @@ route('POST', '/api/dispatches', 'send', ({ body, user }) => tx(() => {
     merged.set(pid, (merged.get(pid) || 0) + qty);
   }
   if (!merged.size) fail(400, 'Add at least one item');
-  const lines = [];
-  const shortages = [];
-  for (const [pid, qty] of merged) {
-    const p = get('SELECT * FROM products WHERE id = ?', pid) || fail(400, 'An item in the list no longer exists');
-    const have = D.stockQty(pid, from);
-    if (qty > have) shortages.push({ name: label(p), barcode: p.barcode, want: qty, have });
-    lines.push({ p, qty });
-  }
-  if (shortages.length && !body.force) fail(409, 'Not enough stock for some items', { shortages });
+  return [...merged].map(([pid, qty]) => ({ p: get('SELECT * FROM products WHERE id = ?', pid) || fail(400, 'An item in the list no longer exists'), qty }));
+}
+function checkShortages(lines, from, force) {
+  const shortages = lines.filter((l) => l.qty > D.stockQty(l.p.id, from)).map((l) => ({ name: label(l.p), barcode: l.p.barcode, want: l.qty, have: D.stockQty(l.p.id, from) }));
+  if (shortages.length && !force) fail(409, 'Not enough stock for some items', { shortages });
+}
+const dispatchTotals = (lines) => [lines.reduce((a, l) => a + l.qty, 0), round2(lines.reduce((a, l) => a + l.qty * l.p.sale_price, 0))];
+
+// A new dispatch: a draft (nothing leaves yet) or sent now (the pieces leave stock at once).
+route('POST', '/api/dispatches', 'send', ({ body, user }) => tx(() => {
+  const from = userLocation(user, body.from_location_id) || defaultWarehouseId();
+  const to = toInt(body.to_location_id);
+  location(from);
+  const toLoc = dispatchTo(from, to);
+  const lines = dispatchLines(body);
+  const draft = !!body.draft;
+  if (!draft) checkShortages(lines, from, body.force);
   const no = D.deviceNo('D-', 'dispatch');
-  const totalQty = lines.reduce((a, l) => a + l.qty, 0);
-  const totalValue = round2(lines.reduce((a, l) => a + l.qty * l.p.sale_price, 0));
+  const [totalQty, totalValue] = dispatchTotals(lines);
   const id = D.newId();
   run(
-    'INSERT INTO dispatches(id, dispatch_no, from_location_id, to_location_id, total_qty, total_value, notes, created_by, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    id, no, from, to, totalQty, totalValue, str(body.notes, 500), user.id, now());
+    'INSERT INTO dispatches(id, dispatch_no, from_location_id, to_location_id, status, total_qty, total_value, notes, created_by, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    id, no, from, to, draft ? 'draft' : 'in_transit', totalQty, totalValue, str(body.notes, 500), user.id, now());
   for (const l of lines) {
     run('INSERT INTO dispatch_items(id, dispatch_id, product_id, qty, price, cost) VALUES(?, ?, ?, ?, ?, ?)', D.newId(), id, l.p.id, l.qty, l.p.sale_price, l.p.cost_price);
-    D.moveStock(l.p.id, from, -l.qty, 'dispatch_out', 'dispatch', id, user.id, `Sent to ${toLoc.name}`);
+    if (!draft) D.moveStock(l.p.id, from, -l.qty, 'dispatch_out', 'dispatch', id, user.id, `Sent to ${toLoc.name}`);
   }
-  return { id, dispatch_no: no };
+  return { id, dispatch_no: no, status: draft ? 'draft' : 'in_transit' };
+}));
+
+const ownDispatch = (user, id) => {
+  const d = get('SELECT * FROM dispatches WHERE id = ?', toInt(id)) || fail(404, 'Dispatch not found');
+  if (!user.owner && user.location_id !== d.from_location_id) fail(403, 'Only the sending place can change this dispatch');
+  return d;
+};
+
+// Change a draft dispatch: where it goes, the note and the lines.
+route('PUT', '/api/dispatches/:id', 'send', ({ params, body, user }) => tx(() => {
+  const d = ownDispatch(user, params.id);
+  if (d.status !== 'draft') fail(400, 'Only a draft can be changed. Use Reset to draft first.');
+  const to = toInt(body.to_location_id) || d.to_location_id;
+  dispatchTo(d.from_location_id, to);
+  const lines = dispatchLines(body);
+  const [totalQty, totalValue] = dispatchTotals(lines);
+  for (const l of all('SELECT id FROM dispatch_items WHERE dispatch_id = ?', d.id)) run('DELETE FROM dispatch_items WHERE id = ?', l.id);
+  for (const l of lines) run('INSERT INTO dispatch_items(id, dispatch_id, product_id, qty, price, cost) VALUES(?, ?, ?, ?, ?, ?)', D.newId(), d.id, l.p.id, l.qty, l.p.sale_price, l.p.cost_price);
+  run('UPDATE dispatches SET to_location_id = ?, notes = ?, total_qty = ?, total_value = ? WHERE id = ?', to, str(body.notes, 500), totalQty, totalValue, d.id);
+  return { id: d.id, dispatch_no: d.dispatch_no, status: 'draft' };
+}));
+
+// Draft → sent: the pieces leave stock now and the other place sees it under Receive stock.
+route('POST', '/api/dispatches/:id/send', 'send', ({ params, body, user }) => tx(() => {
+  const d = ownDispatch(user, params.id);
+  if (d.status !== 'draft') fail(400, 'This dispatch is not a draft');
+  const toLoc = dispatchTo(d.from_location_id, d.to_location_id);
+  const items = all('SELECT * FROM dispatch_items WHERE dispatch_id = ?', d.id);
+  const lines = items.map((i) => ({ i, p: get('SELECT * FROM products WHERE id = ?', i.product_id), qty: i.qty }));
+  if (!lines.length) fail(400, 'Add at least one item');
+  checkShortages(lines, d.from_location_id, body.force);
+  // today's prices, first (the lines can only change while it is still a draft)
+  for (const l of lines) if (l.i.price !== l.p.sale_price) run('UPDATE dispatch_items SET price = ? WHERE id = ?', l.p.sale_price, l.i.id);
+  for (const l of lines) D.moveStock(l.p.id, d.from_location_id, -l.qty, 'dispatch_out', 'dispatch', d.id, user.id, `Sent to ${toLoc.name}`);
+  run("UPDATE dispatches SET status = 'in_transit', total_value = ?, created_at = ? WHERE id = ?", dispatchTotals(lines)[1], now(), d.id);
+  return { id: d.id, dispatch_no: d.dispatch_no };
+}));
+
+// Back to draft. On the way: by the sender, the pieces go back into the sender's stock. Already received: only the
+// owner; the pieces leave the receiving place and go back to the sender.
+route('POST', '/api/dispatches/:id/reset', 'send', ({ params, user }) => tx(() => {
+  const d = ownDispatch(user, params.id);
+  if (d.status === 'draft') fail(400, 'This is already a draft');
+  if (d.status === 'cancelled') fail(400, 'This dispatch was cancelled');
+  if (d.status === 'received' && !user.owner) fail(403, 'Only the owner can reset a dispatch that was received');
+  for (const i of all('SELECT * FROM dispatch_items WHERE dispatch_id = ?', d.id)) {
+    if (d.status === 'received' && i.received_qty) D.moveStock(i.product_id, d.to_location_id, -i.received_qty, 'void', 'dispatch', d.id, user.id, 'Reset to draft');
+    D.moveStock(i.product_id, d.from_location_id, i.qty, 'void', 'dispatch', d.id, user.id, 'Reset to draft');
+    if (i.received_qty !== null) run('UPDATE dispatch_items SET received_qty = NULL WHERE id = ?', i.id);
+  }
+  run("UPDATE dispatches SET status = 'draft', received_qty = NULL, received_by = NULL, received_at = NULL WHERE id = ?", d.id);
 }));
 
 route('POST', '/api/dispatches/:id/receive', 'receive', ({ params, body, user }) => tx(() => {
   const id = toInt(params.id);
   const d = get('SELECT * FROM dispatches WHERE id = ?', id) || fail(404, 'Dispatch not found');
   if (!user.owner && user.location_id !== d.to_location_id) fail(403, 'Only the receiving place can receive this dispatch');
+  if (d.status === 'draft') fail(400, 'This dispatch has not been sent yet');
   if (d.status !== 'in_transit') fail(400, 'This dispatch was already ' + (d.status === 'received' ? 'received' : 'cancelled'));
   const counted = new Map((Array.isArray(body.items) ? body.items : []).map((i) => [toInt(i.id), Math.max(0, toInt(i.received_qty))]));
   const fromLoc = location(d.from_location_id);
@@ -469,6 +585,7 @@ route('POST', '/api/dispatches/:id/cancel', 'send', ({ params, user }) => tx(() 
   const id = toInt(params.id);
   const d = get('SELECT * FROM dispatches WHERE id = ?', id) || fail(404, 'Dispatch not found');
   if (!user.owner && user.location_id !== d.from_location_id) fail(403, 'Only the sender can cancel this dispatch');
+  if (d.status === 'draft') { run("UPDATE dispatches SET status = 'cancelled' WHERE id = ?", id); return; } // nothing had moved
   if (d.status !== 'in_transit') fail(400, 'Only dispatches that are still on the way can be cancelled');
   for (const i of all('SELECT * FROM dispatch_items WHERE dispatch_id = ?', id)) {
     D.moveStock(i.product_id, d.from_location_id, i.qty, 'void', 'dispatch', id, user.id, 'Dispatch cancelled');

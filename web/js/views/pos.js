@@ -34,6 +34,8 @@ View('pos', {
           ${canReturn ? '<a href="#" id="retBtn">↩ Return or exchange</a>' : ''}
           ${canDiscount ? '<a href="#" id="discLink">% Discount</a>' : ''}
           <a href="#" id="custLink">👤 Customer</a>
+          <a href="#" id="holdBtn">⏸ Hold bill</a>
+          <a href="#" id="heldBtn" class="hidden">Held bills (<span id="heldN">0</span>)</a>
           <a href="#" id="clearBtn" class="muted">Clear</a>
         </div>
       </section>
@@ -169,6 +171,50 @@ View('pos', {
     link('#retBtn', toggleRet);
     link('#discLink', () => { S.showDisc = true; renderTotals(); $('#disc', el).focus(); });
     link('#custLink', () => { S.showCust = true; renderTotals(); $('#cname', el).focus(); });
+    // Hold: park this bill (the customer went to try something on), serve the next one, open it again later.
+    const heldHere = () => HeldBills.all().filter((h) => h.loc === locId);
+    const paintHeld = () => { const n = heldHere().length; $('#heldN', el).textContent = n; $('#heldBtn', el).classList.toggle('hidden', !n); };
+    const setInputs = () => { el.querySelector('#disc').value = S.discount || ''; el.querySelector('#paid').value = S.paid || ''; el.querySelector('#cname').value = S.cname || ''; el.querySelector('#cphone').value = S.cphone || ''; };
+    const holdCurrent = () => { HeldBills.add(locId, S); S = blank(); setInputs(); renderCart(); paintHeld(); };
+    const openHeld = (id) => {
+      const h = HeldBills.take(id);
+      if (!h) return;
+      if (S.items.length) holdCurrent(); // (the bill on the screen is held, not lost)
+      S = { ...blank(), ...h.cart };
+      for (const l of S.items) { const p = ProductCache.list.find((x) => x.id === l.id); l.stock = p ? p.loc_qty : 0; }
+      setInputs(); renderCart(); paintHeld(); focusScan();
+    };
+    link('#holdBtn', () => {
+      if (!S.items.length) return toast('The bill is empty — nothing to hold', 'error');
+      holdCurrent();
+      toast('Bill held. Open it again from “Held bills”.');
+      focusScan();
+    });
+    link('#heldBtn', () => {
+      const list = heldHere();
+      const m = modal({
+        title: 'Held bills',
+        body: list.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>Held at</th><th>Items</th><th>Customer</th><th class="r">Total</th><th></th></tr></thead><tbody>
+          ${list.map((h) => `<tr><td>${esc(fmtTime(h.at) || h.at)}</td><td>${esc(h.cart.items.slice(0, 3).map((l) => l.name).join(', '))}${h.cart.items.length > 3 ? ' …' : ''} <span class="muted">(${h.cart.items.reduce((a, l) => a + l.qty, 0)} pcs)</span></td>
+            <td>${esc(h.cart.cname || '')}</td><td class="r"><b>${money(HeldBills.total(h.cart))}</b></td>
+            <td class="r nowrap"><button class="btn sm" data-del="${h.id}">Delete</button> <button class="btn sm primary" data-open="${h.id}">Open</button></td></tr>`).join('')}</tbody></table></div>`
+          : '<div class="empty">No held bills.</div>',
+        footer: '<button class="btn" data-close>Close</button>',
+        size: 'wide',
+      });
+      m.el.addEventListener('click', async (e) => {
+        const o = e.target.closest('[data-open]'), d = e.target.closest('[data-del]');
+        if (o) { m.close(); openHeld(Number(o.dataset.open)); }
+        if (d && (await confirmBox('Delete this held bill? Nothing was sold, so stock does not change.', { ok: 'Delete', danger: true }))) { HeldBills.take(Number(d.dataset.del)); m.close(); paintHeld(); }
+      });
+    });
+    paintHeld();
+    // a bill the owner reset to draft opens here by itself
+    try {
+      const want = Number(localStorage.getItem('vz_open_held'));
+      if (want) { localStorage.removeItem('vz_open_held'); ProductCache.load(locId).catch(() => {}).finally(() => openHeld(want)); }
+    } catch { /* storage off */ }
+
     $('#clearBtn', el).addEventListener('click', async (e) => {
       e.preventDefault();
       if (S.items.length && !(await confirmBox('Remove all items from this bill?', { ok: 'Clear bill', danger: true }))) return;

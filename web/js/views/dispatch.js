@@ -4,6 +4,7 @@ const isSender = () => isAdmin() || can('send');
 const isReceiver = () => !isAdmin() && can('receive');
 
 const DISPATCH_STATUS = {
+  draft: '<span class="pill blue">Draft</span>',
   in_transit: '<span class="pill warn">On the way</span>',
   received: '<span class="pill ok">Received</span>',
   cancelled: '<span class="pill red">Cancelled</span>',
@@ -17,7 +18,7 @@ View('dispatch', {
     setActions(isSender() ? `<a class="btn primary" href="#/dispatch/new">${icon('plus')} New dispatch order</a>` : '');
     el.innerHTML = `
       ${!isSender() ? '' : `<div class="tabs" id="tabs">
-        <a href="#" data-s="in_transit">On the way</a><a href="#" data-s="received">Received</a><a href="#" data-s="cancelled">Cancelled</a><a href="#" data-s="">All</a></div>`}
+        <a href="#" data-s="draft">Drafts</a><a href="#" data-s="in_transit">On the way</a><a href="#" data-s="received">Received</a><a href="#" data-s="cancelled">Cancelled</a><a href="#" data-s="">All</a></div>`}
       <div id="incoming"></div>
       <div class="card flush" id="list"><div class="loading">Loading…</div></div>`;
     async function load() {
@@ -34,7 +35,7 @@ View('dispatch', {
         ${rows.map((d) => `<tr class="click" data-id="${d.id}"><td><b>${esc(d.dispatch_no)}</b></td><td>${esc(fmtDT(d.created_at))}</td><td>${esc(d.from_name)}</td><td>${esc(d.to_name)}</td>
           <td class="r">${d.total_qty}</td><td class="r">${money(d.total_value)}</td><td>${DISPATCH_STATUS[d.status]}</td>
           <td>${d.status === 'received' ? `${esc(fmtDT(d.received_at))}${d.received_qty !== d.total_qty ? ` <span class="pill red">${d.received_qty} of ${d.total_qty}</span>` : ''}` : ''}</td></tr>`).join('')}
-        </tbody></table></div>` : `<div class="empty">${st.status === 'in_transit' ? 'Nothing is on the way right now.' : 'No dispatches yet.'}</div>`;
+        </tbody></table></div>` : `<div class="empty">${st.status === 'in_transit' ? 'Nothing is on the way right now.' : st.status === 'draft' ? 'No drafts. A <b>New dispatch order</b> can be saved as a draft first.' : 'No dispatches yet.'}</div>`;
     }
     $$('#tabs a', el).forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); st.status = a.dataset.s; load(); }));
     $('#list', el).addEventListener('click', (e) => { const r = e.target.closest('[data-id]'); if (r) go('dispatch/' + r.dataset.id); });
@@ -46,8 +47,25 @@ View('dispatch/new', {
   title: 'New dispatch order',
   nav: 'dispatch',
   allow: isSender,
-  async render({ el }) {
-    const draftKey = `vz_dispatch_${App.user.id}`;
+  render: ({ el }) => dispatchForm(el, {}),
+});
+
+// Change a draft dispatch (the same screen, filled in).
+View('dispatch/:id/edit', {
+  title: 'Draft dispatch',
+  nav: 'dispatch',
+  allow: isSender,
+  async render({ el, params }) {
+    const d = await GET('/api/dispatches/' + params.id);
+    if (d.status !== 'draft') return go('dispatch/' + d.id);
+    return dispatchForm(el, { edit: d });
+  },
+});
+
+async function dispatchForm(el, { edit = null }) {
+  {
+    if (edit) setTitle(`Draft ${edit.dispatch_no}`);
+    const draftKey = edit ? null : `vz_dispatch_${App.user.id}`;
     const fromList = isAdmin() ? App.locations.filter((l) => l.active) : App.locations.filter((l) => l.id === App.user.location_id);
     const blank = () => {
       const from = isAdmin() ? (warehouses()[0] || fromList[0])?.id : App.user.location_id;
@@ -56,13 +74,14 @@ View('dispatch/new', {
       return { from, to, notes: '', lines: [] };
     };
     let S;
-    try { S = { ...blank(), ...JSON.parse(localStorage.getItem(draftKey) || 'null') }; } catch { S = blank(); }
+    if (edit) S = { from: edit.from_location_id, to: edit.to_location_id, notes: edit.notes || '', lines: edit.items.map((i) => ({ product_id: i.product_id, name: i.name, size: i.size, color: i.color, barcode: i.barcode, price: i.price, stock: 0, qty: i.qty })) };
+    else try { S = { ...blank(), ...JSON.parse(localStorage.getItem(draftKey) || 'null') }; } catch { S = blank(); }
     if (!isAdmin()) S.from = App.user.location_id;
-    const save = () => { try { localStorage.setItem(draftKey, JSON.stringify(S)); } catch { /* ignore */ } };
-    setActions(`<a class="btn" href="#/dispatch">← Back</a>`);
+    const save = () => { if (draftKey) try { localStorage.setItem(draftKey, JSON.stringify(S)); } catch { /* ignore */ } };
+    setActions(edit ? `<a class="btn" href="#/dispatch/${edit.id}">← Back to the draft</a>` : `<a class="btn" href="#/dispatch">← Back</a>`);
     el.innerHTML = `
       <div class="card"><div class="form-grid three">
-        <label class="field">From<select class="input" id="from" ${fromList.length < 2 ? 'disabled' : ''}>${options(fromList, S.from)}</select></label>
+        <label class="field">From<select class="input" id="from" ${fromList.length < 2 || edit ? 'disabled' : ''}>${options(fromList, S.from)}</select></label>
         <label class="field">To<select class="input" id="to"></select></label>
         <label class="field">Note (optional)<input class="input" id="notes" value="${esc(S.notes)}" placeholder="e.g. driver name, bag count"></label>
       </div></div>
@@ -72,7 +91,8 @@ View('dispatch/new', {
         <div id="lines" style="margin-top:14px"></div>
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;align-items:center;flex-wrap:wrap">
           <div class="muted" id="sumTxt" style="margin-right:auto"></div>
-          <button class="btn ghost" id="clr">Clear</button>
+          ${edit ? '' : '<button class="btn ghost" id="clr">Clear</button>'}
+          <button class="btn lg" id="draftBtn">Save draft</button>
           <button class="btn ok lg" id="send">${icon('truck')} Send dispatch</button>
         </div>
       </div>`;
@@ -132,14 +152,15 @@ View('dispatch/new', {
       else S.lines[+e.target.dataset.q].qty = n;
       renderLines();
     });
-    $('#clr', el).addEventListener('click', async () => {
+    $('#clr', el)?.addEventListener('click', async () => {
       if (!(await confirmBox('Clear this dispatch and start again?', { ok: 'Clear', danger: true }))) return;
-      localStorage.removeItem(draftKey); router();
+      if (draftKey) localStorage.removeItem(draftKey); router();
     });
     const send = $('#send', el);
     async function submit(force) {
       const body = { from_location_id: S.from, to_location_id: S.to, notes: S.notes, force, items: S.lines.map((l) => ({ product_id: l.product_id, qty: l.qty })) };
       try {
+        if (edit) { await PUT('/api/dispatches/' + edit.id, body); return await POST(`/api/dispatches/${edit.id}/send`, { force }); }
         return await POST('/api/dispatches', body);
       } catch (e) {
         if (e.status === 409 && e.data?.shortages) {
@@ -156,14 +177,25 @@ View('dispatch/new', {
       if (!(await looksRight('dispatch', { items: S.lines.map((l) => ({ product_id: l.product_id, qty: l.qty })) }))) return;
       const r = await submit(false);
       if (!r) return;
-      localStorage.removeItem(draftKey);
+      if (draftKey) localStorage.removeItem(draftKey);
       ProductCache.invalidate();
       toast(`Dispatch ${r.dispatch_no} sent`);
       go(`dispatch/${r.id}?new=1`);
     }));
+    // Save draft: nothing leaves stock and the other place does not see it yet
+    const db = $('#draftBtn', el);
+    db.addEventListener('click', () => busy(db, async () => {
+      if (!S.lines.length) throw new Error('Add at least one item');
+      if (!S.to) throw new Error('Choose where to send it');
+      const body = { from_location_id: S.from, to_location_id: S.to, notes: S.notes, items: S.lines.map((l) => ({ product_id: l.product_id, qty: l.qty })) };
+      const r = edit ? await PUT('/api/dispatches/' + edit.id, body) : await POST('/api/dispatches', { ...body, draft: true });
+      if (draftKey) localStorage.removeItem(draftKey);
+      toast(`Draft ${r.dispatch_no} saved — nothing has left ${locName(S.from)}`);
+      go(`dispatch/${r.id}?drafted=1`);
+    }));
     $('#scan', el).focus();
-  },
-});
+  }
+}
 
 View('dispatch/:id', {
   title: 'Dispatch',
@@ -171,12 +203,19 @@ View('dispatch/:id', {
   async render({ el, params, query }) {
     const d = await GET('/api/dispatches/' + params.id);
     setTitle(`Dispatch ${d.dispatch_no}`);
+    const sender = isAdmin() || (can('send') && App.user.location_id === d.from_location_id);
+    const draft = d.status === 'draft';
+    if (draft) setTitle(`Draft dispatch ${d.dispatch_no}`);
     const canReceive = d.status === 'in_transit' && (isAdmin() || (can('receive') && App.user.location_id === d.to_location_id));
-    const canCancel = d.status === 'in_transit' && (isAdmin() || (can('send') && App.user.location_id === d.from_location_id));
-    setActions(`<a class="btn" href="#/dispatch">← Back</a>${canCancel ? '<button class="btn danger" id="cancelBtn">Cancel dispatch</button>' : ''}
-      <button class="btn" id="printBtn">${icon('printer')} Print dispatch note</button>${canReceive ? `<a class="btn primary" href="#/dispatch/${d.id}/receive">Check & receive</a>` : ''}`);
+    const canCancel = (d.status === 'in_transit' || draft) && sender;
+    const canReset = (d.status === 'in_transit' && sender) || (d.status === 'received' && isAdmin());
+    setActions(`<a class="btn" href="#/dispatch">← Back</a>${canReset ? '<button class="btn" id="resetBtn">↺ Reset to draft</button>' : ''}${canCancel ? `<button class="btn danger" id="cancelBtn">${draft ? 'Cancel draft' : 'Cancel dispatch'}</button>` : ''}
+      ${draft ? '' : `<button class="btn" id="printBtn">${icon('printer')} Print dispatch note</button>`}${canReceive ? `<a class="btn primary" href="#/dispatch/${d.id}/receive">Check & receive</a>` : ''}
+      ${draft && sender ? `<a class="btn" href="#/dispatch/${d.id}/edit">${icon('file')} Edit</a><button class="btn ok" id="sendBtn">${icon('truck')} Send now</button>` : ''}`);
     const diff = d.items.filter((i) => i.received_qty !== null && i.received_qty !== i.qty);
     el.innerHTML = `
+      ${flowBar(['Draft', 'On the way', 'Received'], { draft: 'Draft', in_transit: 'On the way', received: 'Received' }[d.status], { cancelled: d.status === 'cancelled' })}
+      ${query.drafted ? `<div class="alert info">✓ Draft saved. <b>Nothing has left ${esc(d.from_name)}</b> and ${esc(d.to_name)} does not see it yet. <b>Edit</b> it, then press <b>Send now</b>.</div>` : draft ? '<div class="alert info">This is a <b>draft</b>: nothing has been sent yet.</div>' : ''}
       ${query.new ? `<div class="alert ok">✓ Sent. ${d.total_qty} pieces left ${esc(d.from_name)} and are now "on the way". ${esc(d.to_name)} will see it under <b>Receive stock</b>. Print the dispatch note and send it with the parcel.</div>` : ''}
       ${diff.length ? `<div class="alert danger">⚠ ${diff.length} item${diff.length > 1 ? 's' : ''} did not match: ${d.received_qty} pieces received out of ${d.total_qty} sent.</div>` : ''}
       <div class="card"><dl class="kv">
@@ -190,11 +229,33 @@ View('dispatch/:id', {
         ${d.items.map((i) => `<tr><td><b>${esc(i.name)}</b> <span class="muted">${esc(variantText(i))}</span></td><td class="mono">${esc(i.barcode)}</td><td class="r">${i.qty}</td>
           ${d.status === 'received' ? `<td class="r ${i.received_qty !== i.qty ? 'negq' : ''}">${i.received_qty}</td>` : ''}<td class="r">${money(i.price)}</td><td class="r">${money(i.qty * i.price)}</td></tr>`).join('')}
       </tbody></table></div></div>`;
-    $('#printBtn').addEventListener('click', () => printDispatch(d));
+    $('#printBtn')?.addEventListener('click', () => printDispatch(d));
+    const sb = $('#sendBtn');
+    if (sb) sb.addEventListener('click', () => busy(sb, async () => {
+      if (!(await looksRight('dispatch', { items: d.items.map((i) => ({ product_id: i.product_id, qty: i.qty })) }))) return;
+      let r;
+      try { r = await POST(`/api/dispatches/${d.id}/send`, {}); } catch (e) {
+        if (!(e.status === 409 && e.data?.shortages)) throw e;
+        const list = e.data.shortages.map((x) => `• ${x.name}: sending ${x.want}, stock shows ${x.have}`).join('\n');
+        if (!(await confirmBox(`The stock count is lower than what you are sending:\n\n${list}\n\nSend anyway?`, { title: 'Not enough stock', ok: 'Send anyway', danger: true }))) return;
+        r = await POST(`/api/dispatches/${d.id}/send`, { force: true });
+      }
+      ProductCache.invalidate();
+      toast(`Dispatch ${r.dispatch_no} sent`);
+      go(`dispatch/${d.id}?new=1`);
+    }));
+    const rb = $('#resetBtn');
+    if (rb) rb.addEventListener('click', async () => {
+      const msg = d.status === 'received'
+        ? `Reset ${d.dispatch_no} to draft?\n\n${d.to_name} already received it: the ${d.received_qty} pieces come OUT of ${d.to_name}'s stock and go back to ${d.from_name}.`
+        : `Reset ${d.dispatch_no} to draft?\n\nThe ${d.total_qty} pieces go back into stock at ${d.from_name}, and ${d.to_name} no longer sees it. You can change it and send it again.`;
+      if (!(await confirmBox(msg, { title: 'Reset to draft', ok: 'Reset to draft', danger: d.status === 'received' }))) return;
+      await busy(rb, async () => { await POST(`/api/dispatches/${d.id}/reset`); ProductCache.invalidate(); toast(`${d.dispatch_no} is a draft again`); go(`dispatch/${d.id}`); router(); });
+    });
     if (query.new && !App.practice) setTimeout(() => printDispatch(d), 300);
     const c = $('#cancelBtn');
     if (c) c.addEventListener('click', async () => {
-      if (!(await confirmBox(`Cancel ${d.dispatch_no}? The ${d.total_qty} pieces go back into stock at ${d.from_name}.`, { ok: 'Cancel dispatch', danger: true }))) return;
+      if (!(await confirmBox(draft ? `Cancel draft ${d.dispatch_no}? Nothing was sent, so stock does not change.` : `Cancel ${d.dispatch_no}? The ${d.total_qty} pieces go back into stock at ${d.from_name}.`, { ok: draft ? 'Cancel draft' : 'Cancel dispatch', danger: true }))) return;
       await busy(c, async () => { await POST(`/api/dispatches/${d.id}/cancel`); toast('Dispatch cancelled'); router(); });
     });
   },

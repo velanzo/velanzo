@@ -22,10 +22,24 @@ async function showBill(id, onChange) {
         <tr><td colspan="4" class="r">${s.total < 0 ? 'Refund' : 'Total'}</td><td class="r">${money(Math.abs(s.total))}</td>${showProfit ? '<td></td>' : ''}</tr>
         ${s.change_due ? `<tr><td colspan="4" class="r muted">Cash received ${money(s.paid)} · change</td><td class="r">${money(s.change_due)}</td>${showProfit ? '<td></td>' : ''}</tr>` : ''}
       </tfoot></table></div>`,
-    footer: `${(isAdmin() || can('void_bills')) && s.status === 'done' ? '<button class="btn danger left" id="bVoid">Cancel this bill</button>' : ''}
+    footer: `${(isAdmin() || can('void_bills')) && s.status === 'done' ? '<button class="btn danger left" id="bVoid">Cancel this bill</button>' : ''}${isAdmin() && s.status === 'done' ? '<button class="btn" id="bReset">↺ Reset to draft</button>' : ''}
       <button class="btn" data-close>Close</button><button class="btn primary" id="bPrint">${icon('printer')} Print bill</button>`,
   });
   m.$('#bPrint').addEventListener('click', () => printBill(s));
+  const rs = m.$('#bReset');
+  if (rs) rs.addEventListener('click', async () => {
+    if (!(await confirmBox(`Reset bill ${s.bill_no} to draft?\n\nThe bill is cancelled and its pieces go back into stock. It opens in the sale screen as a held bill so you can change it and finish it again (it gets a new bill number).`, { title: 'Reset bill to draft', ok: 'Reset to draft' }))) return;
+    await busy(rs, async () => {
+      const back = await POST(`/api/sales/${s.id}/reset`);
+      const lines = s.items.map((i) => ({ id: i.product_id, name: i.name, size: i.size, color: i.color, barcode: i.barcode, price: i.price, qty: Math.abs(i.qty), ret: i.qty < 0, stock: 0 }));
+      const h = HeldBills.add(back.location_id, { items: lines, ret: false, discount: back.discount ? String(back.discount) : '', discType: 'amt', method: back.payment_method || 'cash', paid: '', cname: back.customer_name || '', cphone: back.customer_phone || '', showDisc: !!back.discount, showCust: !!(back.customer_name || back.customer_phone) });
+      try { localStorage.setItem('vz_pos_loc', back.location_id); localStorage.setItem('vz_open_held', String(h.id)); } catch { /* storage off */ }
+      ProductCache.invalidate();
+      m.close();
+      toast(`Bill ${s.bill_no} is a draft again — change it and press Done`);
+      go('pos');
+    });
+  });
   const v = m.$('#bVoid');
   if (v) v.addEventListener('click', async () => {
     const reason = await promptBox('Why is this bill being cancelled? Items will go back into stock.', { title: `Cancel bill ${s.bill_no}`, ok: 'Cancel bill', danger: true, placeholder: 'e.g. wrong items scanned' });

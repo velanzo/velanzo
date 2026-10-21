@@ -326,6 +326,95 @@ await wh.sync();
 const evilStatus = (await shop.rpc('push', { p_device: shopDev, p_user: ahmed.id, p_groups: [{ grp: 'evil-po-' + Math.random(), rows: [{ t: 'purchases', r: { ...(await db.query('select * from purchases where id = $1', [o3.id])).rows[0], status: 'done' } }] }] })).results[0];
 ok(!evilStatus.ok, 'a shop cannot receive the warehouse order: ' + evilStatus.error);
 
+// ---------- Drafts: purchase orders and dispatches start as a draft; reset to draft ----------
+{
+  const h0 = await stockOf(wh, WH, henley.id);
+  const dr = await wh.call('POST', '/api/purchases', { draft: true, supplier_id: sup.id, location_id: WH, items: [{ product_id: henley.id, qty: 3, cost: 800 }, { product_id: km.id, qty: 2, cost: 1000 }] });
+  ok(dr.status === 'draft' && await stockOf(wh, WH, henley.id) === h0, 'a draft purchase moves no stock');
+  r = await wh.sync();
+  ok(r.refused === 0 && (await db.query('select status from purchases where id = $1', [dr.id])).rows[0].status === 'draft', 'the draft reaches the cloud');
+  await wh.call('PUT', '/api/purchases/' + dr.id, { supplier_id: sup.id, invoice_no: 'Q-1', items: [{ product_id: henley.id, qty: 6, cost: 810 }] });
+  r = await wh.sync();
+  const cl = (await db.query('select qty, cost from purchase_items where purchase_id = $1', [dr.id])).rows;
+  ok(r.refused === 0 && cl.length === 1 && cl[0].qty === 6 && Number(cl[0].cost) === 810, 'changing a draft (one line taken out, one changed) reaches the cloud: ' + JSON.stringify(r.refusedMessages));
+  await wh.call('POST', `/api/purchases/${dr.id}/confirm`);
+  await wh.call('POST', `/api/purchases/${dr.id}/reset`);
+  r = await wh.sync();
+  ok(r.refused === 0 && (await db.query('select status from purchases where id = $1', [dr.id])).rows[0].status === 'draft', 'confirmed, then reset to draft: the cloud agrees');
+  await wh.call('POST', `/api/purchases/${dr.id}/confirm`);
+  const ln = (await wh.call('GET', '/api/purchases/' + dr.id)).items;
+  await wh.call('POST', `/api/purchases/${dr.id}/receive`, { items: ln.map((l) => ({ id: l.id, qty: l.qty })) });
+  ok(await stockOf(wh, WH, henley.id) === h0 + 6, 'confirmed and received: +6 in stock');
+  await assert.rejects(wh.call('POST', `/api/purchases/${dr.id}/reset`), /Only the owner/); checks++;
+  r = await wh.sync();
+  ok(r.refused === 0 && await cloudStock(WH, henley.id) === h0 + 6, 'the cloud has the received draft: ' + JSON.stringify(r.refusedMessages) + ' cloud ' + await cloudStock(WH, henley.id) + ' h0 ' + h0);
+  const evil = await wh.rpc('push', { p_device: whDev, p_user: bilal.id, p_groups: [{ grp: 'evil-reset-' + Math.random(), rows: [{ t: 'purchases', r: { ...(await db.query('select * from purchases where id = $1', [dr.id])).rows[0], status: 'draft', rev: undefined, synced_at: undefined } }] }] });
+  ok(!evil.results[0].ok && (await db.query('select status from purchases where id = $1', [dr.id])).rows[0].status === 'done', 'a tampered warehouse app cannot reset received goods: ' + evil.results[0].error);
+  await owner.sync();
+  await owner.call('POST', `/api/purchases/${dr.id}/reset`);
+  r = await owner.sync();
+  ok(r.refused === 0 && await cloudStock(WH, henley.id) === h0 && (await db.query('select status from purchases where id = $1', [dr.id])).rows[0].status === 'draft', 'the owner resets received goods: the 6 pieces leave stock again, everywhere');
+  await wh.sync();
+  ok(await stockOf(wh, WH, henley.id) === h0 && (await wh.call('GET', '/api/purchases/' + dr.id)).status === 'draft', 'the warehouse sees it back as a draft');
+  await wh.call('PUT', '/api/purchases/' + dr.id, { supplier_id: sup.id, items: [{ product_id: henley.id, qty: 5, cost: 810 }] });
+  r = await wh.sync();
+  ok(r.refused === 0, 'and can change it again');
+
+  // a direct purchase (no order) reset by the owner becomes an editable draft too
+  const dp = await wh.call('POST', '/api/purchases', { location_id: WH, items: [{ product_id: kl.id, qty: 4, cost: 1000 }] });
+  await wh.sync(); await owner.sync();
+  await owner.call('POST', `/api/purchases/${dp.id}/reset`);
+  r = await owner.sync();
+  ok(r.refused === 0 && (await db.query('select ordered_qty from purchase_items where purchase_id = $1', [dp.id])).rows[0].ordered_qty === 4, 'goods that arrived without an order: the owner resets them to an editable draft');
+  await wh.sync();
+  await wh.call('PUT', '/api/purchases/' + dp.id, { location_id: WH, items: [{ product_id: kl.id, qty: 3, cost: 1000 }] });
+  r = await wh.sync();
+  ok(r.refused === 0 && (await db.query('select qty from purchase_items where purchase_id = $1', [dp.id])).rows[0].qty === 3, 'the warehouse can change that draft');
+
+  // dispatches
+  const m0 = await stockOf(wh, WH, km.id), s0 = await cloudStock(S1, km.id);
+  const dd = await wh.call('POST', '/api/dispatches', { draft: true, from_location_id: WH, to_location_id: S1, items: [{ product_id: km.id, qty: 2 }] });
+  ok(dd.status === 'draft' && await stockOf(wh, WH, km.id) === m0, 'a draft dispatch moves no stock');
+  r = await wh.sync(); await shop.sync();
+  ok(r.refused === 0 && !(await shop.call('GET', '/api/dispatches', null, {})).some((d) => d.id === dd.id) && await shop.status('GET', '/api/dispatches/' + dd.id) === 403, 'the shop does not see a draft parcel');
+  await wh.call('PUT', '/api/dispatches/' + dd.id, { to_location_id: S1, items: [{ product_id: km.id, qty: 3 }, { product_id: kl.id, qty: 1 }] });
+  r = await wh.sync();
+  ok(r.refused === 0 && (await db.query('select count(*)::int n from dispatch_items where dispatch_id = $1', [dd.id])).rows[0].n === 2, 'changing a draft parcel reaches the cloud: ' + JSON.stringify(r.refusedMessages));
+  await wh.call('POST', `/api/dispatches/${dd.id}/send`, { force: true });
+  ok(await stockOf(wh, WH, km.id) === m0 - 3, 'sent: the pieces leave the warehouse');
+  await wh.call('POST', `/api/dispatches/${dd.id}/reset`);
+  ok(await stockOf(wh, WH, km.id) === m0, 'reset to draft while on the way: back in the warehouse');
+  await wh.call('POST', `/api/dispatches/${dd.id}/send`, { force: true });
+  r = await wh.sync();
+  ok(r.refused === 0 && await cloudStock(WH, km.id) === m0 - 3 && (await db.query('select status from dispatches where id = $1', [dd.id])).rows[0].status === 'in_transit', 'send, reset, send again: the cloud agrees');
+  await shop.sync();
+  const sd = await shop.call('GET', '/api/dispatches/' + dd.id);
+  await shop.call('POST', `/api/dispatches/${dd.id}/receive`, { items: sd.items.map((i) => ({ id: i.id, received_qty: i.qty })) });
+  r = await shop.sync();
+  ok(r.refused === 0 && await cloudStock(S1, km.id) === s0 + 3, 'the shop receives it');
+  await wh.sync();
+  await assert.rejects(wh.call('POST', `/api/dispatches/${dd.id}/reset`), /Only the owner/); checks++;
+  await owner.sync();
+  await owner.call('POST', `/api/dispatches/${dd.id}/reset`);
+  r = await owner.sync();
+  ok(r.refused === 0 && await cloudStock(S1, km.id) === s0 && await cloudStock(WH, km.id) === m0, 'the owner resets a received parcel: the shop gives the pieces back to the warehouse');
+  await shop.sync(); await wh.sync();
+  ok(await stockOf(shop, S1, km.id) === s0 && await stockOf(wh, WH, km.id) === m0 && (await wh.call('GET', '/api/dispatches/' + dd.id)).status === 'draft', 'both places agree, and it is a draft again');
+  await wh.call('POST', `/api/dispatches/${dd.id}/cancel`);
+  r = await wh.sync();
+  ok(r.refused === 0 && await stockOf(wh, WH, km.id) === m0, 'a draft parcel is cancelled without moving stock');
+
+  // the owner resets a bill: it is cancelled and its lines come back for a held bill
+  const k0 = await stockOf(shop, S1, kl.id);
+  const bill = await shop.call('POST', '/api/sales', { location_id: S1, items: [{ product_id: kl.id, qty: 1 }] });
+  await shop.sync(); await owner.sync();
+  await assert.rejects(shop.call('POST', `/api/sales/${bill.id}/reset`), /./); checks++;
+  const back = await owner.call('POST', `/api/sales/${bill.id}/reset`);
+  ok(back.items.length === 1 && back.items[0].product_id === kl.id && back.items[0].qty === 1, 'resetting a bill gives its lines back');
+  r = await owner.sync(); await shop.sync();
+  ok(r.refused === 0 && await stockOf(shop, S1, kl.id) === k0 && (await db.query('select status, void_reason from sales where id = $1', [bill.id])).rows[0].void_reason === 'Reset to draft', 'the bill is cancelled everywhere and the piece is back in the shop');
+}
+
 // ---------- User ID and password: the rules ----------
 await assert.rejects(owner.rpc('set_user_login', { p_user: ahmed.id, p_login: 'bilal', p_password: 'whatever1' }), /already taken/); checks++;
 await assert.rejects(owner.rpc('set_user_login', { p_user: ahmed.id, p_login: 'a b', p_password: 'whatever1' }), /3 to 30/); checks++;

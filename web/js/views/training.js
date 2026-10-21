@@ -247,7 +247,7 @@ const Guides = [
         text: 'Type how many pieces you ordered, for example <b>10</b>.',
         assist: { label: 'Type 10 for me', run: (h) => h.set('#lines [data-f=qty]', '10') } },
       { route: 'purchases/new', title: 'Save the order', target: '#saveBtn', side: 'top', done: () => /^purchases\/\d+$/.test(path()),
-        text: 'Click <b>Save purchase order</b>. <b>Nothing is added to stock</b> — the shirts are not here yet.' },
+        text: 'Click <b>Confirm order</b> (or <b>Save draft</b> to finish it later). <b>Nothing is added to stock</b> — the shirts are not here yet.' },
       { route: /^purchases\/\d+$/, title: 'Ten days later…', target: '.alert .btn.primary', side: 'bottom', done: () => /\/receive$/.test(path()),
         text: 'The order waits here, marked <b>On order</b>. When the parcel arrives, open the order and click <b>Receive stock</b>. (In this practice we jump ahead ten days.)' },
       { route: /^purchases\/\d+\/receive$/, title: 'Count what arrived', target: '#lines [data-q]', side: 'top',

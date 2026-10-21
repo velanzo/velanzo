@@ -285,6 +285,14 @@ label.field > .input, label.field > select, label.field > textarea, label.field 
 .age-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: #f0f0f7; gap: 2px; }
 .age-bar span { display: block; height: 100%; }
 
+/* ---------- Draft → Confirmed → Done ---------- */
+.flow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+.flow span { padding: 6px 14px; border-radius: 999px; background: #eef0f6; color: #6b7088; font-weight: 700; font-size: 13.5px; }
+.flow span.done { background: var(--ok-soft); color: var(--ok); }
+.flow span.on { background: var(--accent); color: #fff; }
+.flow span.on.bad { background: var(--danger); }
+.flow i { font-style: normal; color: #b4b9c6; font-weight: 700; }
+
 /* ---------- Reports: things to check ---------- */
 .check-row { display: flex; gap: 14px; align-items: flex-start; padding: 12px 20px; border-top: 1px solid var(--line); }
 .check-row.click { cursor: pointer; }

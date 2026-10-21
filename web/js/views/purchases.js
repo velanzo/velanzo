@@ -26,11 +26,12 @@ View('purchases', {
   async render({ el, query }) {
     const st = { from: rangePresets().month[1], to: todayStr(), q: '', tab: query.tab || 'all' };
     setActions(`<a class="btn" href="#/purchases/new">Stock arrived (no order)</a><a class="btn primary" href="#/purchases/new?order=1">${icon('plus')} New purchase order</a>`);
-    el.innerHTML = `<div class="tabs" id="tabs"><a href="#" data-t="all">All</a><a href="#" data-t="ordered">On order</a><a href="#" data-t="done">Received</a></div>
+    el.innerHTML = `<div class="tabs" id="tabs"><a href="#" data-t="all">All</a><a href="#" data-t="draft">Drafts</a><a href="#" data-t="ordered">On order</a><a href="#" data-t="done">Received</a></div>
       <div id="due"></div>
       <div class="toolbar" id="bar">${rangeBarHtml(st)}<input class="input search" id="q" placeholder="Search purchase no., supplier or invoice no."></div>
       <div class="card flush" id="list"><div class="loading">Loading…</div></div>`;
     const status = (r) => {
+      if (r.status === 'draft') return '<span class="pill blue">Draft</span>';
       if (r.status === 'ordered') {
         const late = r.expected_date && r.expected_date < todayStr();
         return `<span class="pill ${late ? 'red' : 'warn'}">On order</span> <span class="muted small">${r.expected_date ? (late ? 'was due ' : 'due ') + esc(fmtDate(r.expected_date)) : 'no date'}</span>`;
@@ -38,26 +39,27 @@ View('purchases', {
       return r.status === 'void' ? '<span class="pill red">cancelled</span>' : '<span class="pill ok">Received</span>';
     };
     async function load() {
-      const [rows, ordered] = await Promise.all([GET('/api/purchases', { ...st, tab: undefined }), GET('/api/purchases', { status: 'ordered' })]);
+      const [rows, ordered, drafts] = await Promise.all([GET('/api/purchases', { ...st, tab: undefined }), GET('/api/purchases', { status: 'ordered' }), GET('/api/purchases', { status: 'draft' })]);
       if (!el.isConnected) return;
       $$('[data-preset]', el).forEach((b) => { const [, f, t] = rangePresets()[b.dataset.preset]; b.classList.toggle('on', st.from === f && st.to === t); });
       $('[data-range=from]', el).value = st.from; $('[data-range=to]', el).value = st.to;
       $$('#tabs a', el).forEach((a) => {
         a.classList.toggle('active', a.dataset.t === st.tab);
         if (a.dataset.t === 'ordered') a.textContent = `On order${ordered.length ? ` (${ordered.length})` : ''}`;
+        if (a.dataset.t === 'draft') a.textContent = `Drafts${drafts.length ? ` (${drafts.length})` : ''}`;
       });
-      $('#bar', el).classList.toggle('hidden', st.tab === 'ordered');
+      $('#bar', el).classList.toggle('hidden', st.tab === 'ordered' || st.tab === 'draft');
       const late = ordered.filter((o) => o.expected_date && o.expected_date < todayStr());
       $('#due', el).innerHTML = ordered.length && st.tab !== 'ordered'
         ? `<div class="alert ${late.length ? 'danger' : 'info'} flex">📦 <div class="grow"><b>${ordered.length} order${ordered.length > 1 ? 's' : ''} waiting for goods</b>${late.length ? ` — ${late.length} late` : ''}.</div><a class="btn" href="#/purchases?tab=ordered" data-t-link="ordered">Show them</a></div>` : '';
-      const rest = rows.filter((r) => r.status !== 'ordered');
-      const shown = st.tab === 'ordered' ? ordered : st.tab === 'done' ? rest.filter((r) => r.status === 'done') : [...ordered, ...rest];
+      const rest = rows.filter((r) => r.status !== 'ordered' && r.status !== 'draft');
+      const shown = st.tab === 'draft' ? drafts : st.tab === 'ordered' ? ordered : st.tab === 'done' ? rest.filter((r) => r.status === 'done') : [...drafts, ...ordered, ...rest];
       const done = rest.filter((r) => r.status === 'done');
       $('#list', el).innerHTML = shown.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>No.</th><th>Date</th><th>Supplier</th><th>Status</th><th>Supplier invoice</th><th>Goes to</th><th class="r">Pieces</th><th class="r">Amount</th><th class="r">Paid</th></tr></thead><tbody>
         ${shown.map((r) => `<tr class="click${r.status === 'void' ? ' void' : ''}" data-id="${r.id}"><td><b>${esc(r.purchase_no)}</b></td><td>${esc(fmtDate(r.date))}</td><td>${esc(r.supplier_name || '—')}</td><td>${status(r)}</td><td>${esc(r.invoice_no || '')}</td><td>${esc(r.location_name)}</td>
-          <td class="r">${r.total_qty}</td><td class="r"><b>${money(r.total)}</b></td><td class="r">${r.status === 'ordered' ? '—' : money(r.paid)}</td></tr>`).join('')}
-        </tbody>${st.tab === 'ordered' ? '' : `<tfoot><tr><td colspan="6">Received (${done.length} purchases)</td><td class="r">${done.reduce((a, r) => a + r.total_qty, 0)}</td><td class="r">${money(done.reduce((a, r) => a + r.total, 0))}</td><td class="r">${money(done.reduce((a, r) => a + r.paid, 0))}</td></tr></tfoot>`}</table></div>`
-        : `<div class="empty">${st.tab === 'ordered' ? 'No orders are waiting for goods.' : 'Nothing in this period. Click <b>New purchase order</b> when you order stock from a supplier.'}</div>`;
+          <td class="r">${r.total_qty}</td><td class="r"><b>${money(r.total)}</b></td><td class="r">${r.status === 'ordered' || r.status === 'draft' ? '—' : money(r.paid)}</td></tr>`).join('')}
+        </tbody>${st.tab === 'ordered' || st.tab === 'draft' ? '' : `<tfoot><tr><td colspan="6">Received (${done.length} purchases)</td><td class="r">${done.reduce((a, r) => a + r.total_qty, 0)}</td><td class="r">${money(done.reduce((a, r) => a + r.total, 0))}</td><td class="r">${money(done.reduce((a, r) => a + r.paid, 0))}</td></tr></tfoot>`}</table></div>`
+        : `<div class="empty">${st.tab === 'draft' ? 'No drafts. A <b>New purchase order</b> can be saved as a draft first.' : st.tab === 'ordered' ? 'No orders are waiting for goods.' : 'Nothing in this period. Click <b>New purchase order</b> when you order stock from a supplier.'}</div>`;
     }
     bindRangeBar(el, st, load);
     $$('#tabs a', el).forEach((a) => a.addEventListener('click', (e) => { e.preventDefault(); st.tab = a.dataset.t; load(); }));
@@ -73,17 +75,38 @@ View('purchases/new', {
   title: 'Stock arrived',
   nav: 'purchases',
   allow: () => can('buy'),
-  async render({ el, query }) {
-    const order = query.order === '1'; // a purchase order: nothing is added to stock until the goods arrive
-    if (order) setTitle('New purchase order');
-    const draftKey = `vz_purchase_${App.user.id}${order ? '_order' : ''}`;
+  render: ({ el, query }) => purchaseForm(el, { order: query.order === '1' }),
+});
+
+// Change a draft purchase order (the same screen, filled in).
+View('purchases/:id/edit', {
+  title: 'Draft purchase order',
+  nav: 'purchases',
+  allow: () => can('buy'),
+  async render({ el, params }) {
+    const p = await GET('/api/purchases/' + params.id);
+    if (p.status !== 'draft') return go('purchases/' + p.id);
+    return purchaseForm(el, { order: true, edit: p });
+  },
+});
+
+// order: a purchase order (nothing is added to stock until the goods arrive). edit: the draft being changed.
+async function purchaseForm(el, { order, edit = null }) {
+  {
+    if (edit) setTitle(`Draft ${edit.purchase_no}`); else if (order) setTitle('New purchase order');
+    const draftKey = edit ? null : `vz_purchase_${App.user.id}${order ? '_order' : ''}`;
     const blank = () => ({ supplier_id: '', invoice_no: '', date: todayStr(), location_id: isAdmin() ? warehouses()[0]?.id || '' : App.user.location_id, paid: '', notes: '', expected_date: '', lines: [] });
     let S;
-    try { S = { ...blank(), ...JSON.parse(localStorage.getItem(draftKey) || 'null') }; } catch { S = blank(); }
-    const save = () => { try { localStorage.setItem(draftKey, JSON.stringify(S)); } catch { /* ignore */ } };
+    if (edit) {
+      S = { supplier_id: edit.supplier_id || '', invoice_no: edit.invoice_no || '', date: edit.date, location_id: edit.location_id, paid: '', notes: edit.notes || '', expected_date: edit.expected_date || '',
+        lines: edit.items.map((i) => ({ product_id: i.product_id, name: i.name, size: i.size, color: i.color, barcode: i.barcode, qty: i.qty, cost: i.cost, sale_price: i.planned_price ?? i.sale_price })) };
+    } else {
+      try { S = { ...blank(), ...JSON.parse(localStorage.getItem(draftKey) || 'null') }; } catch { S = blank(); }
+    }
+    const save = () => { if (draftKey) try { localStorage.setItem(draftKey, JSON.stringify(S)); } catch { /* ignore */ } };
     let suppliers = await GET('/api/suppliers');
     const locs = isAdmin() ? App.locations.filter((l) => l.active) : App.locations.filter((l) => l.id === App.user.location_id);
-    setActions(`<a class="btn" href="#/purchases">← Purchases</a>`);
+    setActions(edit ? `<a class="btn" href="#/purchases/${edit.id}">← Back to the draft</a>` : `<a class="btn" href="#/purchases">← Purchases</a>`);
     el.innerHTML = `
       ${order ? '<div class="alert info">Order what you need from the supplier. <b>Nothing is added to stock now.</b> New items can be made right here (<b>New item</b>) — Velanzo gives each one its barcode. When the goods arrive, open this order and press <b>Receive stock</b>, count them, and print the labels.</div>' : ''}
       <div class="card"><div class="form-grid four">
@@ -107,8 +130,9 @@ View('purchases/new', {
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;align-items:center">
         <div class="muted" id="sumTxt" style="margin-right:auto"></div>
-        <button class="btn ghost" id="clr">Clear</button>
-        <button class="btn ok lg" id="saveBtn">${order ? '✓ Save purchase order' : '✓ Save purchase & add to stock'}</button>
+        ${edit ? '' : '<button class="btn ghost" id="clr">Clear</button>'}
+        ${order ? '<button class="btn lg" id="draftBtn">Save draft</button>' : ''}
+        <button class="btn ok lg" id="saveBtn">${order ? '✓ Confirm order' : '✓ Save purchase & add to stock'}</button>
       </div></div>`;
 
     function renderSup() {
@@ -164,31 +188,45 @@ View('purchases/new', {
     });
     $('#lines', el).addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) { S.lines.splice(+b.dataset.rm, 1); renderLines(); } });
     $('#lines', el).addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.dataset.i !== undefined) { e.preventDefault(); $('#scan', el).focus(); } });
-    $('#clr', el).addEventListener('click', async () => {
+    $('#clr', el)?.addEventListener('click', async () => {
       if (!(await confirmBox('Clear this purchase and start again?', { ok: 'Clear', danger: true }))) return;
       localStorage.removeItem(draftKey);
       router();
     });
-    const sb = $('#saveBtn', el);
-    sb.addEventListener('click', () => busy(sb, async () => {
+    const bodyOf = () => {
       if (!S.lines.length) throw new Error('Add at least one item');
       const bad = S.lines.find((l) => !(parseInt(l.qty, 10) > 0));
       if (bad) throw new Error(`Enter the quantity for ${bad.name}`);
       const huge = S.lines.find((l) => parseInt(l.qty, 10) > 10000);
       if (huge) throw new Error(`Quantity ${huge.qty} for ${huge.name} looks wrong — please check it`);
-      const body = {
+      return {
         supplier_id: S.supplier_id, invoice_no: S.invoice_no, date: S.date, location_id: S.location_id, paid: S.paid, notes: S.notes, order, expected_date: S.expected_date,
         items: S.lines.map((l) => ({ product_id: l.product_id, qty: l.qty, cost: l.cost, sale_price: l.sale_price })),
       };
+    };
+    const forget = () => { if (draftKey) localStorage.removeItem(draftKey); };
+    // Save draft: nothing is ordered and nothing moves; it can be changed until it is confirmed
+    const db = $('#draftBtn', el);
+    if (db) db.addEventListener('click', () => busy(db, async () => {
+      const body = bodyOf();
+      const r = edit ? await PUT('/api/purchases/' + edit.id, body) : await POST('/api/purchases', { ...body, draft: true });
+      forget();
+      toast(`Draft ${r.purchase_no} saved — nothing is ordered yet`);
+      go(`purchases/${r.id}?drafted=1`);
+    }));
+    const sb = $('#saveBtn', el);
+    sb.addEventListener('click', () => busy(sb, async () => {
+      const body = bodyOf();
       if (!(await looksRight('purchase', body))) return;
-      const r = await POST('/api/purchases', body);
-      localStorage.removeItem(draftKey);
+      let r;
+      if (edit) { r = await PUT('/api/purchases/' + edit.id, body); await POST(`/api/purchases/${edit.id}/confirm`); } else r = await POST('/api/purchases', body);
+      forget();
       ProductCache.invalidate();
-      toast(order ? `Purchase order ${r.purchase_no} saved — nothing is in stock until it arrives` : `Purchase ${r.purchase_no} saved — stock added`);
+      toast(order ? `Purchase order ${r.purchase_no} confirmed — nothing is in stock until it arrives` : `Purchase ${r.purchase_no} saved — stock added`);
       go(order ? `purchases/${r.id}?placed=1` : `purchases/${r.id}?new=1`);
     }));
-  },
-});
+  }
+}
 
 View('purchases/:id', {
   title: 'Purchase',
@@ -196,10 +234,15 @@ View('purchases/:id', {
   allow: () => can('buy'),
   async render({ el, params, query }) {
     const p = await GET('/api/purchases/' + params.id);
-    const ordered = p.status === 'ordered';
-    setTitle(`${ordered ? 'Purchase order' : 'Purchase'} ${p.purchase_no}`);
-    setActions(`<a class="btn" href="#/purchases">← Purchase</a>${ordered ? '<button class="btn danger" id="cancelOrder">Cancel order</button>' : (isAdmin() && p.status === 'done' ? '<button class="btn danger" id="voidBtn">Cancel purchase</button>' : '')}${ordered ? `<a class="btn primary" href="#/purchases/${p.id}/receive">${icon('inbox')} Receive stock</a>` : `<button class="btn primary" id="lblBtn">${icon('printer')} Print barcode labels</button>`}`);
+    const ordered = p.status === 'ordered', draft = p.status === 'draft';
+    const wasOrder = draft || ordered || p.items.some((i) => i.ordered_qty != null);
+    setTitle(`${draft ? 'Draft purchase order' : ordered ? 'Purchase order' : 'Purchase'} ${p.purchase_no}`);
+    const resetBtn = ordered || (p.status === 'done' && isAdmin()) ? '<button class="btn" id="resetBtn">↺ Reset to draft</button>' : '';
+    setActions(`<a class="btn" href="#/purchases">← Purchase</a>${resetBtn}${draft ? '<button class="btn danger" id="cancelOrder">Cancel draft</button>' : ordered ? '<button class="btn danger" id="cancelOrder">Cancel order</button>' : (isAdmin() && p.status === 'done' ? '<button class="btn danger" id="voidBtn">Cancel purchase</button>' : '')}${draft ? `<a class="btn" href="#/purchases/${p.id}/edit">${icon('file')} Edit</a><button class="btn primary" id="confirmBtn">✓ Confirm order</button>` : ordered ? `<a class="btn primary" href="#/purchases/${p.id}/receive">${icon('inbox')} Receive stock</a>` : p.status === 'done' ? `<button class="btn primary" id="lblBtn">${icon('printer')} Print barcode labels</button>` : ''}`);
     el.innerHTML = `
+      ${wasOrder ? flowBar(['Draft', 'Confirmed', 'Received'], draft ? 'Draft' : ordered ? 'Confirmed' : 'Received', { cancelled: p.status === 'void' }) : ''}
+      ${query.drafted ? '<div class="alert info">✓ Draft saved. <b>Nothing is ordered and nothing is in stock.</b> Change it with <b>Edit</b>, then press <b>Confirm order</b> when you order from the supplier.</div>' : ''}
+      ${draft && !query.drafted ? '<div class="alert info">This is a <b>draft</b>: nothing is ordered yet. <b>Edit</b> it, then <b>Confirm order</b>.</div>' : ''}
       ${query.placed ? `<div class="alert ok">✓ Purchase order saved. <b>Nothing is in stock yet.</b> When the goods arrive, open this order and press <b>Receive stock</b>.</div>` : ''}
       ${query.arrived ? `<div class="alert ok">✓ Received. ${p.total_qty} pieces were added to ${esc(p.location_name)}${p.items.some((i) => i.ordered_qty != null && i.ordered_qty !== i.qty) ? ' (not everything arrived — see the numbers below)' : ''}. <b>Next step:</b> print the barcode labels and stick one on each piece.</div>` : ''}
       ${query.new ? `<div class="alert ok">✓ Saved. ${p.total_qty} pieces were added to ${esc(p.location_name)}. Next step: print barcode labels and stick them on the items.</div>` : ''}
@@ -207,9 +250,9 @@ View('purchases/:id', {
       ${p.status === 'void' ? '<div class="alert danger">This purchase was cancelled — its stock was removed again.</div>' : ''}
       <div class="card"><dl class="kv">
         <dt>Supplier</dt><dd>${p.supplier_id ? `<a href="#/suppliers/${p.supplier_id}">${esc(p.supplier_name)}</a>` : '—'} ${esc(p.supplier_phone || '')}</dd>
-        <dt>Supplier invoice</dt><dd>${esc(p.invoice_no || '—')}</dd><dt>Date</dt><dd>${esc(fmtDate(p.date))}</dd><dt>Received at</dt><dd>${esc(p.location_name)}</dd>
+        <dt>Supplier invoice</dt><dd>${esc(p.invoice_no || '—')}</dd><dt>Date</dt><dd>${esc(fmtDate(p.date))}</dd><dt>${p.status === 'done' ? 'Received at' : 'Goes to'}</dt><dd>${esc(p.location_name)}</dd>
         <dt>Entered by</dt><dd>${esc(p.user_name || '')} · ${esc(fmtDT(p.created_at))}</dd>
-        <dt>${ordered ? 'Order total' : 'Total'}</dt><dd><b>${money(p.total)}</b>${ordered ? '' : ` · paid now ${money(p.paid)}`}</dd>${p.notes ? `<dt>Notes</dt><dd>${esc(p.notes)}</dd>` : ''}</dl></div>
+        <dt>${ordered || draft ? 'Order total' : 'Total'}</dt><dd><b>${money(p.total)}</b>${ordered || draft ? '' : ` · paid now ${money(p.paid)}`}</dd>${p.notes ? `<dt>Notes</dt><dd>${esc(p.notes)}</dd>` : ''}</dl></div>
       <div class="card flush"><div class="table-wrap"><table class="tbl"><thead><tr><th>Item</th><th>Barcode</th><th class="r">Qty</th><th class="r">Cost</th><th class="r">Sale price now</th><th class="r">Amount</th></tr></thead><tbody>
         ${p.items.map((i) => `<tr class="click" data-pid="${i.product_id}"><td><b>${esc(i.name)}</b> <span class="muted">${esc(variantText(i))}</span></td><td class="mono">${esc(i.barcode)}</td><td class="r">${i.qty}${!ordered && i.ordered_qty != null && i.ordered_qty !== i.qty ? ` <span class="muted small">(ordered ${i.ordered_qty})</span>` : ''}</td><td class="r">${money(i.cost)}</td><td class="r">${money(i.sale_price)}</td><td class="r">${money(i.qty * i.cost)}</td></tr>`).join('')}
       </tbody><tfoot><tr><td colspan="2">Total</td><td class="r">${p.total_qty}</td><td></td><td></td><td class="r">${money(p.total)}</td></tr></tfoot></table></div></div>`;
@@ -219,11 +262,27 @@ View('purchases/:id', {
       addToLabelQueue(p.items.map((i) => ({ product: { id: i.product_id, name: i.name, size: i.size, color: i.color, barcode: i.barcode, sale_price: i.sale_price }, copies: i.qty })), true);
       go('labels');
     });
+    const cb = $('#confirmBtn');
+    if (cb) cb.addEventListener('click', () => busy(cb, async () => {
+      const body = { supplier_id: p.supplier_id, invoice_no: p.invoice_no, location_id: p.location_id, order: true, expected_date: p.expected_date, items: p.items.map((i) => ({ product_id: i.product_id, qty: i.qty, cost: i.cost, sale_price: i.planned_price ?? '' })) };
+      if (!(await looksRight('purchase', body))) return;
+      await POST(`/api/purchases/${p.id}/confirm`);
+      toast(`Order ${p.purchase_no} confirmed — nothing is in stock until it arrives`);
+      go(`purchases/${p.id}?placed=1`);
+    }));
+    const rb = $('#resetBtn');
+    if (rb) rb.addEventListener('click', async () => {
+      const msg = p.status === 'done'
+        ? `Reset ${p.purchase_no} to draft?\n\nThe goods were already received: the ${p.total_qty} pieces come OUT of stock at ${p.location_name} again. When you confirm and receive it again, they go back in.`
+        : `Reset order ${p.purchase_no} to draft?\n\nYou can then change it and confirm it again. Stock does not change.`;
+      if (!(await confirmBox(msg, { title: 'Reset to draft', ok: 'Reset to draft', danger: p.status === 'done' }))) return;
+      await busy(rb, async () => { await POST(`/api/purchases/${p.id}/reset`); ProductCache.invalidate(); toast(`${p.purchase_no} is a draft again`); go(`purchases/${p.id}`); router(); });
+    });
     const co = $('#cancelOrder');
     if (co) co.addEventListener('click', async () => {
-      const reason = await promptBox('Why is this order cancelled? (Nothing was in stock, so stock does not change.)', { title: `Cancel order ${p.purchase_no}`, ok: 'Cancel order', danger: true });
+      const reason = await promptBox(draft ? 'Why is this draft cancelled?' : 'Why is this order cancelled? (Nothing was in stock, so stock does not change.)', { title: `Cancel ${draft ? 'draft' : 'order'} ${p.purchase_no}`, ok: draft ? 'Cancel draft' : 'Cancel order', danger: true });
       if (reason === null) return;
-      await busy(co, async () => { await POST(`/api/purchases/${p.id}/cancel-order`, { reason }); toast('Order cancelled'); router(); });
+      await busy(co, async () => { await POST(`/api/purchases/${p.id}/cancel-order`, { reason }); toast(draft ? 'Draft cancelled' : 'Order cancelled'); router(); });
     });
     const v = $('#voidBtn');
     if (v) v.addEventListener('click', async () => {
