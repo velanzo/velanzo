@@ -27,9 +27,18 @@ export async function startCloud(dataDir) {
   const dir = path.join(ROOT, 'supabase', 'migrations');
   for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) {
     if ((await db.query('select 1 from dev_migrations where name = $1', [f])).rows.length) continue;
-    // one transaction: a file is either fully applied and recorded, or not at all (even if the preview is stopped suddenly)
+    // one transaction: a file is either fully applied and recorded, or not at all. A preview stopped suddenly can still
+    // lose the note that a file ran, so later files are made safe to run again (as in supabase/UPDATE-ALL.sql).
+    let sql = fs.readFileSync(path.join(dir, f), 'utf8').replace(/\r\n/g, '\n');
+    if (!fresh || f !== '20261016000000_velanzo.sql') {
+      sql = sql.replace(/^create table (?!if not exists)/gm, 'create table if not exists ')
+        .replace(/^create unique index (?!if not exists)/gm, 'create unique index if not exists ')
+        .replace(/^create index (?!if not exists)/gm, 'create index if not exists ')
+        .replace(/^create function /gm, 'create or replace function ')
+        .replace(/^(alter table \w+ add column) (?!if not exists)/gm, '$1 if not exists ');
+    }
     await db.exec(`begin;
-${fs.readFileSync(path.join(dir, f), 'utf8')}
+${sql}
 insert into dev_migrations values ('${f}');
 commit;`);
   }
