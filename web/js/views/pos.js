@@ -193,7 +193,7 @@ View('pos', {
       if (t.cashGiven !== null && t.total > 0 && t.cashGiven < t.total) { toast(`Cash received is less than the total (${money(t.total)})`, 'error'); return $('#paid', el).focus(); }
       completing = true;
       const btn = $('#doneBtn', el);
-      const sale = await busy(btn, () => POST('/api/sales', {
+      const body = {
         location_id: locId,
         items: S.items.map((l) => ({ product_id: l.id, qty: l.ret ? -l.qty : l.qty, price: l.price })),
         discount: t.disc,
@@ -201,7 +201,9 @@ View('pos', {
         paid: t.cashGiven ?? '',
         customer_name: S.cname,
         customer_phone: S.cphone,
-      }));
+      };
+      if (!(await looksRight('sale', body))) { completing = false; return focusScan(); }
+      const sale = await busy(btn, () => POST('/api/sales', body));
       completing = false;
       if (!sale) return;
       for (const i of sale.items) { const p = ProductCache.list.find((x) => x.id === i.product_id); if (p) p.loc_qty -= i.qty; }

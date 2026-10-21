@@ -259,6 +259,8 @@ export const DEFAULT_SETTINGS = {
   label_show_name: '1',
   dispatch_paper: 'a4',
   low_stock: '2',
+  warn_discount: '20',
+  warn_expense: '50000',
 };
 
 export function init(adapter) {

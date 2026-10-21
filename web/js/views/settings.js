@@ -54,6 +54,9 @@ const SETTINGS_RENDER = {
       <label class="field">Currency sign<input class="input" name="currency" value="${esc(S.currency)}" placeholder="Rs"></label>
       <label class="field full">Address<input class="input" name="business_address" value="${esc(S.business_address)}"><span class="hint">Each shop can also have its own address (Shops & warehouse) — that one is printed on its bills.</span></label>
       <label class="field">"Low stock" means this many or fewer<input class="input num" name="low_stock" value="${esc(S.low_stock)}" inputmode="numeric"></label>
+      <div class="full"><h3 style="margin:8px 0 2px">Warnings</h3><div class="hint" style="margin:0">Before saving something unusual, Velanzo asks "Please check this" (for example a price of ${esc(S.currency || 'Rs')} 0 or selling below cost). You decide when these two warn:</div></div>
+      <label class="field">Warn when a discount is more than (%)<input class="input num" name="warn_discount" value="${esc(S.warn_discount)}" inputmode="numeric"></label>
+      <label class="field">Warn when one expense is more than<input class="input num" name="warn_expense" value="${esc(S.warn_expense)}" inputmode="numeric"></label>
       <div class="full"><button class="btn primary">Save</button></div></form></div>`;
     $('#f', el).addEventListener('submit', async (e) => {
       e.preventDefault();

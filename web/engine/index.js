@@ -10,6 +10,8 @@ import './routes/inventory.js';
 import './routes/sales.js';
 import './routes/data.js';
 import './routes/activity.js';
+import './routes/reports.js';
+import './checks.js';
 
 export function init(adapter) { D.init(adapter); }
 

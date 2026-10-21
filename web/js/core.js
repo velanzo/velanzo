@@ -105,6 +105,29 @@ function confirmBox(message, { title = 'Please confirm', ok = 'Yes', danger = fa
   });
 }
 
+// Before saving: asks the engine what looks unusual (a price of Rs 0, selling below cost, a big discount …).
+// If anything does, shows it with "Go back" or "Continue anyway". Resolves true to go ahead.
+// (Nothing is blocked: the owner sees these afterwards in Reports → Things to check.)
+async function looksRight(kind, body) {
+  let warnings = [];
+  try { ({ warnings } = await POST('/api/check/' + kind, body)); } catch { return true; } // a check that fails never stops work
+  if (!warnings.length) return true;
+  return new Promise((resolve) => {
+    let answered = false;
+    const m = modal({
+      title: warnings.length === 1 ? 'Please check this' : `Please check these ${warnings.length} things`,
+      body: `<div class="warn-box"><div class="warn-icon">!</div><ul class="warn-list">${warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div>
+        <p class="muted small" style="margin:14px 0 0">If it is right, continue. The owner can see it later in Reports.</p>`,
+      footer: `<button class="btn" id="wGo">Continue anyway</button><button class="btn primary" id="wBack">Go back and fix</button>`,
+      onClose: () => { if (!answered) resolve(false); },
+    });
+    const answer = (v) => { answered = true; m.close(); resolve(v); };
+    m.$('#wBack').addEventListener('click', () => answer(false));
+    m.$('#wGo').addEventListener('click', () => answer(true));
+    setTimeout(() => m.$('#wBack')?.focus(), 40); // Enter (or a barcode scan) means "go back", never "continue"
+  });
+}
+
 function promptBox(message, { title = 'Please enter', ok = 'OK', value = '', placeholder = '', danger = false } = {}) {
   return new Promise((resolve) => {
     let answered = false;
@@ -211,10 +234,14 @@ function rangePresets() {
     week: ['Last 7 days', addDays(t, -6), t],
     month: ['This month', ms, t],
     last_month: ['Last month', lmEnd.slice(0, 8) + '01', lmEnd],
+    days90: ['Last 3 months', addDays(t, -89), t],
+    year: ['This year', t.slice(0, 4) + '-01-01', t],
   };
 }
-function rangeBarHtml(state) {
+// long: also "Last 3 months" and "This year" (for reports)
+function rangeBarHtml(state, { long = false } = {}) {
   const pre = rangePresets();
+  if (!long) { delete pre.days90; delete pre.year; }
   return `<div class="seg range-presets">${Object.entries(pre).map(([k, [label, f, t]]) =>
     `<button type="button" data-preset="${k}" class="${state.from === f && state.to === t ? 'on' : ''}">${label}</button>`).join('')}</div>
     <input type="date" class="input" data-range="from" value="${esc(state.from)}" title="From">

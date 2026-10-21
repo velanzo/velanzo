@@ -176,10 +176,12 @@ View('purchases/new', {
       if (bad) throw new Error(`Enter the quantity for ${bad.name}`);
       const huge = S.lines.find((l) => parseInt(l.qty, 10) > 10000);
       if (huge) throw new Error(`Quantity ${huge.qty} for ${huge.name} looks wrong — please check it`);
-      const r = await POST('/api/purchases', {
+      const body = {
         supplier_id: S.supplier_id, invoice_no: S.invoice_no, date: S.date, location_id: S.location_id, paid: S.paid, notes: S.notes, order, expected_date: S.expected_date,
         items: S.lines.map((l) => ({ product_id: l.product_id, qty: l.qty, cost: l.cost, sale_price: l.sale_price })),
-      });
+      };
+      if (!(await looksRight('purchase', body))) return;
+      const r = await POST('/api/purchases', body);
       localStorage.removeItem(draftKey);
       ProductCache.invalidate();
       toast(order ? `Purchase order ${r.purchase_no} saved — nothing is in stock until it arrives` : `Purchase ${r.purchase_no} saved — stock added`);
@@ -284,10 +286,12 @@ View('purchases/:id/receive', {
       if (!got) return toast('Type how many pieces arrived', 'error');
       if (got !== p.total_qty && !(await confirmBox(`You counted ${got} pieces but ${p.total_qty} were ordered.\nOnly ${got} will be added to stock; the order is then closed.\n\nContinue?`, { title: 'Not all arrived', ok: 'Yes, add what arrived', danger: true }))) return;
       await busy(ok, async () => {
-        await POST(`/api/purchases/${p.id}/receive`, {
+        const body = {
           invoice_no: $('#inv', el).value.trim(), paid: $('#paid', el).value, notes: $('#notes', el).value.trim(),
           items: p.items.map((i) => ({ id: i.id, qty: st.get(i.id).qty, cost: st.get(i.id).cost })),
-        });
+        };
+        if (!(await looksRight('receive', { ...body, id: p.id }))) return;
+        await POST(`/api/purchases/${p.id}/receive`, body);
         ProductCache.invalidate();
         toast(`${got} pieces added to stock`);
         go(`purchases/${p.id}?arrived=1`);

@@ -1,5 +1,5 @@
 'use strict';
-// Accounts: suppliers (what we owe), expenses, and the profit report.
+// Accounts: suppliers (what we owe) and expenses. (Reports are in reports.js.)
 
 View('suppliers', {
   title: 'Suppliers',
@@ -58,7 +58,7 @@ View('suppliers/:id', {
         footer: `<button class="btn" data-close>Cancel</button><button class="btn primary" id="pSave">Save payment</button>`,
       });
       const b = m.$('#pSave');
-      b.addEventListener('click', () => busy(b, async () => { await POST(`/api/suppliers/${s.id}/payments`, formValues(m.el)); toast('Payment saved'); m.close(); router(); }));
+      b.addEventListener('click', () => busy(b, async () => { const v = formValues(m.el); if (!(await looksRight('payment', { ...v, supplier_id: s.id }))) return; await POST(`/api/suppliers/${s.id}/payments`, v); toast('Payment saved'); m.close(); router(); }));
     });
   },
 });
@@ -99,7 +99,9 @@ View('expenses', {
       e.preventDefault();
       const b = e.target.querySelector('button');
       busy(b, async () => {
-        await POST('/api/expenses', formValues(e.target));
+        const v = formValues(e.target);
+        if (!(await looksRight('expense', v))) return;
+        await POST('/api/expenses', v);
         toast('Expense added');
         e.target.amount.value = ''; e.target.note.value = '';
         await load();
@@ -111,72 +113,6 @@ View('expenses', {
       if (!b || !(await confirmBox('Delete this expense?', { ok: 'Delete', danger: true }))) return;
       await busy(b, async () => { await DEL('/api/expenses/' + b.dataset.del); load(); });
     });
-    await load();
-  },
-});
-
-View('reports', {
-  title: 'Reports',
-  allow: () => isAdmin() || (can('reports') && can('see_cost')),
-  async render({ el }) {
-    const st = { from: rangePresets().month[1], to: todayStr(), loc: '' };
-    setActions(`<button class="btn" id="prBtn">${icon('printer')} Print</button>${isAdmin() ? `<button class="btn" id="xlBtn">${icon('download')} Excel (bill lines)</button>` : ''}`);
-    el.innerHTML = `<div class="toolbar no-print">${rangeBarHtml(st)}${isAdmin() ? `<select class="input" id="fLoc">${options(App.locations, '', { blank: 'Whole business' })}</select>` : ''}</div><div id="rep"><div class="loading">Loading…</div></div>`;
-    async function load() {
-      const r = await GET('/api/reports', { from: st.from, to: st.to, location_id: st.loc });
-      if (!el.isConnected) return;
-      $$('[data-preset]', el).forEach((b) => { const [, f, t] = rangePresets()[b.dataset.preset]; b.classList.toggle('on', st.from === f && st.to === t); });
-      $('[data-range=from]', el).value = st.from; $('[data-range=to]', el).value = st.to;
-      const s = r.summary;
-      const pct = (a, b) => (b ? ` <span class="muted small">(${Math.round((a / b) * 100)}%)</span>` : '');
-      $('#rep', el).innerHTML = `
-        <div class="muted" style="margin-bottom:10px">${esc(fmtDate(r.from))} – ${esc(fmtDate(r.to))} · ${esc(st.loc ? locName(st.loc) : 'Whole business')}</div>
-        <div class="stats">
-          <div class="card stat"><div class="label">Sales (after returns & discounts)</div><div class="value">${money(s.net_sales)}</div><div class="sub">${s.bills} bills · ${s.items_sold} pieces sold</div></div>
-          <div class="card stat"><div class="label">Cost of items sold</div><div class="value">${money(s.cogs)}</div></div>
-          <div class="card stat"><div class="label">Gross profit</div><div class="value">${money(s.gross_profit)}</div><div class="sub">${s.net_sales ? Math.round((s.gross_profit / s.net_sales) * 100) + '% margin' : '—'}</div></div>
-          <div class="card stat"><div class="label">Expenses</div><div class="value">${money(s.expenses)}</div></div>
-          <div class="card stat"><div class="label">Net profit</div><div class="value ${s.net_profit < 0 ? 'neg' : 'plus'}">${money(s.net_profit)}</div></div>
-        </div>
-        <div class="grid-2" style="margin-top:0">
-          <div class="card"><h3>Sales breakdown</h3><table class="tbl">
-            <tr><td>Items sold (before discount)</td><td class="r">${money(s.gross_sales)}</td></tr>
-            <tr><td>Customer returns</td><td class="r neg">− ${money(s.returns)} <span class="muted small">(${s.items_returned} pcs)</span></td></tr>
-            <tr><td>Discounts given</td><td class="r neg">− ${money(s.discounts)}</td></tr>
-            <tr><td><b>Net sales</b></td><td class="r"><b>${money(s.net_sales)}</b></td></tr>
-            <tr><td>Cost of those items</td><td class="r">− ${money(s.cogs)}</td></tr>
-            <tr><td><b>Gross profit</b></td><td class="r"><b>${money(s.gross_profit)}</b></td></tr>
-            <tr><td>Expenses</td><td class="r">− ${money(s.expenses)}</td></tr>
-            <tr><td><b>Net profit</b></td><td class="r"><b class="${s.net_profit < 0 ? 'neg' : ''}">${money(s.net_profit)}</b></td></tr></table></div>
-          <div class="card"><h3>Buying & payments</h3><table class="tbl">
-            <tr><td>Purchases from suppliers</td><td class="r">${money(r.purchases.total)} <span class="muted small">(${r.purchases.qty} pcs, ${r.purchases.n} bills)</span></td></tr>
-            <tr><td>Paid at time of purchase</td><td class="r">${money(r.purchases.paid_now)}</td></tr>
-            <tr><td>Supplier payments made later</td><td class="r">${money(r.purchases.paid_later)}</td></tr></table>
-            <h3 style="margin-top:18px">Payment methods</h3><table class="tbl">
-            ${r.by_method.map((m) => `<tr><td>${esc(METHOD_NAMES[m.method] || m.method)} <span class="muted small">(${m.bills} bills)</span></td><td class="r">${money(m.total)}${pct(m.total, s.net_sales)}</td></tr>`).join('') || '<tr><td class="muted">No sales</td></tr>'}</table></div>
-        </div>
-        ${r.by_location.length > 1 || !st.loc ? `<div class="card flush" style="margin-top:16px"><div style="padding:18px 18px 0"><h3>By shop</h3></div><div class="table-wrap"><table class="tbl"><thead><tr><th>Location</th><th class="r">Bills</th><th class="r">Pieces</th><th class="r">Net sales</th><th class="r">Gross profit</th><th class="r">Expenses</th><th class="r">Net profit</th></tr></thead><tbody>
-          ${r.by_location.map((l) => `<tr><td><b>${esc(l.name)}</b></td><td class="r">${l.bills}</td><td class="r">${l.items_sold}</td><td class="r">${money(l.net_sales)}</td><td class="r">${money(l.gross_profit)}</td><td class="r">${money(l.expenses)}</td><td class="r"><b>${money(l.net_profit)}</b></td></tr>`).join('') || '<tr><td colspan="7" class="muted">No activity</td></tr>'}
-          </tbody></table></div></div>` : ''}
-        <div class="grid-2">
-          <div class="card flush"><div style="padding:18px 18px 0"><h3>By category</h3></div><div class="table-wrap"><table class="tbl"><thead><tr><th>Category</th><th class="r">Pieces</th><th class="r">Sales</th><th class="r">Profit</th></tr></thead><tbody>
-            ${r.by_category.map((c) => `<tr><td>${esc(c.category)}</td><td class="r">${c.qty}</td><td class="r">${money(c.amount)}</td><td class="r">${money(c.profit)}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No sales</td></tr>'}
-            </tbody></table></div><div class="hint" style="padding:8px 18px 14px">Before bill discounts.</div></div>
-          <div class="card flush"><div style="padding:18px 18px 0"><h3>Expenses by type</h3></div><table class="tbl"><tbody>
-            ${r.expenses_by_category.map((c) => `<tr><td>${esc(c.category)}</td><td class="r">${money(c.amount)}</td></tr>`).join('') || '<tr><td class="muted">No expenses</td></tr>'}</tbody></table></div>
-        </div>
-        <div class="card flush" style="margin-top:16px"><div style="padding:18px 18px 0"><h3>Best sellers</h3></div><div class="table-wrap"><table class="tbl"><thead><tr><th>Item</th><th>Barcode</th><th class="r">Pieces</th><th class="r">Sales</th><th class="r">Profit</th></tr></thead><tbody>
-          ${r.top_products.map((p) => `<tr><td><b>${esc(p.name)}</b> <span class="muted">${esc(variantText(p))}</span></td><td class="mono small">${esc(p.barcode)}</td><td class="r">${p.qty}</td><td class="r">${money(p.amount)}</td><td class="r">${money(p.profit)}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No sales</td></tr>'}
-          </tbody></table></div></div>
-        <div class="card flush" style="margin-top:16px"><div style="padding:18px 18px 0"><h3>Day by day</h3></div><div class="table-wrap"><table class="tbl"><thead><tr><th>Date</th><th class="r">Bills</th><th class="r">Pieces</th><th class="r">Discount</th><th class="r">Sales</th><th class="r">Cost</th><th class="r">Gross profit</th><th class="r">Expenses</th><th class="r">Net</th></tr></thead><tbody>
-          ${r.daily.map((d) => `<tr><td>${esc(fmtDate(d.day))}</td><td class="r">${d.bills}</td><td class="r">${d.items}</td><td class="r">${money(d.discount)}</td><td class="r">${money(d.total)}</td><td class="r">${money(d.cogs)}</td><td class="r">${money(d.profit)}</td><td class="r">${money(d.expenses)}</td><td class="r"><b class="${d.net < 0 ? 'neg' : ''}">${money(d.net)}</b></td></tr>`).join('') || '<tr><td colspan="9" class="muted">Nothing in this period</td></tr>'}
-          </tbody></table></div></div>`;
-    }
-    bindRangeBar(el, st, load);
-    const fLoc = $('#fLoc', el);
-    if (fLoc) fLoc.addEventListener('change', (e) => { st.loc = e.target.value; load(); });
-    $('#prBtn').addEventListener('click', () => window.print());
-    if ($('#xlBtn')) $('#xlBtn').addEventListener('click', () => download(`/api/export/sale_items${qs({ from: st.from, to: st.to })}`));
     await load();
   },
 });

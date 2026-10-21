@@ -153,6 +153,7 @@ View('dispatch/new', {
     send.addEventListener('click', () => busy(send, async () => {
       if (!S.lines.length) throw new Error('Add at least one item');
       if (!S.to) throw new Error('Choose where to send it');
+      if (!(await looksRight('dispatch', { items: S.lines.map((l) => ({ product_id: l.product_id, qty: l.qty })) }))) return;
       const r = await submit(false);
       if (!r) return;
       localStorage.removeItem(draftKey);

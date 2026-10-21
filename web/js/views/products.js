@@ -77,6 +77,7 @@ async function openAddProduct({ forPurchase = false, onCreated } = {}) {
       name: v.name, category: v.category, cost_price: v.cost_price, sale_price: v.sale_price, opening_location_id: v.opening_location_id,
       variants: variants().map((x) => ({ size: x.size, color: x.color, ...(keep.get(x.key) || {}) })),
     };
+    if (!(await looksRight('product', body))) return;
     const created = await POST('/api/products', body);
     created.forEach((p) => { p.loc_qty = 0; ProductCache.add(p); });
     productMeta = null;
@@ -106,7 +107,9 @@ async function openEditProduct(p, onSaved) {
   });
   const save = m.$('#epSave');
   save.addEventListener('click', () => busy(save, async () => {
-    const out = await PUT('/api/products/' + p.id, formValues(m.el));
+    const body = formValues(m.el);
+    if (!(await looksRight('product', { ...body, id: p.id }))) return;
+    const out = await PUT('/api/products/' + p.id, body);
     ProductCache.invalidate();
     productMeta = null;
     toast('Item saved');
@@ -147,6 +150,7 @@ function openAdjust(p, locId, onDone) {
     const n = parseInt(v.qty, 10);
     if (!Number.isFinite(n) || n < 0) throw new Error('Enter a quantity (0 or more)');
     const body = { product_id: p.id, location_id: v.location_id, reason: v.reason, mode: v.mode === 'set' ? 'set' : 'add', qty: v.mode === 'remove' ? -n : n };
+    if (!(await looksRight('adjust', body))) return;
     const r = await POST('/api/stock/adjust', body);
     ProductCache.invalidate();
     toast(`Stock is now ${r.qty} (${r.change >= 0 ? '+' : ''}${r.change})`);

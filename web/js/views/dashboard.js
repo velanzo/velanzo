@@ -1,27 +1,24 @@
 'use strict';
 // The owner's home: today's numbers, every shop and the warehouse live, and the latest activity.
 
-function barsHtml(daily) {
-  const max = Math.max(1, ...daily.map((d) => d.total));
-  const t = todayStr();
-  return `<div class="bars">${daily.map((d) => `
-    <div class="bar-col${d.day === t ? ' today' : ''}${d.total ? '' : ' zero'}" title="${esc(fmtDate(d.day))}: ${esc(money(d.total))} (${d.bills} bills)">
-      <div class="bar" style="height:${Math.max(1, (d.total / max) * 100)}%"></div>
-      <div class="bar-label">${+d.day.slice(8)}</div>
-    </div>`).join('')}</div>`;
+// The last 14 days as bars, with the amount on hover.
+function salesChart(daily) {
+  return chart({ type: 'bars', height: 190, labels: daily.map((d) => fmtDate(d.day).replace(/ d{4}$/, '')), series: [{ name: 'Sales', values: daily.map((d) => d.total) }],
+    fmt: money, tip: (i) => [`${daily[i].bills} bills`] });
 }
 
 View('dashboard', {
   title: () => `Today, ${fmtDate(todayStr()).replace(/ \d{4}$/, '')}`,
   allow: isAdmin,
   async render({ el }) {
-    const [d, live] = await Promise.all([GET('/api/dashboard'), GET('/api/live')]);
+    const [d, live, chk] = await Promise.all([GET('/api/dashboard'), GET('/api/live'), GET('/api/reports/unusual', { from: todayStr().slice(0, 8) + '01', to: todayStr() }).catch(() => ({ high: 0, items: [] }))]);
     setActions(`<a class="btn" href="#/reports">${icon('chart')} Reports</a>`);
     let lastBackup = null;
     try { lastBackup = localStorage.getItem('vz_last_backup'); } catch { /* ignore */ }
     const backupOld = !lastBackup || (Date.now() - new Date(lastBackup.replace(' ', 'T'))) > 7 * 864e5;
     el.innerHTML = `
       ${backupOld ? `<div class="alert flex">${icon('download')}<div class="grow">${lastBackup ? 'Your last backup from this device is more than a week old.' : 'Keep a copy of your data: download a backup now and then.'}</div><a class="btn sm" href="#/settings/backup">Back up now</a></div>` : ''}
+      ${chk.high ? `<a class="alert danger flex attn" href="#/reports/check"><span class="attn-n">${chk.high}</span><div class="grow"><b>${chk.high === 1 ? '1 thing needs' : chk.high + ' things need'} your attention this month</b><div class="small">${esc([...new Set(chk.items.filter((i) => i.level === 'high').map((i) => i.kind))].slice(0, 4).join(' · '))}</div></div><span class="btn sm">See them</span></a>` : ''}
       <div class="big-stats">
         <a class="big-stat" href="#/sales"><span>Sales today</span><b id="todayVal">${money(d.today.total)}</b><small id="todaySub">${d.today.bills} bills</small></a>
         <a class="big-stat" href="#/reports"><span>Profit this month</span><b class="${d.month.net_profit < 0 ? 'neg' : ''}">${money(d.month.net_profit)}</b><small>after ${money(d.month.expenses)} expenses</small></a>
@@ -31,11 +28,12 @@ View('dashboard', {
       <div class="place-live" id="liveLocs"></div>
       <div class="grid-live">
         <div class="card flush"><div class="card-head pad"><h3>Latest</h3><div class="actions"><a class="btn sm" href="#/activity">See everything</a></div></div><div class="feed" id="liveFeed"></div></div>
-        <div class="card"><h3>Sales — last 14 days</h3>${barsHtml(d.daily)}
+        <div class="card"><h3>Sales — last 14 days</h3>${salesChart(d.daily)}
           <div class="mini-links">${d.low_stock ? `<a href="#/stock?low=1">${d.low_stock} items low at shops</a>` : '<span class="muted">No items low at shops</span>'}
           ${d.transit.n ? ` · <a href="#/dispatch">${d.transit.n} parcel${d.transit.n > 1 ? 's' : ''} on the way</a>` : ''}</div></div>
       </div>`;
     paintLive(el, live);
+    drawCharts(el);
     // Keep the live part fresh while the owner watches (skipped while the window is minimised / in the background).
     const timer = setInterval(async () => {
       if (document.hidden || !el.isConnected) return;
