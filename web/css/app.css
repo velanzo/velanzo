@@ -25,6 +25,12 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
+/* no zoom: a quick second tap (e.g. the same passcode number twice) must not zoom the page */
+html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+button, a, input, select, textarea, label, summary { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.pin-pad button, .qty button, .pay-methods button { -webkit-user-select: none; user-select: none; }
+/* phones and tablets zoom into a box whose text is smaller than 16px: keep them at 16px there */
+@media (pointer: coarse) { input, select, textarea, .input, .input.sm { font-size: 16px !important; } }
 body { background: var(--bg); color: var(--text); font: 15px/1.45 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -284,6 +290,13 @@ label.field > .input, label.field > select, label.field > textarea, label.field 
 .hb-val { font-weight: 700; font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .age-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: #f0f0f7; gap: 2px; }
 .age-bar span { display: block; height: 100%; }
+
+/* ---------- Get the app ---------- */
+.get-app .ga-steps { margin: 6px 0 0; padding-left: 20px; line-height: 1.7; }
+.get-app .ga-icon { display: inline-grid; place-items: center; width: 22px; height: 22px; border: 1px solid var(--line-2); border-radius: 6px; font-size: 13px; vertical-align: -5px; }
+.get-app h4 { margin: 14px 0 2px; }
+.app-banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.app-banner .logo { width: 34px; height: 34px; }
 
 /* ---------- Draft → Confirmed → Done ---------- */
 .flow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }

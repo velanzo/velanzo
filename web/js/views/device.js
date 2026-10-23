@@ -1,7 +1,6 @@
 'use strict';
 // "This device": is everything saved online, installing the app, and starting again.
 
-window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); App.installPrompt = e; });
 
 View('device', {
   title: 'This device',
@@ -40,7 +39,7 @@ View('device', {
         <div class="card"><h3>Install Velanzo</h3>
           ${installed ? '<p>Velanzo is installed on this device.</p>'
             : `<p class="muted" style="margin-top:0">Installing gives Velanzo its own icon and window, and keeps its data safe. It still works without internet.</p>
-              ${App.installPrompt ? '<button class="btn primary" id="instBtn">Install Velanzo</button>' : '<p class="small">In Chrome or Edge: open the browser menu (⋮) → <b>Install Velanzo</b> (or <b>Apps → Install</b>). On a phone: <b>Add to Home screen</b>.</p>'}`}
+              <button class="btn primary" id="instBtn">${icon('download')} Get the app</button><p class="small muted">Works on Windows PCs, Macs, Android phones and iPhones/iPads.</p>`}
         </div>
         <div class="card"><h3>Print without the print window</h3>
           <p class="muted" style="margin-top:0">For the shop counter: make the receipt printer the Windows default printer, then start Chrome with this added at the end of its shortcut's <b>Target</b>:</p>
@@ -62,7 +61,7 @@ View('device', {
     const ce = $('#clrErr', el);
     if (ce) ce.addEventListener('click', () => busy(ce, async () => { await POST('/api/sync/errors/clear'); router(); }));
     const ib = $('#instBtn', el);
-    if (ib) ib.addEventListener('click', async () => { App.installPrompt.prompt(); await App.installPrompt.userChoice; App.installPrompt = null; router(); });
+    if (ib) ib.addEventListener('click', () => AppInstall.open());
     const rd = $('#redlBtn', el);
     if (rd) rd.addEventListener('click', () => busy(rd, async () => {
       await Cloud.syncNow();

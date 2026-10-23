@@ -40,7 +40,16 @@ const Barcode = (() => {
     return codes.map((c) => P[c]).join('');
   }
 
-  function svg(text, { height = 50, quiet = 10, cls = 'bc' } = {}) {
+  // Bars are sharpest when each module is a whole number of printer dots. Thermal receipt and label printers print
+  // 8 dots per mm (203 dpi), so a module of 0.5, 0.375 or 0.25 mm is exactly 4, 3 or 2 dots. Returns the widest that
+  // fits (with the 10-module quiet zones), or 0 if even 0.25 mm does not fit (the barcode is then stretched).
+  function fit(text, widthMm, quiet = 10) {
+    const modules = encode(text).split('').reduce((a, w) => a + +w, 0) + 2 * quiet;
+    return [0.5, 0.375, 0.25].find((m) => modules * m <= widthMm) || 0;
+  }
+
+  // moduleMm: draw it at exactly that many mm per module (see fit); heightMm: its height (else it fills its box).
+  function svg(text, { height = 50, quiet = 10, cls = 'bc', moduleMm = 0, heightMm = 0 } = {}) {
     const widths = encode(text);
     let x = quiet, bars = '';
     for (let i = 0; i < widths.length; i++) {
@@ -49,9 +58,10 @@ const Barcode = (() => {
       x += w;
     }
     const total = x + quiet;
-    return `<svg class="${cls}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${height}" preserveAspectRatio="none" shape-rendering="crispEdges"><rect width="${total}" height="${height}" fill="#fff"/><path d="${bars}" fill="#000"/></svg>`;
+    const size = moduleMm ? ` style="width:${(total * moduleMm).toFixed(3)}mm;height:${heightMm ? heightMm + 'mm' : '100%'};flex:none"` : '';
+    return `<svg class="${cls}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${height}" preserveAspectRatio="none" shape-rendering="crispEdges"${size}><rect width="${total}" height="${height}" fill="#fff"/><path d="${bars}" fill="#000"/></svg>`;
   }
 
-  return { encode, svg, PATTERNS: P };
+  return { encode, svg, fit, PATTERNS: P };
 })();
 if (typeof module !== 'undefined') module.exports = Barcode;

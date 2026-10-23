@@ -1,10 +1,12 @@
 {
+  "id": "./",
   "name": "Velanzo",
   "short_name": "Velanzo",
   "description": "Shop and warehouse: sell, stock, purchases, dispatch and accounts. Works without internet.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "orientation": "any",
   "background_color": "#f3f4f7",
   "theme_color": "#3b46c4",
   "icons": [

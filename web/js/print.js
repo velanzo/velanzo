@@ -15,7 +15,15 @@ async function printDoc(bodyHtml, css, title = 'Print', kind = 'a4', pageSize) {
   d.open();
   d.write(html);
   d.close();
-  setTimeout(() => { f.contentWindow.focus(); f.contentWindow.print(); }, 200);
+  setTimeout(() => {
+    // printing moves the cursor into the print page; bring it back, or the next barcode scan would be lost
+    const prev = document.activeElement;
+    const back = () => { window.focus(); if (prev && prev.isConnected && prev !== f) prev.focus(); };
+    f.contentWindow.addEventListener('afterprint', back);
+    f.contentWindow.focus();
+    f.contentWindow.print();
+    back();
+  }, 200);
 }
 
 // ---------- Customer bill ----------
@@ -36,7 +44,8 @@ function receiptCss() {
   td.sub { text-align: left; font-size: 10.5px; }
   .total { font-size: ${w < 60 ? 15 : 17}px; font-weight: 700; }
   .void { border: 2px solid #000; padding: 3px; text-align: center; font-weight: 700; font-size: 16px; margin: 4px 0; }
-  .bc svg { width: 60%; height: 34px; }
+  .bc { display: flex; justify-content: center; margin-top: 4px; }
+  .bc svg.stretch { width: 100%; height: 10mm; }
   .foot { white-space: pre-line; margin-top: 4px; }
   .ret { font-weight: 700; }`;
 }
@@ -69,7 +78,14 @@ function billHtml(s) {
     ${s.change_due ? `<div class="row b"><span>Change</span><span>${num(s.change_due)}</span></div>` : ''}
     <div class="hr"></div>
     <div class="c foot">${esc(S.bill_footer)}</div>
-    <div class="c bc">${Barcode.svg(s.bill_no, { height: 34 })}</div>`;
+    <div class="c bc">${receiptBarcode(s.bill_no)}</div>`;
+}
+
+// a barcode on a receipt (bill or dispatch note), sharp on a thermal printer
+function receiptBarcode(text) {
+  const w = App.settings.bill_width === '58' ? 48 : 72;
+  const m = Barcode.fit(text, w);
+  return m ? Barcode.svg(text, { moduleMm: m, heightMm: 10 }) : Barcode.svg(text, { height: 34, cls: 'bc stretch' });
 }
 
 function printBill(sale) { printDoc(billHtml(sale), receiptCss(), sale.bill_no, 'bill'); }
@@ -78,11 +94,14 @@ function printBill(sale) { printDoc(billHtml(sale), receiptCss(), sale.bill_no, 
 // items: [{ product, copies }]
 function labelHtml(p) {
   const S = App.settings;
+  const w = Math.max(20, Number(S.label_width) || 50), h = Math.max(12, Number(S.label_height) || 25);
+  const m = Barcode.fit(p.barcode, w - 3); // (1.5 mm padding each side)
+  const bc = m ? Barcode.svg(p.barcode, { height: 40, moduleMm: m }) : Barcode.svg(p.barcode, { height: 40, quiet: 6 });
   return `<div class="label">
-    <div class="biz">${esc(S.business_name)}</div>
+    ${h >= 22 ? `<div class="biz">${esc(S.business_name)}</div>` : ''}
     ${S.label_show_name !== '0' ? `<div class="name">${esc(p.name)}</div>` : ''}
     ${variantText(p) ? `<div class="var">${esc(variantText(p))}</div>` : ''}
-    <div class="bcw">${Barcode.svg(p.barcode, { height: 40, quiet: 6 })}</div>
+    <div class="bcw">${bc}</div>
     <div class="code">${esc(p.barcode)}</div>
     ${S.label_show_price !== '0' ? `<div class="price">${esc(S.currency)} ${num(p.sale_price)}</div>` : ''}
   </div>`;
@@ -101,7 +120,7 @@ function labelCss() {
   .biz { font-size: ${small ? 6 : 7}pt; font-weight: 700; letter-spacing: .4px; line-height: 1.1; }
   .name { font-size: ${small ? 6 : 7}pt; line-height: 1.1; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .var { font-size: ${small ? 6 : 7.5}pt; font-weight: 700; line-height: 1.1; }
-  .label > .bcw { width: 100%; flex: 1 1 auto; min-height: 0; max-height: ${Math.round(h * 0.42)}mm; display: flex; }
+  .label > .bcw { width: 100%; flex: 1 1 auto; min-height: 0; max-height: ${Math.round(h * 0.45)}mm; display: flex; justify-content: center; }
   .bcw svg { width: 100%; height: 100%; }
   .code { font-size: ${small ? 6 : 7}pt; letter-spacing: 1px; line-height: 1.1; }
   .price { font-size: ${small ? 7 : 9}pt; font-weight: 700; line-height: 1.15; }`;
@@ -168,7 +187,7 @@ function printDispatch(d) {
       <div class="row"><span>Total value</span><span>${esc(S.currency)} ${num(d.total_value)}</span></div>
       ${d.notes ? `<div class="hr"></div><div>${esc(d.notes)}</div>` : ''}
       <div class="hr"></div><br>Sent by: ____________<br><br>Received by: ________
-      <div class="c bc">${Barcode.svg(d.dispatch_no, { height: 34 })}</div>`, receiptCss(), d.dispatch_no, 'bill');
+      <div class="c bc">${receiptBarcode(d.dispatch_no)}</div>`, receiptCss(), d.dispatch_no, 'bill');
     return;
   }
   printDoc(`

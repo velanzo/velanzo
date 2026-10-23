@@ -39,7 +39,9 @@ const Setup = (() => {
     if (!Cloud.enabled) return showLocalStart();
     show(card(`${logo}<h1>Welcome to Velanzo</h1><p class="muted">How will this device be used?</p>
       <button class="choice" id="cShop">${icon('inbox')}<span><b>I work at a shop or the warehouse</b><small>Sign in with my user ID and password</small></span></button>
-      <button class="choice" id="cOwner">${icon('users')}<span><b>I'm the owner</b><small>Sign in, or start a new business</small></span></button>`));
+      <button class="choice" id="cOwner">${icon('users')}<span><b>I'm the owner</b><small>Sign in, or start a new business</small></span></button>
+      ${AppInstall.installed() ? '' : '<div class="setup-links"><a href="#" id="getApp">📲 Get the app for this PC, phone or tablet</a></div>'}`));
+    $('#getApp')?.addEventListener('click', (e) => { e.preventDefault(); AppInstall.open(); });
     $('#cShop').addEventListener('click', showSignIn);
     $('#cOwner').addEventListener('click', () => showOwner('signin'));
   }

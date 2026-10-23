@@ -83,7 +83,11 @@ const SETTINGS_RENDER = {
         <label class="check"><input type="checkbox" name="label_show_price" ${S.label_show_price !== '0' ? 'checked' : ''}> Show price</label>
         <div class="full" id="lprev"></div>
         <div class="full" style="display:flex;gap:8px"><button class="btn primary">Save</button><button type="button" class="btn" id="testLbl">${icon('printer')} Print test label</button></div></form>
-        <div class="hint" style="margin-top:10px">Common sizes: 50×25, 38×25, 40×30 mm. Measure one sticker on your roll.</div></div></div>`;
+        <div class="hint" style="margin-top:10px">Common sizes: 50×25, 38×25, 40×30 mm. Measure one sticker on your roll.</div></div></div>
+      <div class="card" style="margin-top:16px"><h3>Test the barcode scanner</h3>
+        <p class="muted small" style="margin:0 0 10px">Click in the box and scan any barcode (an item's label, or a code on a box). Velanzo shows what the scanner sent.</p>
+        <input class="input" id="scanTest" placeholder="Scan here…" autocomplete="off" style="max-width:420px">
+        <div id="scanRes" style="margin-top:12px"></div></div>`;
     const lvals = () => { const v = formValues($('#fl', el)); v.label_show_name = v.label_show_name ? '1' : '0'; v.label_show_price = v.label_show_price ? '1' : '0'; return v; };
     const preview = () => {
       const old = App.settings;
@@ -102,6 +106,36 @@ const SETTINGS_RENDER = {
         items: [{ ...sample, qty: 2, price: 2450 }, { name: 'Cotton Shirt', size: 'L', color: 'White', barcode: '10000002', qty: 1, price: 1800 }],
         subtotal: 6700, discount: 200, total: 6500, paid: 7000, change_due: 500, payment_method: 'cash' });
       App.settings = old;
+    });
+    // what the scanner sends: the code, how fast, and which key it presses at the end
+    const st = $('#scanTest', el), res = $('#scanRes', el);
+    let times = [], idle = null;
+    const report = async (endKey) => {
+      clearTimeout(idle);
+      const code = st.value.trim();
+      const n = times.length;
+      const avg = n > 1 ? (times[n - 1] - times[0]) / (n - 1) : 0;
+      times = [];
+      if (!code) return;
+      let item = null;
+      try { item = await GET('/api/products/lookup', { code }); } catch { /* not an item */ }
+      const fast = n >= 6 && avg <= Scanner.AVG;
+      const rows = [
+        ['Received', `<b class="mono">${esc(code)}</b> (${code.length} characters)`],
+        ['Speed', `${Math.round(avg)} ms between characters — ${fast ? '<span class="pill ok">a scanner ✓</span>' : n < 6 ? '<span class="pill warn">too short to tell</span>' : '<span class="pill warn">as slow as typing</span>'}`],
+        ['Ends with', endKey ? `<span class="pill ok">${endKey} ✓</span>` : '<span class="pill red">nothing</span>'],
+        ['Item', item ? `<span class="pill ok">✓</span> ${esc(pname(item))} · ${money(item.sale_price)}` : '<span class="muted">not an item in Velanzo (that is fine for a test)</span>'],
+      ];
+      const tips = [];
+      if (!endKey) tips.push('The scanner does not press Enter after the code. In its manual, scan the setting barcode for <b>“Add Enter / CR suffix”</b>.');
+      if (n >= 6 && !fast) tips.push('This is as slow as a person typing. It still works in the scan box, but if the cursor is in another box the scan stays there. In the scanner\'s manual, choose a faster <b>USB keyboard speed</b>.');
+      if (/[^\x20-\x7e]/.test(code)) tips.push('Strange characters arrived: set the Windows keyboard to <b>English (US)</b> on this computer.');
+      res.innerHTML = `<dl class="kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>${tips.map((t) => `<div class="alert" style="margin:10px 0 0">${t}</div>`).join('')}`;
+      st.value = '';
+    };
+    st.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); report(e.key); return; }
+      if (e.key.length === 1) { times.push(performance.now()); clearTimeout(idle); idle = setTimeout(() => report(''), 600); } // no Enter at all
     });
     $('#testLbl', el).addEventListener('click', () => {
       const old = App.settings;

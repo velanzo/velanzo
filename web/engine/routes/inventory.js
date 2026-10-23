@@ -61,9 +61,11 @@ route('GET', '/api/products', 'any', ({ query, user }) => {
 
 route('GET', '/api/products/lookup', 'any', ({ query, user }) => {
   const code = need(str(query.code, 80), 'Barcode');
+  // the same printed code can arrive as 12 digits (UPC) or 13 with a 0 in front (EAN)
+  const alt = /^\d{12}$/.test(code) ? '0' + code : /^0\d{12}$/.test(code) ? code.slice(1) : code;
   const p = get(
     `SELECT p.*, COALESCE((SELECT qty FROM stock s WHERE s.product_id = p.id AND s.location_id = ?), 0) AS loc_qty
-     FROM products p WHERE p.barcode = ?`, toInt(query.location_id, 0), code);
+     FROM products p WHERE p.barcode = ? COLLATE NOCASE OR p.barcode = ? COLLATE NOCASE ORDER BY p.barcode = ? DESC LIMIT 1`, toInt(query.location_id, 0), code, alt, code);
   if (!p) fail(404, `No item with barcode ${code}`);
   return hideCost(user, [p])[0];
 });

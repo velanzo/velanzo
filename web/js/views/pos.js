@@ -268,6 +268,7 @@ View('pos', {
       });
       m.$('#mPrint').addEventListener('click', () => printBill(sale));
       m.$('#mNew').addEventListener('click', m.close);
+      m.el.dataset.scanClose = '1'; // the next customer's first scan closes this and goes on the new bill
       m.$('#mNew').focus();
     }
     $('#doneBtn', el).addEventListener('click', complete);

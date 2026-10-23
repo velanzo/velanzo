@@ -360,8 +360,9 @@ function renderShell() {
           <div class="more-list right">
             <a href="#" id="switchBtn">${icon('lock')}<span>Lock (type the passcode again)</span></a>
             ${App.device.mode === 'cloud' ? `<a href="#" id="signOutBtn">${icon('device')}<span>Sign out / switch account</span></a>` : ''}
-            <a href="#/account">${icon('lock')}<span>My PIN</span></a>
+            <a href="#/account">${icon('lock')}<span>My passcode</span></a>
             <a href="#/device">${icon('device')}<span>This device</span></a>
+            ${AppInstall.installed() ? '' : `<a href="#" id="getAppBtn">${icon('download')}<span>Get the app (PC, Android, iPhone)</span></a>`}
             <a href="#/training">${icon('help')}<span>Training</span></a>
             <a href="manual/index.html" target="_blank" rel="noopener">${icon('file')}<span>Written guide</span></a>
           </div></details>
@@ -380,6 +381,8 @@ function renderShell() {
     App.user = null; location.hash = ''; Setup.showLogin();
   });
   $('#syncPill').addEventListener('click', () => go('device'));
+  const ga = $('#getAppBtn');
+  if (ga) ga.addEventListener('click', (e) => { e.preventDefault(); closeMenus(); AppInstall.open(); });
   // menus close when something is picked or when clicking elsewhere
   document.addEventListener('click', closeMenus);
   paintSync();
@@ -464,6 +467,110 @@ async function router() {
   refreshBadges();
 }
 
+// ---------- Get the app (install Velanzo on a PC, Android phone or iPhone/iPad) ----------
+const AppInstall = (() => {
+  let prompt = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); prompt = e; App.installPrompt = e; document.dispatchEvent(new Event('vz-installable')); });
+  window.addEventListener('appinstalled', () => { prompt = null; App.installPrompt = null; try { localStorage.setItem('vz_installed', '1'); } catch { /* ignore */ } });
+  const ua = navigator.userAgent;
+  const ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const android = /Android/.test(ua);
+  const installed = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const browser = /Edg\//.test(ua) ? 'Edge' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /FxiOS|Firefox/.test(ua) ? 'Firefox' : /Safari/.test(ua) ? 'Safari' : 'your browser';
+  // the steps for each kind of device (shown when the browser cannot install by itself)
+  function stepsHtml() {
+    const iphone = `<h4>iPhone / iPad</h4><ol class="ga-steps"><li>Open this page in <b>Safari</b>.</li><li>Tap <b>Share</b> <span class="ga-icon">⇪</span> at the bottom (on iPad: at the top).</li><li>Tap <b>Add to Home Screen</b>, then <b>Add</b>.</li></ol>`;
+    const andr = `<h4>Android phone or tablet</h4><ol class="ga-steps"><li>Open this page in <b>Chrome</b>.</li><li>Tap the menu <span class="ga-icon">⋮</span> → <b>Install app</b> (or <b>Add to Home screen</b>).</li></ol>`;
+    const pc = `<h4>Windows PC or Mac</h4><ol class="ga-steps"><li>Open this page in <b>Chrome</b> or <b>Edge</b>.</li><li>Click the install icon <span class="ga-icon">⊕</span> at the right end of the address bar, or the menu <span class="ga-icon">⋮</span> → <b>Cast, save and share → Install page as app</b> (Edge: <b>Apps → Install this site as an app</b>).</li></ol>`;
+    const first = ios ? iphone : android ? andr : pc;
+    return first + [iphone, andr, pc].filter((x) => x !== first).join('');
+  }
+  function open() {
+    const m = modal({
+      title: 'Get the Velanzo app',
+      body: `<div class="get-app">
+        ${installed() ? '<div class="alert ok">✓ You are using the Velanzo app on this device.</div>' : ''}
+        <p style="margin-top:0">The app opens in its own window with its own icon, starts faster, keeps its data safe on this device, and works without internet. It is free and always up to date.</p>
+        ${prompt ? '<button class="btn primary lg block" id="gaInstall">Install Velanzo on this device</button>' : ''}
+        ${!prompt && ios && browser !== 'Safari' ? '<div class="alert">On iPhone and iPad, install it from <b>Safari</b>.</div>' : ''}
+        ${!prompt && !ios && !android && /Firefox|Safari/.test(browser) ? `<div class="alert">${browser} on a computer cannot install apps: open this page in <b>Chrome</b> or <b>Edge</b>.</div>` : ''}
+        ${stepsHtml()}
+        <p class="muted small" style="margin-bottom:0">Address: <b>${esc(location.origin + location.pathname)}</b></p></div>`,
+      footer: '<button class="btn" data-close>Close</button>',
+    });
+    const b = m.$('#gaInstall');
+    if (b) b.addEventListener('click', async () => {
+      prompt.prompt();
+      const r = await prompt.userChoice.catch(() => null);
+      prompt = null; App.installPrompt = null;
+      m.close();
+      if (r && r.outcome === 'accepted') toast('Velanzo is installed. Open it from its icon.');
+    });
+  }
+  return { open, installed, canPrompt: () => !!prompt, ios, android };
+})();
+
+// pinch to zoom on iPhone/iPad (Safari ignores "user-scalable=no")
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+
+// ---------- Barcode scanners ----------
+// A USB scanner "types" the code very fast and then presses Enter (some press Tab). A scan always goes to the
+// page's scan box: if the cursor was on a button, in the cash or a quantity box, or nowhere, that box gets its old
+// text back and the Enter does not press anything there. (Typing in a name or barcode box keeps the scan there.)
+const Scanner = (() => {
+  // one scan: keys on average at most AVG ms apart (a person types 100+ ms apart), no single gap over GAP ms
+  // (a hiccup, e.g. a Bluetooth scanner), at least MIN characters
+  const AVG = 35, GAP = 90, MIN = 6;
+  let buf = '', first = 0, last = 0, start = null;
+  const visible = (x) => x && x.offsetParent !== null;
+  const scanBox = () => [...document.querySelectorAll('input.scan-input')].find(visible);
+  const numberBox = (t) => t && t.tagName === 'INPUT' && (['numeric', 'decimal'].includes(t.inputMode) || t.type === 'number' || t.classList.contains('num'));
+  const misplaced = (t) => !t || t === document.body || t.tagName === 'BUTTON' || t.tagName === 'A' || numberBox(t);
+  function toBox(box, code) {
+    box.focus();
+    box.value = code;
+    box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  }
+  document.addEventListener('keydown', (e) => {
+    if (!e.isTrusted) return; // (our own Enter sent to the scan box)
+    const now = performance.now();
+    if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      if (now - last > GAP) {
+        buf = '';
+        first = now;
+        const t = document.activeElement;
+        start = { el: t, value: t && 'value' in t ? t.value : null };
+      }
+      buf += e.key;
+      last = now;
+      if (buf.length > 1 && misplaced(start.el) && scanBox() && start.el?.tagName !== 'INPUT') e.preventDefault();
+      return;
+    }
+    const isEnd = e.key === 'Enter' || e.key === 'Tab';
+    const code = buf;
+    buf = '';
+    if (!isEnd || code.length < MIN || now - last > GAP || (last - first) / (code.length - 1) > AVG) return;
+    const t = document.activeElement;
+    const box = scanBox();
+    if (t === box) { // the scan box handles it; a Tab is an Enter
+      if (e.key === 'Tab') { e.preventDefault(); box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); }
+      return;
+    }
+    if (!box || !misplaced(start?.el)) return; // a name, barcode or search box keeps what was scanned
+    e.preventDefault();
+    e.stopPropagation(); // the Enter must not press a button or finish a bill
+    if (start?.el && start.value !== null && 'value' in start.el) { start.el.value = start.value; start.el.dispatchEvent(new Event('input', { bubbles: true })); }
+    const modalEl = [...document.querySelectorAll('.modal-wrap')].pop();
+    if (modalEl) {
+      const closeBtn = modalEl.dataset.scanClose ? modalEl.querySelector('[data-close]') : null;
+      if (!closeBtn) { toast('Close this window first, then scan again', 'warn'); return; }
+      closeBtn.click(); // e.g. "Bill saved": the next customer's first scan starts the new bill
+    }
+    toBox(box, code);
+  }, true);
+  return { AVG, GAP, MIN };
+})();
+
 // ---------- Product list cache + scan/search box ----------
 const ProductCache = {
   list: [], byCode: new Map(), loc: null, at: 0,
@@ -491,6 +598,14 @@ const ProductCache = {
 };
 
 // Turns an input into a scan + search box. Barcode scanners type the code and press Enter.
+// The same printed code can reach us as 12 digits (UPC) or 13 with a 0 in front (EAN), depending on the scanner.
+function codeVariants(q) {
+  const v = [q];
+  if (/^\d{12}$/.test(q)) v.push('0' + q);
+  if (/^0\d{12}$/.test(q)) v.push(q.slice(1));
+  return v;
+}
+
 function attachPicker(input, { onPick, location = () => '', showStock = true, showPrice = true }) {
   const wrap = document.createElement('div');
   wrap.className = 'picker';
@@ -499,7 +614,7 @@ function attachPicker(input, { onPick, location = () => '', showStock = true, sh
   const box = document.createElement('div');
   box.className = 'picker-list';
   wrap.appendChild(box);
-  let results = [], active = 0, timer = null;
+  let results = [], active = 0, timer = null, moved = false;
   const hide = () => { box.style.display = 'none'; };
   const show = () => {
     if (!results.length) return hide();
@@ -513,6 +628,7 @@ function attachPicker(input, { onPick, location = () => '', showStock = true, sh
   const pick = (p) => { input.value = ''; results = []; hide(); onPick(p); };
   input.addEventListener('input', () => {
     clearTimeout(timer);
+    moved = false;
     timer = setTimeout(() => {
       const q = input.value.trim();
       results = q.length >= 2 ? ProductCache.search(q) : [];
@@ -520,20 +636,23 @@ function attachPicker(input, { onPick, location = () => '', showStock = true, sh
     }, 80);
   });
   input.addEventListener('keydown', async (e) => {
-    if (e.key === 'ArrowDown' && results.length) { e.preventDefault(); active = Math.min(active + 1, results.length - 1); show(); }
-    else if (e.key === 'ArrowUp' && results.length) { e.preventDefault(); active = Math.max(active - 1, 0); show(); }
+    if (e.key === 'ArrowDown' && results.length) { e.preventDefault(); moved = true; active = Math.min(active + 1, results.length - 1); show(); }
+    else if (e.key === 'ArrowUp' && results.length) { e.preventDefault(); moved = true; active = Math.max(active - 1, 0); show(); }
     else if (e.key === 'Escape') { if (box.style.display === 'block') { e.stopPropagation(); hide(); } }
     else if (e.key === 'Enter') {
       e.preventDefault();
       clearTimeout(timer);
       const q = input.value.trim();
       if (!q) return;
-      let p = ProductCache.byCode.get(q.toLowerCase());
-      if (!p && box.style.display === 'block' && results[active]) p = results[active];
+      // a code (digits, or no spaces) must match exactly; only a typed name may take the first suggestion
+      const codeLike = /^\d+$/.test(q) || (/^\S+$/.test(q) && /\d/.test(q) && q.length >= 6);
+      let p = null;
+      for (const c of codeVariants(q)) { p = ProductCache.byCode.get(c.toLowerCase()); if (p) break; }
+      if (!p && box.style.display === 'block' && results[active] && (moved || !codeLike)) p = results[active];
       if (!p && /^\S+$/.test(q)) {
         try { p = await GET('/api/products/lookup', { code: q, location_id: location() }); ProductCache.add(p); } catch { /* not found */ }
       }
-      if (!p) { const r = ProductCache.search(q); if (r.length === 1) p = r[0]; }
+      if (!p && !codeLike) { const r = ProductCache.search(q); if (r.length === 1) p = r[0]; }
       if (p) { beep(true); pick(p); }
       else { beep(false); input.select(); toast(`No item found for "${q}"`, 'error'); }
     }
