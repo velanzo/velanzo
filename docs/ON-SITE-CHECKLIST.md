@@ -1,5 +1,7 @@
 # At the shop: scanner and printers checklist
 
+> **New:** everything below (and more) is now inside Velanzo, on each computer: your name (top right) → **Printers & scanner**. It has the settings, test buttons, drivers, steps, Windows tools (Check this computer / Fix printing), commands and a troubleshooting table. This page stays as a printed copy.
+
 Take this to the shop with the computer. About 20 minutes. Use **Chrome or Edge**, with Velanzo open and up to date (close and open it once).
 
 ## 1. Barcode scanner (5 min)

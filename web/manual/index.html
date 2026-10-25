@@ -330,28 +330,19 @@
 
 <!-- ============================================================ -->
 <h2 id="hardware">8. Printers and scanners</h2>
-<h3>Barcode scanner</h3>
-<p>Any USB barcode scanner works: it "types" the code very fast and presses Enter, like a keyboard. Plug it in, no setup in Velanzo.</p>
+<p>Every computer sets up <b>its own</b> scanner and printers, on one page: <span class="menu">your name (top right) → Printers &amp; scanner</span> (owners: <span class="menu">Settings → Hardware</span>). It has everything in one place, so no one has to help you:</p>
 <ol class="steps">
-  <li>Test it: <span class="menu">Settings → Bills &amp; labels → Test the barcode scanner</span>. Click in the box and scan. You should see the code, <b>a scanner ✓</b> and <b>Enter ✓</b> (Tab is fine too).</li>
-  <li>If it says <b>Ends with: nothing</b>, scan the setting barcode for <b>"Add Enter / CR suffix"</b> in the scanner's little manual.</li>
-  <li>Keep the Windows keyboard on <b>English (US)</b> at the counter, so the digits arrive as digits.</li>
+  <li><b>Barcode scanner</b>: click the box and scan. It shows what the scanner sent, whether it is fast enough to count as a scanner, and whether it presses Enter. USB scanners just work; Bluetooth ones are paired in Windows first.</li>
+  <li><b>Receipt printer</b>: paper width, <b>Print width</b> and <b>Space from the left</b> (if the right side of the bill is cut off, press <b>Print ruler</b> and type a smaller width, for example 64), <b>Print test bill</b>.</li>
+  <li><b>Label printer</b>: sticker width and height, <b>Print test label</b>, then scan the label.</li>
+  <li><b>Drivers</b>: the exact download for each printer model, with its SHA-256 code to check the file.</li>
+  <li><b>Windows tools</b>: <b>Check this computer</b> (only reads: printers, ports, default printer, stuck jobs, errors) and <b>Fix printing</b> (clears stuck jobs, puts a printer on its real USB port, chooses the default printer). Double-click the downloaded file. Paste the report it saves on the Desktop to read it nicely.</li>
+  <li><b>If something is wrong</b>: a table of what you see, why, and what to do (beeping, blank bill, cut text, stuck job, Save-as window, wrong default printer, scanner types nothing…).</li>
 </ol>
-<p>On the Sell, Purchase and Dispatch screens a scan always goes to the scan box, even when the cursor is in the cash box, on a quantity, on a button, or in the "Bill saved" window (that scan starts the next bill). A code that is not an item adds nothing and says <b>No item found</b>. A 12-digit code and the same code with a 0 in front (UPC and EAN) are the same item.</p>
-<h3>Receipt printer (shop)</h3>
-<ol class="steps">
-  <li>Install the printer's own Windows driver (from its CD or website), and print a Windows test page.</li>
-  <li><span class="menu">Settings → Bills &amp; labels</span>: choose <b>80 mm</b> or <b>58 mm</b> and press <b>Print test bill</b>.</li>
-  <li>In the print window choose that printer, <b>Margins: None</b>, <b>Scale: Default</b>, and untick <b>Headers and footers</b>. Chrome remembers this.</li>
-</ol>
-<p><b>Print without the print window</b> (only on a computer that prints nothing but bills): close Chrome completely, then right-click the Velanzo shortcut → <b>Properties</b>, and add <kbd> --kiosk-printing</kbd> at the end of <b>Target</b>. Bills then go straight to the <b>default printer</b>, so make the receipt printer the default in Windows. (Everything printed on that computer goes to that printer.)</p>
-<h3>Label printer (warehouse)</h3>
-<ol class="steps">
-  <li>Install its Windows driver. In the driver's <b>Printing preferences</b>, add a paper (stock) size the same as your labels, for example <b>50 × 25 mm</b>, and run its <b>calibrate</b> (gap sensor) once.</li>
-  <li><span class="menu">Settings → Bills &amp; labels</span>: type the same width and height, press <b>Print test label</b>. In the print window choose the label printer, <b>Margins: None</b>, <b>Scale: Default</b>.</li>
-  <li>Scan the test label with the scanner test. If the bars look grey or thin, raise the <b>darkness</b> and lower the <b>speed</b> in the printer's preferences.</li>
-</ol>
-<p>Velanzo draws the bars to fit the printer's dots exactly (common label and receipt printers print 8 dots per mm), so they stay sharp. A normal printer with A4 sticker sheets also works: choose <b>Normal printer (A4 sticker sheet)</b>.</p>
+<p>The settings on this page are saved <b>on this computer only</b>: a shop and the warehouse use different printers and paper.</p>
+<p><span class="menu">Printers &amp; scanner → Print queue</span> lists what this computer sent to the receipt printer, the label printer and A4, with <b>Print again</b> for each, and <b>Print last bill again</b>. Velanzo cannot see inside the printer: "Sent to Windows" means the print went out; if no paper came out, use <b>Check Windows queue</b> or <b>Clear stuck jobs</b>.</p>
+<h3>The basics</h3>
+<p><b>Scanner</b>: it types the code and presses Enter, like a keyboard. On the Sell, Purchase and Dispatch screens a scan always goes to the scan box, even when the cursor is in the cash box. <b>Receipt printer</b>: install its Windows driver, make it the <b>default printer</b>, in the Chrome print window choose <b>Margins: None</b>. To print without the print window on the shop counter, add <kbd> --kiosk-printing</kbd> to the Chrome shortcut. <b>Label printer</b>: set its paper to your sticker size, calibrate it once, and type the same size in Velanzo.</p>
 
 <!-- ============================================================ -->
 <h2 id="checklists">9. Daily checklists</h2>

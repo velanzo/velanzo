@@ -292,6 +292,7 @@ export function deviceInfo() {
     location_id: d.location_id ? Number(d.location_id) : null,
     mode: d.mode || '',          // 'cloud' or 'local' (not connected to the cloud)
     label: d.label || '',
+    print: (() => { try { return JSON.parse(d.print || '{}') || {}; } catch { return {}; } })(), // this computer's printer settings
   };
 }
 export function setDevice(values) {

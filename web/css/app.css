@@ -596,3 +596,14 @@ h3 > svg { width: 20px; height: 20px; vertical-align: -4px; margin-right: 4px; c
 /* ---------- The seventh menu item: on the bar when there is room, under More otherwise ---------- */
 .more-list .narrow-only { display: none; }
 @media (max-width: 1399px) { .tabnav .wide-only { display: none; } .more-list .narrow-only { display: flex; } }
+
+/* ---------- Hardware ---------- */
+.view details { margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 0 14px; background: #fafafe; }
+.view details > summary { cursor: pointer; padding: 11px 0; font-weight: 700; color: var(--accent); }
+.view details[open] > summary { border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.view details .steps { margin: 6px 0 12px; }
+.cmd-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(220px, 2fr) auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.code-line { background: #f1f2f8; border-radius: 8px; padding: 8px 10px; word-break: break-all; user-select: all; }
+.rep-row { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.rep-row .pill { flex: none; min-width: 46px; text-align: center; }
+@media (max-width: 900px) { .cmd-row { grid-template-columns: 1fr; } }

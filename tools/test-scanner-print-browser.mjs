@@ -38,7 +38,7 @@ async function scanner(code, { gap = 6, end = 'Enter' } = {}) {
   const [k, vk, text] = end === 'Tab' ? ['Tab', 9, ''] : ['Enter', 13, '\r'];
   await p.cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code: k, windowsVirtualKeyCode: vk, text });
   await p.cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code: k, windowsVirtualKeyCode: vk });
-  await sleep(900);
+  await sleep(1200);
 }
 try {
   await p.goto(demo.base + '/', 1500);
@@ -99,13 +99,28 @@ try {
   ok(L.length === 1 && L[0].name.includes(items[1].name) && await run(`return !document.querySelector('.modal-wrap');`), '“Bill saved” window: the next scan closes it and starts the new bill with that item');
   await run(`localStorage.removeItem('vz_cart_' + App.user.id); click('#clearBtn'); await sleep(300); if (document.querySelector('#cOk')) click('#cOk');`);
 
-  // ---- Settings → Bills & labels → Test the barcode scanner ----
-  await run(`location.hash = '#/settings/printing'; await until(() => document.querySelector('#scanTest')); document.querySelector('#scanTest').focus();`);
+  // ---- Hardware page: the scanner test, per-computer printer settings, the print queue ----
+  await run(`location.hash = '#/hardware'; await until(() => document.querySelector('#scanTest')); document.querySelector('#scanTest').focus();`);
   await scanner(items[0].barcode);
-  ok(await run(`const t = document.querySelector('#scanRes').innerText; return t.includes(${JSON.stringify(items[0].barcode)}) && /a scanner ✓/.test(t) && /Enter ✓/.test(t) && t.includes(${JSON.stringify(items[0].name)});`), 'the scanner test in Settings shows the code, “a scanner ✓”, “Enter ✓” and the item');
+  ok(await run(`const t = document.querySelector('#scanRes').innerText; return t.includes(${JSON.stringify(items[0].barcode)}) && /a scanner ✓/.test(t) && /Enter ✓/.test(t) && t.includes(${JSON.stringify(items[0].name)});`), 'the scanner test on the Hardware page shows the code, “a scanner ✓”, “Enter ✓” and the item');
   await run(`document.querySelector('#scanTest').focus();`);
   await scanner(items[0].barcode, { end: 'Tab' });
   ok(await run(`return /Tab ✓/.test(document.querySelector('#scanRes').innerText);`), 'and tells when a scanner ends with Tab');
+
+  // printer settings belong to this computer: saved in the device, not in the business settings
+  await run(`set('#fb [name=bill_mm]', '64'); set('#fb [name=bill_left]', '1'); click('#fb button.primary'); await sleep(900);`);
+  ok(await run(`const me = await GET('/api/me'); const biz = await GET('/api/settings'); return me.device.print.bill_mm === '64' && me.device.print.bill_left === '1' && App.settings.bill_mm === '64' && !biz.bill_mm;`), 'printer settings are saved on this computer only (the business settings do not change)');
+  await run(`set('#fl [name=label_width]', '40'); set('#fl [name=label_height]', '30'); click('#fl button.primary'); await sleep(900);`);
+  ok(await run(`return (await GET('/api/me')).device.print.label_width === '40' && labelCss().includes('40mm 30mm');`), 'the sticker size is saved on this computer and used by the labels');
+  ok(await run(`return !!document.querySelector('#dlCheck') && !!document.querySelector('#dlFix') && document.querySelectorAll('.cmd-row').length >= 8 && document.body.innerText.includes('BlackCopper 80mm Printer Driver.exe') && document.body.innerText.includes('d2910ad801d507da');`), 'the Hardware page has the tools, the commands and the driver with its SHA-256');
+  await run(`window.print = () => {}; PrintLog.save([]); click('#testBill'); await sleep(500); click('#testLbl'); await sleep(500);`);
+  ok(await run(`const l = PrintLog.all(); return l.length === 2 && l[0].queue === 'label' && l[1].queue === 'receipt' && l[1].title === 'TEST-00001' && !!l[1].body;`), 'a printed bill and a label go in the print log of this computer, each in its own queue');
+  await run(`location.hash = '#/hardware/queue'; await until(() => document.querySelector('[data-again]')); await sleep(300);`);
+  ok(await run(`return document.querySelectorAll('[data-again]').length === 2 && /Receipt printer/.test(document.body.innerText) && /Barcode label printer/.test(document.body.innerText);`), 'the Print queue page lists both queues with a Print again button');
+  await run(`document.querySelector('[data-again]').click(); await sleep(600);`);
+  ok(await run(`const l = PrintLog.all(); return l.length === 3 && l[0].reprint === true;`), 'Print again sends the same page once more');
+  await run(`const a = HwScripts.checkBat(), b = HwScripts.fixBat(); window.__scripts = { a, b }; PrintLog.save([]); App.settings.bill_mm = ''; App.settings.bill_left = ''; await savePrintSettings({ bill_mm: '', bill_left: '', label_width: '50', label_height: '25' });`);
+  ok(await run(`const { a, b } = window.__scripts; return !/[^\\x00-\\x7f]/.test(a + b) && a.includes('#PS#') && b.includes('Verb RunAs') && a.includes('\\r\\n');`), 'the Windows scripts are plain ASCII .bat files (the fix one asks for administrator permission)');
 
   // ---- printed barcodes, read back at printer resolution ----
   await run(`window.__decode = (svgText, pxPerMm) => new Promise((resolve) => {

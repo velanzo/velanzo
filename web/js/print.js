@@ -1,9 +1,35 @@
 'use strict';
 // Printing: customer bills (receipt printer), barcode labels (label printer or A4 sheet), dispatch notes.
 
+// What this computer printed: kept on this computer (the last 60), with the page so it can be printed again.
+// queue: 'receipt' (bills, dispatch receipts), 'label' (barcode labels) or 'paper' (A4 notes).
+const PrintLog = {
+  key: () => `vz_prints_${App.device?.id || 0}`,
+  all() { try { return JSON.parse(localStorage.getItem(this.key()) || '[]'); } catch { return []; } },
+  save(list) {
+    // (newest first) the browser's storage is limited: if it is full, the oldest pages are dropped (the lines stay)
+    for (let keep = list.length; keep >= 0; keep--) {
+      try { localStorage.setItem(this.key(), JSON.stringify(list.map((e, i) => (i < keep ? e : { ...e, body: undefined, css: undefined })))); return; } catch { /* too big */ }
+    }
+  },
+  add(e) {
+    const list = this.all();
+    const rec = { id: Date.now() * 1000 + Math.floor(Math.random() * 1000), at: nowStr(), user: App.user?.name || '', status: 'sending', ...e };
+    if ((rec.body || '').length + (rec.css || '').length > 400000) { rec.body = undefined; rec.css = undefined; rec.big = true; }
+    this.save([rec, ...list].slice(0, 60));
+    return rec.id;
+  },
+  set(id, patch) { const list = this.all(); const e = list.find((x) => x.id === id); if (e) { Object.assign(e, patch); this.save(list); } },
+  remove(id) { this.save(this.all().filter((x) => x.id !== id)); },
+  clear(queue) { this.save(this.all().filter((x) => (queue ? x.queue !== queue : false))); },
+  queueOf: (title, kind) => (kind === 'bill' ? 'receipt' : kind === 'label' || /^Barcode labels/.test(title) ? 'label' : 'paper'),
+};
+
 // Prints through the browser's print window (Chrome started with --kiosk-printing prints straight to the default printer).
 // kind / pageSize say what is being printed: 'bill' (receipt), 'label' or 'a4'.
-async function printDoc(bodyHtml, css, title = 'Print', kind = 'a4', pageSize) { // eslint-disable-line no-unused-vars
+async function printDoc(bodyHtml, css, title = 'Print', kind = 'a4', pageSize, opts = {}) { // eslint-disable-line no-unused-vars
+  const queue = PrintLog.queueOf(title, kind);
+  const logId = opts.noLog ? 0 : PrintLog.add({ queue, kind, title, pageSize, body: bodyHtml, css, reprint: !!opts.reprint, pages: (bodyHtml.match(/class="label"/g) || []).length || 1 });
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}</style></head><body>${bodyHtml}</body></html>`;
   const old = document.getElementById('printFrame');
   if (old) old.remove();
@@ -19,10 +45,12 @@ async function printDoc(bodyHtml, css, title = 'Print', kind = 'a4', pageSize) {
     // printing moves the cursor into the print page; bring it back, or the next barcode scan would be lost
     const prev = document.activeElement;
     const back = () => { window.focus(); if (prev && prev.isConnected && prev !== f) prev.focus(); };
-    f.contentWindow.addEventListener('afterprint', back);
+    f.contentWindow.addEventListener('afterprint', () => { back(); if (logId) PrintLog.set(logId, { status: 'sent' }); });
     f.contentWindow.focus();
-    f.contentWindow.print();
+    try { f.contentWindow.print(); } catch (e) { if (logId) PrintLog.set(logId, { status: 'failed', error: String(e.message || e) }); }
     back();
+    // (print() waits while the print window is open; a browser that never says "afterprint" is counted as sent a little later)
+    if (logId) setTimeout(() => { const e = PrintLog.all().find((x) => x.id === logId); if (e && e.status === 'sending') PrintLog.set(logId, { status: 'sent' }); }, 3000);
   }, 200);
 }
 

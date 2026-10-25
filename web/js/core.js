@@ -361,6 +361,7 @@ function renderShell() {
             <a href="#" id="switchBtn">${icon('lock')}<span>Lock (type the passcode again)</span></a>
             ${App.device.mode === 'cloud' ? `<a href="#" id="signOutBtn">${icon('device')}<span>Sign out / switch account</span></a>` : ''}
             <a href="#/account">${icon('lock')}<span>My passcode</span></a>
+            <a href="#/hardware">${icon('printer')}<span>Printers &amp; scanner</span></a>
             <a href="#/device">${icon('device')}<span>This device</span></a>
             ${AppInstall.installed() ? '' : `<a href="#" id="getAppBtn">${icon('download')}<span>Get the app (PC, Android, iPhone)</span></a>`}
             <a href="#/training">${icon('help')}<span>Training</span></a>
@@ -668,12 +669,29 @@ function attachPicker(input, { onPick, location = () => '', showStock = true, sh
 }
 
 // ---------- Starting up ----------
+// Printer settings belong to the computer (a shop and a warehouse use different printers and paper), the rest to the business.
+const PRINT_KEYS = ['bill_width', 'bill_mm', 'bill_left', 'auto_print_bill', 'label_mode', 'label_width', 'label_height', 'label_columns', 'label_show_price', 'label_show_name', 'dispatch_paper'];
+function withPrint(settings, device) {
+  const own = (device && device.print) || {};
+  const out = { ...settings };
+  for (const k of PRINT_KEYS) if (own[k] !== undefined) out[k] = own[k];
+  return out;
+}
+// Saves this computer's printer settings (values: only the PRINT_KEYS).
+async function savePrintSettings(values) {
+  const next = { ...(App.device.print || {}) };
+  for (const k of PRINT_KEYS) if (values[k] !== undefined) next[k] = String(values[k]);
+  await Engine.system('saveState', { print: JSON.stringify(next) });
+  App.device = { ...App.device, print: next };
+  App.settings = withPrint(App.settings, App.device);
+}
+
 async function loadMe() {
   const me = await GET('/api/me');
   App.user = me.user;
-  App.settings = me.settings;
-  App.locations = me.locations;
   App.device = me.device;
+  App.settings = withPrint(me.settings, me.device);
+  App.locations = me.locations;
   App.permsCatalog = me.perms_catalog;
   return me;
 }
