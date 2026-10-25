@@ -27,11 +27,20 @@ async function printDoc(bodyHtml, css, title = 'Print', kind = 'a4', pageSize) {
 }
 
 // ---------- Customer bill ----------
+// How wide the printing really is. Normally 72 mm (80 mm paper) or 48 mm (58 mm paper); some printers print less than
+// that (a roll narrower than the printer expects), so Settings → Bills & labels has "Print width" and "Space from the left".
+function billMm() {
+  const S = App.settings;
+  const own = Number(S.bill_mm);
+  return own >= 40 && own <= 80 ? own : S.bill_width === '58' ? 48 : 72;
+}
 function receiptCss() {
-  const w = App.settings.bill_width === '58' ? 48 : 72;
+  const w = billMm();
+  const left = App.settings.bill_left;
+  const margin = left !== '' && left != null && Number.isFinite(Number(left)) ? `0 0 0 ${Math.max(0, Math.min(20, Number(left)))}mm` : '0 auto';
   return `@page { margin: 0; }
   * { box-sizing: border-box; }
-  body { width: ${w}mm; margin: 0 auto; padding: 3mm 0 6mm; font: ${w < 60 ? 11 : 12}px/1.35 Arial, Helvetica, sans-serif; color: #000; }
+  body { width: ${w}mm; margin: ${margin}; padding: 3mm 0 6mm; font: ${w < 60 ? 11 : 12}px/1.35 Arial, Helvetica, sans-serif; color: #000; }
   .c { text-align: center; } .r { text-align: right; } .b { font-weight: 700; }
   .biz { font-size: ${w < 60 ? 16 : 19}px; font-weight: 700; letter-spacing: .5px; }
   .hr { border-top: 1px dashed #000; margin: 5px 0; }
@@ -83,9 +92,24 @@ function billHtml(s) {
 
 // a barcode on a receipt (bill or dispatch note), sharp on a thermal printer
 function receiptBarcode(text) {
-  const w = App.settings.bill_width === '58' ? 48 : 72;
+  const w = billMm();
   const m = Barcode.fit(text, w);
   return m ? Barcode.svg(text, { moduleMm: m, heightMm: 10 }) : Barcode.svg(text, { height: 34, cls: 'bc stretch' });
+}
+
+// A ruler 0–80 mm with the edges marked: shows how much of the paper the printer really prints (see Settings → Print width)
+function printRuler() {
+  let t = '';
+  for (let mm = 0; mm <= 80; mm++) {
+    const big = mm % 10 === 0, mid = mm % 5 === 0;
+    t += `<div style="position:absolute;left:${mm}mm;top:0;width:0.35mm;height:${big ? 9 : mid ? 6 : 3}mm;background:#000"></div>`;
+    if (big) t += `<div style="position:absolute;left:${mm}mm;top:9.5mm;font:700 11px Arial;transform:translateX(-30%)">${mm}</div>`;
+  }
+  const w = billMm();
+  printDoc(`<div style="position:relative;width:${w}mm;height:34mm">${t}
+    <div style="position:absolute;left:0;top:16mm;width:${w}mm;height:3mm;border-left:0.6mm solid #000;border-right:0.6mm solid #000"></div>
+    <div style="position:absolute;left:0;top:20mm;width:${w}mm;text-align:center;font:11px Arial">bars = ${w} mm (the bill width now)</div>
+    <div style="position:absolute;left:0;top:26mm;width:${w}mm;font:700 13px Arial;display:flex;justify-content:space-between"><span>LEFT</span><span>RIGHT</span></div></div>`, receiptCss(), 'Ruler', 'bill');
 }
 
 function printBill(sale) { printDoc(billHtml(sale), receiptCss(), sale.bill_no, 'bill'); }

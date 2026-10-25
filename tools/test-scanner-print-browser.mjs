@@ -152,7 +152,10 @@ try {
     const s = await GET('/api/sales/' + sale.id);
     App.settings.bill_width = '80';
     const bill = '<!doctype html><html><head><meta charset="utf-8"><style>' + receiptCss() + '</style></head><body>' + billHtml(s) + '</body></html>';
-    return { labels, bill, count: ps.length };`);
+    App.settings.bill_mm = '64'; App.settings.bill_left = '1';
+    const narrow = '<!doctype html><html><head><meta charset="utf-8"><style>' + receiptCss() + '</style></head><body>' + billHtml(s) + '</body></html>';
+    App.settings.bill_mm = ''; App.settings.bill_left = '';
+    return { labels, bill, narrow, count: ps.length };`);
   await p.cdp.send('Page.navigate', { url: 'data:text/html;base64,' + Buffer.from(docs.labels).toString('base64') });
   await sleep(800);
   const fits = await p.js(`return [...document.querySelectorAll('.label')].map((l) => { const r = l.getBoundingClientRect(), s = l.querySelector('svg').getBoundingClientRect(); return { w: r.width / 3.7795, h: r.height / 3.7795, bw: s.width / 3.7795, bh: s.height / 3.7795, over: l.scrollHeight > l.clientHeight + 1 }; });`);
@@ -166,6 +169,11 @@ try {
   await sleep(800);
   const bill = await p.js(`const b = document.body.getBoundingClientRect(), s = document.querySelector('.bc svg').getBoundingClientRect(); return { w: b.width / 3.7795, bw: s.width / 3.7795, bh: s.height / 3.7795 };`);
   ok(Math.abs(bill.w - 72) < 0.3 && bill.bw <= 72 && bill.bh >= 9, `the 80 mm bill prints 72 mm wide with its barcode ${bill.bw.toFixed(1)} × ${bill.bh.toFixed(1)} mm`);
+  // a printer that prints less than its paper: Print width 64 mm, 1 mm from the left
+  await p.cdp.send('Page.navigate', { url: 'data:text/html;base64,' + Buffer.from(docs.narrow).toString('base64') });
+  await sleep(800);
+  const narrow = await p.js(`const r = document.body.getBoundingClientRect(), b = document.querySelector('.bc svg').getBoundingClientRect(), t = [...document.querySelectorAll('td')].reduce((m, x) => Math.max(m, x.getBoundingClientRect().right), 0); return { left: r.left / 3.7795, w: r.width / 3.7795, bw: b.width / 3.7795, right: Math.max(r.right, t) / 3.7795 };`);
+  ok(Math.abs(narrow.w - 64) < 0.3 && Math.abs(narrow.left - 1) < 0.3 && narrow.right <= 65.3 && narrow.bw <= 64, `print width 64 mm, 1 mm from the left: everything stays inside 65 mm (right edge at ${narrow.right.toFixed(1)} mm)`);
   pdf = Buffer.from((await p.cdp.send('Page.printToPDF', { paperWidth: 80 / 25.4, paperHeight: 297 / 25.4, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 })).data, 'base64').toString('latin1');
   ok(((pdf.match(/\/Type\s*\/Page[^s]/g) || []).length) === 1, 'a bill fits on one receipt page');
   console.log(`\nAll ${checks} scanner and printing checks passed.`);

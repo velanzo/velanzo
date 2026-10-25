@@ -250,6 +250,8 @@ export const DEFAULT_SETTINGS = {
   currency: 'Rs',
   bill_footer: 'Thank you for shopping with us!\nExchange within 7 days with this bill.',
   bill_width: '80',
+  bill_mm: '', // print width in mm (blank = from the paper width: 72 or 48)
+  bill_left: '', // space from the left edge in mm (blank = centred)
   auto_print_bill: '1',
   label_mode: 'roll',
   label_width: '50',

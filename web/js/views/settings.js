@@ -71,9 +71,11 @@ const SETTINGS_RENDER = {
     el.innerHTML = `<div class="grid-2" style="margin-top:0"><div class="card"><h3>Customer bill (receipt printer)</h3><form id="fb" class="form-grid">
         <label class="field">Paper width<select class="input" name="bill_width">${options([['80', '80 mm (standard)'], ['58', '58 mm (small)']], S.bill_width)}</select></label>
         <label class="field">Print bill automatically after each sale<select class="input" name="auto_print_bill">${options([['1', 'Yes'], ['0', 'No — I will press Print']], S.auto_print_bill)}</select></label>
+        <label class="field">Print width (mm)<input class="input num" name="bill_mm" value="${esc(S.bill_mm || '')}" placeholder="${S.bill_width === '58' ? 48 : 72}" inputmode="numeric"><span class="hint">Leave empty for normal. If the right side of a bill is cut off, type a smaller number (try 64).</span></label>
+        <label class="field">Space from the left (mm)<input class="input num" name="bill_left" value="${esc(S.bill_left || '')}" placeholder="centred" inputmode="decimal"><span class="hint">Leave empty to centre. If the left side is cut off, try 2.</span></label>
         <label class="field full">Message at the bottom of the bill<textarea class="input" name="bill_footer">${esc(S.bill_footer)}</textarea></label>
         <label class="field">Dispatch note paper<select class="input" name="dispatch_paper">${options([['a4', 'A4 / normal printer'], ['receipt', 'Receipt printer']], S.dispatch_paper)}</select></label>
-        <div class="full" style="display:flex;gap:8px"><button class="btn primary">Save</button><button type="button" class="btn" id="testBill">${icon('printer')} Print test bill</button></div></form></div>
+        <div class="full" style="display:flex;gap:8px"><button class="btn primary">Save</button><button type="button" class="btn" id="testBill">${icon('printer')} Print test bill</button><button type="button" class="btn" id="ruler">${icon('printer')} Print ruler</button></div></form></div>
       <div class="card"><h3>Barcode labels</h3><form id="fl" class="form-grid">
         <label class="field">Printer type<select class="input" name="label_mode">${options([['roll', 'Label printer (roll of stickers)'], ['a4', 'Normal printer (A4 sticker sheet)']], S.label_mode)}</select></label>
         <label class="field">Labels across (A4 only)<input class="input num" name="label_columns" value="${esc(S.label_columns)}" inputmode="numeric"></label>
@@ -99,6 +101,12 @@ const SETTINGS_RENDER = {
     $('#fl', el).addEventListener('input', preview);
     $('#fb', el).addEventListener('submit', (e) => { e.preventDefault(); saveSettings(formValues(e.target), e.target.querySelector('button')); });
     $('#fl', el).addEventListener('submit', (e) => { e.preventDefault(); saveSettings(lvals(), e.target.querySelector('button')); });
+    $('#ruler', el).addEventListener('click', () => {
+      const old = App.settings;
+      App.settings = { ...old, ...formValues($('#fb', el)) };
+      printRuler();
+      App.settings = old;
+    });
     $('#testBill', el).addEventListener('click', () => {
       const old = App.settings;
       App.settings = { ...old, ...formValues($('#fb', el)) };
