@@ -93,7 +93,8 @@ function billHtml(s) {
   const returned = s.items.filter((i) => i.qty < 0).reduce((a, i) => a - i.qty, 0);
   const lines = s.items.map((i) => `
     <tr><td class="item" colspan="4">${esc(i.name)}${variantText(i) ? ' (' + esc(variantText(i)) + ')' : ''}${i.qty < 0 ? ' <span class="ret">[RETURN]</span>' : ''}</td></tr>
-    <tr><td class="sub">${esc(i.barcode)}</td><td>${i.qty}</td><td>${num(i.price)}</td><td>${num(i.qty * i.price)}</td></tr>`).join('');
+    <tr><td class="sub">${esc(i.barcode)}</td><td>${i.qty}</td><td>${num(i.list_price ?? i.price)}</td><td>${num(i.qty * (i.list_price ?? i.price))}</td></tr>${i.list_price != null ? `
+    <tr><td class="sub" colspan="3">Discount (${num(i.list_price - i.price)} each)</td><td>- ${num(i.qty * (i.list_price - i.price))}</td></tr>` : ''}`).join('');
   return `
     <div class="c biz">${esc(S.business_name)}</div>
     ${s.location_address || S.business_address ? `<div class="c">${esc(s.location_address || S.business_address)}</div>` : ''}
@@ -110,6 +111,7 @@ function billHtml(s) {
     <div class="row"><span>Items</span><span>${sold}${returned ? ` sold, ${returned} returned` : ''}</span></div>
     <div class="row"><span>Subtotal</span><span>${num(s.subtotal)}</span></div>
     ${s.discount ? `<div class="row"><span>Discount</span><span>- ${num(s.discount)}</span></div>` : ''}
+    ${s.voucher_code ? `<div class="row"><span>Voucher ${esc(s.voucher_code)}</span><span>- ${num(s.voucher)}</span></div>` : ''}
     <div class="row total"><span>${s.total < 0 ? 'REFUND' : 'TOTAL'}</span><span>${esc(S.currency)} ${num(Math.abs(s.total))}</span></div>
     ${s.total > 0 ? `<div class="row"><span>Paid (${esc(METHOD_NAMES[s.payment_method] || s.payment_method)})</span><span>${num(s.paid)}</span></div>` : ''}
     ${s.change_due ? `<div class="row b"><span>Change</span><span>${num(s.change_due)}</span></div>` : ''}
@@ -263,4 +265,49 @@ function printDispatch(d) {
    tfoot td { font-weight: 700; }
    .sign { display: flex; justify-content: space-between; margin-top: 60px; gap: 30px; }
    .sign div { flex: 1; border-top: 1px solid #000; padding-top: 4px; text-align: center; }`, d.dispatch_no, 'a4', 'A4');
+}
+
+// ---------- Vouchers ----------
+// One printed voucher: the shop, what it is worth, the QR code (a scanner types the code), the code and the rules.
+function voucherCardHtml(v, mm = 0.75) {
+  const S = App.settings;
+  const worth = v.kind === 'pct' ? `${num(v.value)}% OFF` : `${esc(S.currency)} ${num(v.value)} OFF`;
+  const rules = [
+    v.min_bill > 0 ? `On a bill of ${esc(S.currency)} ${num(v.min_bill)} or more` : 'On any bill',
+    v.expires ? `Valid till ${esc(fmtDate(v.expires))}` : '',
+    v.max_uses > 1 ? `Can be used ${v.max_uses} times` : 'One use only',
+  ].filter(Boolean);
+  return `<div class="vch">
+    <div class="biz">${esc(S.business_name)}</div>
+    <div class="vt">VOUCHER</div>
+    <div class="vw">${worth}</div>
+    ${v.note ? `<div class="vn">${esc(v.note)}</div>` : ''}
+    <div class="vq">${QR.svg(v.code, { moduleMm: mm })}</div>
+    <div class="vc">${esc(v.code)}</div>
+    <div class="vr">${rules.map((r) => `<div>${r}</div>`).join('')}</div>
+    <div class="vs">Show this at the counter</div>
+  </div>`;
+}
+// mode 'receipt': one voucher after another on the receipt printer; 'a4': cut-out cards, two across
+function printVouchers(list, mode = 'receipt') {
+  if (!list.length) return toast('Choose at least one voucher to print', 'error');
+  if (mode === 'a4') {
+    printDoc(`<div class="sheet">${list.map((v) => voucherCardHtml(v, 1)).join('')}</div>`,
+      `@page { size: A4; margin: 10mm; } * { box-sizing: border-box; }
+       body { margin: 0; font: 12px/1.35 Arial, Helvetica, sans-serif; color: #000; }
+       .sheet { display: grid; grid-template-columns: 1fr 1fr; }
+       .vch { border: 1px dashed #000; padding: 6mm 5mm; text-align: center; height: 88mm; break-inside: avoid; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+       .biz { font-size: 16px; font-weight: 700; } .vt { letter-spacing: 3px; font-size: 11px; margin-top: 2px; }
+       .vw { font-size: 26px; font-weight: 800; margin: 4px 0; } .vn { font-size: 12px; }
+       .vq svg { display: block; } .vc { font: 700 15px 'Courier New', monospace; letter-spacing: 1px; margin: 2px 0 4px; }
+       .vr { font-size: 11px; } .vs { font-size: 10px; margin-top: 4px; }`, 'Vouchers', 'a4', 'A4');
+    return;
+  }
+  printDoc(list.map((v) => voucherCardHtml(v)).join(''),
+    `${receiptCss()}
+     .vch { text-align: center; break-after: page; page-break-after: always; padding-bottom: 4mm; }
+     .vch:last-child { break-after: auto; page-break-after: auto; }
+     .vt { letter-spacing: 3px; font-size: 11px; } .vw { font-size: 22px; font-weight: 800; margin: 3px 0; } .vn { font-size: 11px; }
+     .vq { display: flex; justify-content: center; margin: 3px 0; } .vc { font: 700 14px 'Courier New', monospace; letter-spacing: 1px; margin-bottom: 3px; }
+     .vr { font-size: 10.5px; } .vs { font-size: 10px; margin-top: 3px; border-top: 1px dashed #000; padding-top: 3px; }`, 'Vouchers', 'bill');
 }

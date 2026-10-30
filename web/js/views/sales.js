@@ -15,10 +15,11 @@ async function showBill(id, onChange) {
         ${s.customer_name || s.customer_phone ? `<dt>Customer</dt><dd>${esc(s.customer_name)} ${esc(s.customer_phone)}</dd>` : ''}</dl>
       <div class="table-wrap" style="margin-top:14px"><table class="tbl"><thead><tr><th>Item</th><th>Barcode</th><th class="r">Qty</th><th class="r">Price</th><th class="r">Amount</th>${showProfit ? '<th class="r">Profit</th>' : ''}</tr></thead><tbody>
       ${s.items.map((i) => `<tr><td><b>${esc(i.name)}</b> <span class="muted">${esc(variantText(i))}</span> ${i.qty < 0 ? '<span class="pill red">RETURN</span>' : ''}</td><td class="mono">${esc(i.barcode)}</td>
-        <td class="r">${i.qty}</td><td class="r">${money(i.price)}</td><td class="r">${money(i.qty * i.price)}</td>${showProfit ? `<td class="r">${money(i.qty * (i.price - i.cost))}</td>` : ''}</tr>`).join('')}
+        <td class="r">${i.qty}</td><td class="r">${i.list_price != null ? `<s class="muted">${money(i.list_price)}</s> ` : ''}${money(i.price)}</td><td class="r">${money(i.qty * i.price)}</td>${showProfit ? `<td class="r">${money(i.qty * (i.price - i.cost))}</td>` : ''}</tr>`).join('')}
       </tbody><tfoot>
         <tr><td colspan="4" class="r">Subtotal</td><td class="r">${money(s.subtotal)}</td>${showProfit ? '<td></td>' : ''}</tr>
         ${s.discount ? `<tr><td colspan="4" class="r">Discount</td><td class="r">− ${money(s.discount)}</td>${showProfit ? '<td></td>' : ''}</tr>` : ''}
+        ${s.voucher_code ? `<tr><td colspan="4" class="r">Voucher ${esc(s.voucher_code)}</td><td class="r">− ${money(s.voucher)}</td>${showProfit ? '<td></td>' : ''}</tr>` : ''}
         <tr><td colspan="4" class="r">${s.total < 0 ? 'Refund' : 'Total'}</td><td class="r">${money(Math.abs(s.total))}</td>${showProfit ? '<td></td>' : ''}</tr>
         ${s.change_due ? `<tr><td colspan="4" class="r muted">Cash received ${money(s.paid)} · change</td><td class="r">${money(s.change_due)}</td>${showProfit ? '<td></td>' : ''}</tr>` : ''}
       </tfoot></table></div>`,
@@ -31,8 +32,10 @@ async function showBill(id, onChange) {
     if (!(await confirmBox(`Reset bill ${s.bill_no} to draft?\n\nThe bill is cancelled and its pieces go back into stock. It opens in the sale screen as a held bill so you can change it and finish it again (it gets a new bill number).`, { title: 'Reset bill to draft', ok: 'Reset to draft' }))) return;
     await busy(rs, async () => {
       const back = await POST(`/api/sales/${s.id}/reset`);
-      const lines = s.items.map((i) => ({ id: i.product_id, name: i.name, size: i.size, color: i.color, barcode: i.barcode, price: i.price, qty: Math.abs(i.qty), ret: i.qty < 0, stock: 0 }));
-      const h = HeldBills.add(back.location_id, { items: lines, ret: false, discount: back.discount ? String(back.discount) : '', discType: 'amt', method: back.payment_method || 'cash', paid: '', cname: back.customer_name || '', cphone: back.customer_phone || '', showDisc: !!back.discount, showCust: !!(back.customer_name || back.customer_phone) });
+      const lines = s.items.map((i) => ({ id: i.product_id, name: i.name, size: i.size, color: i.color, barcode: i.barcode, price: i.list_price ?? i.price, disc: i.list_price != null ? String(round2(i.list_price - i.price)) : '', qty: Math.abs(i.qty), ret: i.qty < 0, stock: 0 }));
+      let voucher = null; // (the cancelled bill gave its voucher back, so it can go on the draft again)
+      if (back.voucher) { try { const r = await GET('/api/vouchers/check', { code: back.voucher, amount: 0 }); if (r.code) voucher = { code: r.code, kind: r.kind, value: r.value, min_bill: r.min_bill || 0 }; } catch { /* the draft just has no voucher */ } }
+      const h = HeldBills.add(back.location_id, { items: lines, voucher, ret: false, discount: back.discount ? String(back.discount) : '', discType: 'amt', method: back.payment_method || 'cash', paid: '', cname: back.customer_name || '', cphone: back.customer_phone || '', showDisc: !!back.discount, showCust: !!(back.customer_name || back.customer_phone) });
       try { localStorage.setItem('vz_pos_loc', back.location_id); localStorage.setItem('vz_open_held', String(h.id)); } catch { /* storage off */ }
       ProductCache.invalidate();
       m.close();

@@ -210,10 +210,12 @@ route('GET', '/api/reports/staff', 'reports', ({ query, user }) => {
     Object.assign(person(r.id, r.name), { bills: r.bills, sales: round2(r.sales), discount: round2(r.discount), discount_bills: r.discount_bills });
   }
   for (const r of all(`SELECT s.user_id AS id, u.name, SUM(CASE WHEN i.qty > 0 THEN i.qty ELSE 0 END) AS items, SUM(CASE WHEN i.qty < 0 THEN -i.qty * i.price ELSE 0 END) AS returns,
-      SUM(CASE WHEN i.qty < 0 THEN -i.qty ELSE 0 END) AS returned_items, SUM(i.qty * (i.price - COALESCE(i.cost, 0))) AS profit
+      SUM(CASE WHEN i.qty < 0 THEN -i.qty ELSE 0 END) AS returned_items, SUM(i.qty * (i.price - COALESCE(i.cost, 0))) AS profit,
+      SUM(CASE WHEN i.qty > 0 AND i.list_price IS NOT NULL THEN i.qty * (i.list_price - i.price) ELSE 0 END) AS line_disc
       FROM sale_items i JOIN sales s ON s.id = i.sale_id LEFT JOIN users u ON u.id = s.user_id
       WHERE s.status = 'done' AND s.created_at BETWEEN ? AND ?${locSql('s.location_id', loc)} GROUP BY 1`, ...p)) {
-    Object.assign(person(r.id, r.name), { items: r.items, returns: round2(r.returns), returned_items: r.returned_items, profit: round2(r.profit) });
+    const pp = person(r.id, r.name);
+    Object.assign(pp, { items: r.items, returns: round2(r.returns), returned_items: r.returned_items, profit: round2(r.profit), discount: round2(pp.discount + r.line_disc) });
   }
   for (const r of all(`SELECT s.user_id AS id, u.name, COUNT(*) AS n, SUM(s.total) AS v FROM sales s LEFT JOIN users u ON u.id = s.user_id
       WHERE s.status = 'void' AND s.created_at BETWEEN ? AND ?${locSql('s.location_id', loc)} GROUP BY 1`, ...p)) {

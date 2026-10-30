@@ -41,7 +41,7 @@ export const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 // ---------- Schema ----------
 // Tables shared with the cloud (and in backups), in parent → child order.
 export const SYNC_TABLES = ['settings', 'locations', 'users', 'suppliers', 'products', 'movements', 'purchases', 'purchase_items',
-  'supplier_payments', 'dispatches', 'dispatch_items', 'sales', 'sale_items', 'expenses'];
+  'supplier_payments', 'dispatches', 'dispatch_items', 'sales', 'sale_items', 'expenses', 'vouchers'];
 export const BACKUP_TABLES = [...SYNC_TABLES.slice(0, 5), 'stock', ...SYNC_TABLES.slice(5)];
 export const BACKUP_VERSION = 3;
 
@@ -221,7 +221,7 @@ const MIGRATIONS = [
   INSERT INTO sync_ctx VALUES (0, 'start');
   -- Changes the cloud refused (shown to the owner)
   CREATE TABLE sync_errors (id INTEGER PRIMARY KEY AUTOINCREMENT, grp TEXT, message TEXT, rows TEXT, created_at TEXT);
-  ${SYNC_TABLES.map(outboxTriggers).join('\n')}
+  ${SYNC_TABLES.filter((t) => t !== 'vouchers').map(outboxTriggers).join('\n')}
   `,
   // Purchase orders: ordered today, counted into stock when the goods arrive.
   `
@@ -229,6 +229,27 @@ const MIGRATIONS = [
   ALTER TABLE purchases ADD COLUMN received_at TEXT;
   ALTER TABLE purchase_items ADD COLUMN ordered_qty INTEGER;
   ALTER TABLE purchase_items ADD COLUMN planned_price REAL;
+  `,
+  // Discounts and vouchers: a discounted bill line keeps the price before the discount (price is what was charged);
+  // a bill can use one voucher. Vouchers are made by the owner; how often one was used is counted from the bills.
+  `
+  ALTER TABLE sale_items ADD COLUMN list_price REAL;
+  ALTER TABLE sales ADD COLUMN voucher_code TEXT;
+  ALTER TABLE sales ADD COLUMN voucher REAL NOT NULL DEFAULT 0;
+  CREATE TABLE vouchers (
+    id INTEGER PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    kind TEXT NOT NULL DEFAULT 'amt',
+    value REAL NOT NULL,
+    min_bill REAL NOT NULL DEFAULT 0,
+    expires TEXT,
+    max_uses INTEGER NOT NULL DEFAULT 1,
+    note TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    user_id INTEGER,
+    created_at TEXT NOT NULL
+  );
+  ${outboxTriggers('vouchers')}
   `,
 ];
 export const SCHEMA_VERSION = MIGRATIONS.length;

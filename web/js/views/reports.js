@@ -89,9 +89,11 @@ const REPORT_RENDER = {
       ${daily.length > 1 ? `<div class="card"><h3>Day by day</h3>${chart({ type: 'bars', labels: daily.map((d) => fmtDate(d.day).replace(/ \d{4}$/, '')), series: [{ name: 'Sales', values: daily.map((d) => d.total) }, { name: 'Profit', values: daily.map((d) => d.profit) }], fmt: money, tip: (i) => [`${daily[i].bills} bills`] })}</div>` : ''}
       <div class="grid-2">
         <div class="card"><h3>Sales breakdown</h3><table class="tbl">
-          <tr><td>Items sold (before discount)</td><td class="r">${money(s.gross_sales)}</td></tr>
+          <tr><td>Items sold (at full price)</td><td class="r">${money(s.gross_sales + s.line_discounts)}</td></tr>
+          ${s.line_discounts ? `<tr><td>Discounts on items</td><td class="r neg">− ${money(s.line_discounts)}</td></tr>` : ''}
           <tr><td>Customer returns</td><td class="r neg">− ${money(s.returns)} <span class="muted small">(${s.items_returned} pcs)</span></td></tr>
-          <tr><td>Discounts given</td><td class="r neg">− ${money(s.discounts)}</td></tr>
+          <tr><td>${s.line_discounts || s.vouchers ? 'Discounts on whole bills' : 'Discounts given'}</td><td class="r neg">− ${money(s.bill_discounts)}</td></tr>
+          ${s.vouchers ? `<tr><td>Vouchers used</td><td class="r neg">− ${money(s.vouchers)}</td></tr>` : ''}
           <tr><td><b>Net sales</b></td><td class="r"><b>${money(s.net_sales)}</b></td></tr>
           <tr><td>Cost of those items</td><td class="r">− ${money(s.cogs)}</td></tr>
           <tr><td><b>Gross profit</b></td><td class="r"><b>${money(s.gross_profit)}</b></td></tr>

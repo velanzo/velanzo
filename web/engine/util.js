@@ -33,6 +33,15 @@ export function match(method, pathname) {
 
 export const toInt = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
 export const toMoney = (v, d = 0) => { const n = Number(v); return Number.isFinite(n) ? Math.round(n * 100) / 100 : d; };
+// A discount on one bill line, per piece: "100" = 100 off each piece, "10%" = 10% off (never more than the price)
+export function lineDiscount(text, price) {
+  const t = String(text ?? '').trim();
+  if (!t) return 0;
+  const n = Number(t.replace('%', ''));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  const off = t.endsWith('%') ? price * Math.min(n, 100) / 100 : n;
+  return Math.round(Math.min(off, Math.max(price, 0)) * 100) / 100;
+}
 export const str = (v, max = 500) => (v == null ? '' : String(v)).trim().slice(0, max);
 export const need = (v, label) => { if (v === '' || v == null) fail(400, `${label} is required`); return v; };
 export const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ''));

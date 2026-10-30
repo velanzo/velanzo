@@ -2,6 +2,7 @@
 // Run: node --disable-warning=ExperimentalWarning tools/test-checks.mjs
 import assert from 'node:assert/strict';
 import * as E from '../web/engine/index.js';
+import * as D from '../web/engine/db.js';
 import { nodeAdapter } from '../web/engine/node-adapter.js';
 
 E.init(nodeAdapter());
@@ -75,4 +76,17 @@ ok(sr.suppliers[0].name === 'asd' && sr.suppliers[0].owed === 10110 && sr.suppli
 
 const staff = await call('GET', '/api/reports/staff', null, {});
 ok(staff.people[0].bills === 2 && staff.people[0].discount === 600 && staff.people[0].corrections === 1, 'staff: bills, discounts and corrections per person');
+// ---- discounts on a bill line, and vouchers ----
+w = await warn('sale', { location_id: S1, items: [{ product_id: shirt.id, qty: 1, disc: '50%' }] });
+ok(has(w, /“Shirt” has 50% off/), 'a big discount on one item is flagged: ' + w[0]);
+ok((await warn('sale', { location_id: S1, items: [{ product_id: shirt.id, qty: 1, disc: '5%' }] })).length === 0, 'a small item discount has no warning');
+w = await warn('sale', { location_id: S1, items: [{ product_id: shirt.id, qty: 1, disc: '15%' }], discount: 100 });
+ok(has(w, /In all, .* is taken off/), 'item and bill discounts together over the limit are flagged: ' + w[0]);
+const [vA] = await call('POST', '/api/vouchers', { kind: 'amt', value: 100, max_uses: 1 });
+const b1 = await call('POST', '/api/sales', { location_id: S1, items: [{ product_id: shirt.id, qty: 1, disc: '50%' }], voucher: vA.code });
+ok(b1.total === 350 && b1.voucher === 100 && b1.items[0].list_price === 900 && b1.items[0].price === 450, 'item discount 900 -> 450, then the voucher: 350');
+D.run('UPDATE sales SET voucher_code = ? WHERE id = ?', vA.code, (await call('POST', '/api/sales', { location_id: S1, items: [{ product_id: shirt.id, qty: 1 }] })).id); // a second bill claiming the same voucher (as two offline shops could)
+const u2 = await call('GET', '/api/reports/unusual', null, {});
+ok(u2.items.some((i) => i.kind === 'Voucher used too often'), 'a limited voucher used twice shows in Things to check');
+ok(u2.items.some((i) => i.kind === 'Big item discount'), 'a big item discount shows in Things to check');
 console.log(`\nAll ${checks} warning and report checks passed.`);

@@ -118,8 +118,35 @@ const HeldBills = {
   save(list) { try { localStorage.setItem(this.key(), JSON.stringify(list)); } catch { /* storage off */ } },
   add(loc, cart) { const h = { id: Date.now() * 1000 + Math.floor(Math.random() * 1000), at: nowStr(), loc, cart }; this.save([...this.all(), h]); return h; },
   take(id) { const list = this.all(); this.save(list.filter((x) => x.id !== id)); return list.find((x) => x.id === id); },
-  total: (cart) => cart.items.reduce((a, l) => a + (l.ret ? -l.qty : l.qty) * l.price, 0),
+  total: (cart) => billMath(cart).total,
 };
+
+// A discount on one bill line, per piece: "100" = 100 off each, "10%" = 10% off (same rule as the engine)
+function discOff(text, price) {
+  const t = String(text ?? '').trim();
+  if (!t) return 0;
+  const n = Number(t.replace('%', ''));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return round2(Math.min(t.endsWith('%') ? price * Math.min(n, 100) / 100 : n, Math.max(price, 0)));
+}
+// The sums of a sale screen bill: item discounts, then the bill discount, then the voucher.
+function billMath(S) {
+  const unit = (l) => (l.ret ? l.price : round2(l.price - discOff(l.disc, l.price)));
+  const sub = round2(S.items.reduce((a, l) => a + (l.ret ? -l.qty : l.qty) * unit(l), 0));
+  let disc = Number(S.discount) || 0;
+  if (S.discType === 'pct') disc = round2(Math.max(sub, 0) * Math.min(disc, 100) / 100);
+  disc = round2(Math.min(Math.max(disc, 0), Math.max(sub, 0)));
+  const base = round2(sub - disc);
+  let voucher = 0, voucherNote = '';
+  const v = S.voucher;
+  if (v) {
+    if (!(base > 0)) voucherNote = 'nothing on the bill to take off';
+    else if (base < (v.min_bill || 0)) voucherNote = `needs a bill of at least ${money(v.min_bill)}`;
+    else voucher = v.kind === 'pct' ? round2(base * Math.min(v.value, 100) / 100) : round2(Math.min(v.value, base));
+  }
+  const listSub = round2(S.items.reduce((a, l) => a + (l.ret ? -l.qty : l.qty) * l.price, 0));
+  return { sub, disc, voucher, voucherNote, itemOff: round2(listSub - sub), total: round2(base - voucher) };
+}
 
 // Before saving: asks the engine what looks unusual (a price of Rs 0, selling below cost, a big discount …).
 // If anything does, shows it with "Go back" or "Continue anyway". Resolves true to go ahead.
@@ -317,6 +344,7 @@ const NAV = [
   { href: 'dispatch', label: 'Receive stock', icon: 'inbox', show: () => can('receive') && !can('send'), badge: 'incoming' },
   { href: 'pos', label: 'Sale order', icon: 'cart', show: () => can('sell') },
   { href: 'sales', label: 'Bills', icon: 'file', show: () => can('sell') || isAdmin() },
+  { href: 'vouchers', label: 'Vouchers', icon: 'tag', show: () => isAdmin() },
   { href: 'labels', label: 'Labels', icon: 'printer', show: () => can('add_items') || can('buy') },
   { href: 'products', label: 'Items', icon: 'tag', show: () => can('add_items') || can('buy') },
   { href: 'stock', label: 'Stock', icon: 'box', show: () => true },
@@ -607,7 +635,7 @@ function codeVariants(q) {
   return v;
 }
 
-function attachPicker(input, { onPick, location = () => '', showStock = true, showPrice = true }) {
+function attachPicker(input, { onPick, location = () => '', showStock = true, showPrice = true, beforeLookup = null }) {
   const wrap = document.createElement('div');
   wrap.className = 'picker';
   input.replaceWith(wrap);
@@ -645,6 +673,7 @@ function attachPicker(input, { onPick, location = () => '', showStock = true, sh
       clearTimeout(timer);
       const q = input.value.trim();
       if (!q) return;
+      if (beforeLookup && (await beforeLookup(q))) { input.value = ''; results = []; hide(); return; } // e.g. a voucher code
       // a code (digits, or no spaces) must match exactly; only a typed name may take the first suggestion
       const codeLike = /^\d+$/.test(q) || (/^\S+$/.test(q) && /\d/.test(q) && q.length >= 6);
       let p = null;

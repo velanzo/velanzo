@@ -607,3 +607,9 @@ h3 > svg { width: 20px; height: 20px; vertical-align: -4px; margin-right: 4px; c
 .rep-row { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
 .rep-row .pill { flex: none; min-width: 46px; text-align: center; }
 @media (max-width: 900px) { .cmd-row { grid-template-columns: 1fr; } }
+
+/* Discounts and vouchers on the sale screen */
+.cart-row .disc-line { width: 84px; display: inline-block; height: 28px; }
+.cart-row .disc-line:placeholder-shown { border-style: dashed; }
+.cart-row.voucher-line { background: #f3f5ff; border-top: 1px dashed var(--accent); }
+.disc-in.v-in .btn { height: 38px; }

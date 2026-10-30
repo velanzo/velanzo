@@ -11,6 +11,7 @@ import './routes/sales.js';
 import './routes/data.js';
 import './routes/activity.js';
 import './routes/reports.js';
+import './routes/vouchers.js';
 import './checks.js';
 
 export function init(adapter) { D.init(adapter); }

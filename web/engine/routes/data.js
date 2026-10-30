@@ -174,11 +174,11 @@ const EXPORTS = {
   stock: { sql: `SELECT l.name AS location, p.barcode, p.name, p.category, p.size, p.color, s.qty, p.cost_price, p.sale_price,
       ROUND(s.qty * p.cost_price, 2) AS cost_value, ROUND(s.qty * p.sale_price, 2) AS sale_value
       FROM stock s JOIN products p ON p.id = s.product_id JOIN locations l ON l.id = s.location_id WHERE s.qty <> 0 ORDER BY l.type DESC, l.name, p.name` },
-  sales: { date: 's.created_at', sql: `SELECT s.bill_no, s.created_at AS date_time, l.name AS shop, s.items_qty, s.subtotal, s.discount, s.total, s.paid, s.change_due,
+  sales: { date: 's.created_at', sql: `SELECT s.bill_no, s.created_at AS date_time, l.name AS shop, s.items_qty, s.subtotal, s.discount, s.voucher_code, s.voucher, s.total, s.paid, s.change_due,
       s.payment_method, s.customer_name, s.customer_phone, u.name AS cashier, s.status, s.void_reason
       FROM sales s JOIN locations l ON l.id = s.location_id LEFT JOIN users u ON u.id = s.user_id WHERE {DATE} ORDER BY s.id` },
   sale_items: { date: 's.created_at', sql: `SELECT s.bill_no, s.created_at AS date_time, l.name AS shop, p.barcode, p.name, p.size, p.color, p.category,
-      i.qty, i.price, ROUND(i.qty * i.price, 2) AS amount, i.cost, ROUND(i.qty * (i.price - i.cost), 2) AS profit, s.status
+      i.qty, i.list_price, i.price, ROUND(i.qty * i.price, 2) AS amount, i.cost, ROUND(i.qty * (i.price - i.cost), 2) AS profit, s.status
       FROM sale_items i JOIN sales s ON s.id = i.sale_id JOIN locations l ON l.id = s.location_id JOIN products p ON p.id = i.product_id
       WHERE {DATE} ORDER BY s.id, i.id` },
   purchases: { date: 'pu.date', sql: `SELECT pu.purchase_no, pu.date, su.name AS supplier, pu.invoice_no, l.name AS received_at, pu.total_qty, pu.total, pu.paid, pu.status, pu.notes

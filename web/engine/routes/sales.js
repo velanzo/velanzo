@@ -1,7 +1,8 @@
 // Sales (bills), expenses, dashboard and reports ("tracker and accounts").
 import * as D from '../db.js';
-import { route, fail, toInt, toMoney, str, isDate, userLocation, can, canSeeCost, needPerm } from '../util.js';
+import { route, fail, toInt, toMoney, str, isDate, userLocation, can, canSeeCost, needPerm, lineDiscount } from '../util.js';
 import { label } from './inventory.js';
+import { tryVoucher } from './vouchers.js';
 
 const { all, get, run, tx, now, today, pad, round2 } = D;
 
@@ -61,14 +62,24 @@ route('POST', '/api/sales', 'sell', ({ body, user }) => tx(() => {
     if (Math.abs(qty) > 10000) fail(400, `Quantity ${qty} for ${label(p)} looks wrong`);
     const price = canChangePrice && it.price !== undefined && it.price !== '' ? toMoney(it.price) : p.sale_price;
     if (price < 0) fail(400, 'Price cannot be negative');
-    return { p, qty, price };
+    // a discount on this line, per piece: "100" = 100 off, "10%" = 10% off (what was charged is kept in price, the old price in list_price)
+    const off = qty > 0 ? lineDiscount(it.disc, price) : 0;
+    if (off > 0) needPerm(user, 'discount', 'Giving discounts');
+    return { p, qty, price: round2(price - off), list: off > 0 ? price : null };
   });
   if (!lines.length) fail(400, 'The bill is empty');
   if (lines.some((l) => l.qty < 0)) needPerm(user, 'returns', 'Taking returns');
   const subtotal = round2(lines.reduce((a, l) => a + l.qty * l.price, 0));
   const discount = round2(Math.min(Math.max(0, toMoney(body.discount)), Math.max(0, subtotal)));
   if (discount > 0) needPerm(user, 'discount', 'Giving discounts');
-  const total = round2(subtotal - discount);
+  // a voucher is taken off last
+  let voucher = 0, voucherCode = null;
+  if (str(body.voucher, 40)) {
+    const r = tryVoucher(body.voucher, round2(subtotal - discount), (n) => `${D.getSettings().currency} ${n}`);
+    if (!r.ok) fail(400, r.reason);
+    voucher = r.amount; voucherCode = r.code;
+  }
+  const total = round2(subtotal - discount - voucher);
   const method = METHODS.includes(body.payment_method) ? body.payment_method : 'cash';
   let paid = total, change = 0;
   if (method === 'cash' && total > 0 && body.paid !== undefined && body.paid !== '' && body.paid !== null) {
@@ -79,12 +90,12 @@ route('POST', '/api/sales', 'sell', ({ body, user }) => tx(() => {
   const billNo = D.deviceNo(`${loc.code}-`, 'bill');
   const id = D.newId();
   run(
-    `INSERT INTO sales(id, bill_no, location_id, customer_name, customer_phone, subtotal, discount, total, paid, change_due, payment_method, items_qty, user_id, created_at)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    id, billNo, loc.id, str(body.customer_name, 80), str(body.customer_phone, 40), subtotal, discount, total, paid, change, method,
+    `INSERT INTO sales(id, bill_no, location_id, customer_name, customer_phone, subtotal, discount, voucher_code, voucher, total, paid, change_due, payment_method, items_qty, user_id, created_at)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id, billNo, loc.id, str(body.customer_name, 80), str(body.customer_phone, 40), subtotal, discount, voucherCode, voucher, total, paid, change, method,
     lines.reduce((a, l) => a + l.qty, 0), user.id, now());
   for (const l of lines) {
-    run('INSERT INTO sale_items(id, sale_id, product_id, qty, price, cost) VALUES(?, ?, ?, ?, ?, ?)', D.newId(), id, l.p.id, l.qty, l.price, l.p.cost_price);
+    run('INSERT INTO sale_items(id, sale_id, product_id, qty, price, list_price, cost) VALUES(?, ?, ?, ?, ?, ?, ?)', D.newId(), id, l.p.id, l.qty, l.price, l.list, l.p.cost_price);
     D.moveStock(l.p.id, loc.id, -l.qty, l.qty > 0 ? 'sale' : 'return', 'sale', id, user.id, null);
   }
   return hideSaleCost(user, saleDetail(id));
@@ -106,8 +117,8 @@ route('POST', '/api/sales/:id/reset', 'owner', ({ params, user }) => tx(() => {
   if (s.status !== 'done') fail(400, 'This bill is already cancelled');
   for (const i of s.items) D.moveStock(i.product_id, s.location_id, i.qty, 'void', 'sale', s.id, user.id, 'Bill reset to draft');
   run("UPDATE sales SET status = 'void', void_reason = 'Reset to draft', voided_by = ?, voided_at = ? WHERE id = ?", user.id, now(), s.id);
-  return { bill_no: s.bill_no, location_id: s.location_id, discount: s.discount, payment_method: s.payment_method, customer_name: s.customer_name, customer_phone: s.customer_phone,
-    items: s.items.map((i) => ({ product_id: i.product_id, qty: i.qty, price: i.price })) };
+  return { bill_no: s.bill_no, location_id: s.location_id, discount: s.discount, voucher: s.voucher_code || '', payment_method: s.payment_method, customer_name: s.customer_name, customer_phone: s.customer_phone,
+    items: s.items.map((i) => ({ product_id: i.product_id, qty: i.qty, price: i.list_price ?? i.price, disc: i.list_price != null ? String(round2(i.list_price - i.price)) : '' })) };
 }));
 
 // ---------- Expenses ----------
@@ -151,16 +162,18 @@ function salesWhere(from, to, locId) {
 
 function salesMetrics(from, to, locId) {
   const { W, p } = salesWhere(from, to, locId);
-  const h = get(`SELECT COUNT(*) AS bills, COALESCE(SUM(total), 0) AS net_sales, COALESCE(SUM(discount), 0) AS discounts FROM sales s WHERE ${W}`, ...p);
+  const h = get(`SELECT COUNT(*) AS bills, COALESCE(SUM(total), 0) AS net_sales, COALESCE(SUM(discount), 0) AS bill_discounts, COALESCE(SUM(voucher), 0) AS vouchers FROM sales s WHERE ${W}`, ...p);
   const l = get(
-    `SELECT COALESCE(SUM(CASE WHEN i.qty > 0 THEN i.qty * i.price END), 0) AS gross_sales,
+    `SELECT COALESCE(SUM(CASE WHEN i.qty > 0 AND i.list_price IS NOT NULL THEN i.qty * (i.list_price - i.price) END), 0) AS line_discounts,
+            COALESCE(SUM(CASE WHEN i.qty > 0 THEN i.qty * i.price END), 0) AS gross_sales,
             COALESCE(SUM(CASE WHEN i.qty < 0 THEN -i.qty * i.price END), 0) AS returns,
             COALESCE(SUM(CASE WHEN i.qty > 0 THEN i.qty END), 0) AS items_sold,
             COALESCE(SUM(CASE WHEN i.qty < 0 THEN -i.qty END), 0) AS items_returned,
             COALESCE(SUM(i.qty * i.cost), 0) AS cogs
      FROM sale_items i JOIN sales s ON s.id = i.sale_id WHERE ${W}`, ...p);
-  const out = { ...h, ...l, gross_profit: h.net_sales - l.cogs };
-  for (const k of ['net_sales', 'discounts', 'gross_sales', 'returns', 'cogs', 'gross_profit']) out[k] = round2(out[k]);
+  // "discounts" = everything given away: on items, on the whole bill, and by vouchers
+  const out = { ...h, ...l, discounts: h.bill_discounts + h.vouchers + l.line_discounts, gross_profit: h.net_sales - l.cogs };
+  for (const k of ['net_sales', 'discounts', 'bill_discounts', 'vouchers', 'line_discounts', 'gross_sales', 'returns', 'cogs', 'gross_profit']) out[k] = round2(out[k]);
   return out;
 }
 
@@ -264,8 +277,8 @@ route('GET', '/api/reports', 'reports', ({ query, user }) => {
     `SELECT pr.id, pr.name, pr.size, pr.color, pr.barcode, SUM(i.qty) AS qty, SUM(i.qty * i.price) AS amount, SUM(i.qty * (i.price - i.cost)) AS profit
      FROM sale_items i JOIN sales s ON s.id = i.sale_id JOIN products pr ON pr.id = i.product_id
      WHERE ${W} GROUP BY pr.id ORDER BY qty DESC LIMIT 30`, ...p);
-  const dailySales = all(`SELECT substr(s.created_at, 1, 10) AS day, COUNT(*) AS bills, SUM(s.total) AS total, SUM(s.discount) AS discount FROM sales s WHERE ${W} GROUP BY day`, ...p);
-  const dailyCost = all(`SELECT substr(s.created_at, 1, 10) AS day, SUM(i.qty * i.cost) AS cogs, SUM(CASE WHEN i.qty > 0 THEN i.qty END) AS items FROM sale_items i JOIN sales s ON s.id = i.sale_id WHERE ${W} GROUP BY day`, ...p);
+  const dailySales = all(`SELECT substr(s.created_at, 1, 10) AS day, COUNT(*) AS bills, SUM(s.total) AS total, SUM(s.discount + s.voucher) AS discount FROM sales s WHERE ${W} GROUP BY day`, ...p);
+  const dailyCost = all(`SELECT substr(s.created_at, 1, 10) AS day, SUM(CASE WHEN i.qty > 0 AND i.list_price IS NOT NULL THEN i.qty * (i.list_price - i.price) END) AS line_disc, SUM(i.qty * i.cost) AS cogs, SUM(CASE WHEN i.qty > 0 THEN i.qty END) AS items FROM sale_items i JOIN sales s ON s.id = i.sale_id WHERE ${W} GROUP BY day`, ...p);
   const ew = ['date >= ?', 'date <= ?'], ep = [from, to];
   if (loc) { ew.push('location_id = ?'); ep.push(loc); }
   const dailyExp = all(`SELECT date AS day, SUM(amount) AS amount FROM expenses WHERE ${ew.join(' AND ')} GROUP BY date`, ...ep);
@@ -276,7 +289,7 @@ route('GET', '/api/reports', 'reports', ({ query, user }) => {
     const c = dailyCost.find((r) => r.day === day) || {};
     const e = dailyExp.find((r) => r.day === day) || {};
     const total = round2(s.total || 0), cogs = round2(c.cogs || 0), exp = round2(e.amount || 0);
-    return { day, bills: s.bills || 0, items: c.items || 0, discount: round2(s.discount || 0), total, cogs, profit: round2(total - cogs), expenses: exp, net: round2(total - cogs - exp) };
+    return { day, bills: s.bills || 0, items: c.items || 0, discount: round2((s.discount || 0) + (c.line_disc || 0)), total, cogs, profit: round2(total - cogs), expenses: exp, net: round2(total - cogs - exp) };
   });
   const r2 = (rows, keys) => rows.map((r) => { for (const k of keys) r[k] = round2(r[k]); return r; });
   return {

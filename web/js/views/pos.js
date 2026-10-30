@@ -8,7 +8,7 @@ View('pos', {
   async render({ el }) {
     const cartKey = `vz_cart_${App.user.id}`;
     const canEditPrice = can('change_price');
-    const blank = () => ({ items: [], ret: false, discount: '', discType: 'amt', method: 'cash', paid: '', cname: '', cphone: '' });
+    const blank = () => ({ items: [], ret: false, discount: '', discType: 'amt', voucher: null, method: 'cash', paid: '', cname: '', cphone: '' });
     let S;
     try { S = { ...blank(), ...JSON.parse(localStorage.getItem(cartKey) || 'null') }; } catch { S = blank(); }
     const save = () => { try { localStorage.setItem(cartKey, JSON.stringify(S)); } catch { /* storage off */ } };
@@ -33,6 +33,7 @@ View('pos', {
         <div class="pos-links">
           ${canReturn ? '<a href="#" id="retBtn">↩ Return or exchange</a>' : ''}
           ${canDiscount ? '<a href="#" id="discLink">% Discount</a>' : ''}
+          <a href="#" id="vouchLink"><b>＋</b> Voucher</a>
           <a href="#" id="custLink">👤 Customer</a>
           <a href="#" id="holdBtn">⏸ Hold bill</a>
           <a href="#" id="heldBtn" class="hidden">Held bills (<span id="heldN">0</span>)</a>
@@ -46,6 +47,8 @@ View('pos', {
         <div id="discRow" class="hidden"><div class="sum-row"><span>Discount</span>
           <div class="disc-in"><input class="input" id="disc" inputmode="decimal" placeholder="0" value="${esc(S.discount)}">
           <div class="seg" id="discType"><button data-t="amt">${esc(App.settings.currency)}</button><button data-t="pct">%</button></div></div></div></div>
+        <div id="vRow" class="hidden"><div class="sum-row"><span>Voucher</span>
+          <div class="disc-in v-in"><input class="input" id="vcode" placeholder="Scan or type" autocomplete="off" autocapitalize="characters"><button class="btn sm primary" id="vApply">Apply</button></div></div></div>
         <div class="pay-methods" id="methods"><button data-m="cash">Cash</button><button data-m="card">Card</button><button data-m="online">Online</button></div>
         <div id="cashBox">
           <div class="sum-row"><span>Cash received</span><input class="input num cash-in" id="paid" inputmode="decimal" placeholder="Exact" value="${esc(S.paid)}"></div>
@@ -66,25 +69,23 @@ View('pos', {
     const focusScan = () => { if (!document.querySelector('.modal-wrap')) scan.focus(); };
 
     function totals() {
-      const sub = round2(S.items.reduce((a, l) => a + (l.ret ? -l.qty : l.qty) * l.price, 0));
-      let disc = Number(S.discount) || 0;
-      if (S.discType === 'pct') disc = round2(Math.max(sub, 0) * Math.min(disc, 100) / 100);
-      disc = round2(Math.min(Math.max(disc, 0), Math.max(sub, 0)));
-      const total = round2(sub - disc);
+      const b = billMath(S);
+      const { total } = b;
       const cashGiven = S.method === 'cash' && S.paid !== '' ? Number(S.paid) : null;
       const change = cashGiven !== null && total > 0 ? round2(cashGiven - total) : null;
-      return { sub, disc, total, cashGiven, change, count: S.items.reduce((a, l) => a + (l.ret ? 0 : l.qty), 0), retCount: S.items.reduce((a, l) => a + (l.ret ? l.qty : 0), 0) };
+      return { ...b, cashGiven, change, off: round2(b.itemOff + b.disc + b.voucher), count: S.items.reduce((a, l) => a + (l.ret ? 0 : l.qty), 0), retCount: S.items.reduce((a, l) => a + (l.ret ? l.qty : 0), 0) };
     }
 
     function renderTotals() {
       const t = totals();
       $('#sCount', el).textContent = t.retCount ? `${t.count} sold, ${t.retCount} back` : `${t.count} piece${t.count === 1 ? '' : 's'}`;
-      $('#sSub', el).textContent = t.disc ? `${money(t.disc)} discount` : '';
-      $('#sSub', el).previousSibling.textContent = t.disc ? ' · ' : '';
+      $('#sSub', el).textContent = t.off ? `${money(t.off)} off` : '';
+      $('#sSub', el).previousSibling.textContent = t.off ? ' · ' : '';
       $('#sTotal', el).textContent = money(Math.abs(t.total));
       $('#tLabel', el).textContent = t.total < 0 ? 'Give back to the customer' : 'Total';
       $('.pos-side', el).classList.toggle('refund', t.total < 0);
       $('#discRow', el).classList.toggle('hidden', !(S.showDisc || Number(S.discount)));
+      $('#vRow', el).classList.toggle('hidden', !(S.showVoucher && !S.voucher));
       $('#custBox', el).classList.toggle('hidden', !(S.showCust || S.cname || S.cphone));
       $$('#discType button', el).forEach((b) => b.classList.toggle('on', b.dataset.t === S.discType));
       $$('#methods button', el).forEach((b) => b.classList.toggle('on', b.dataset.m === S.method));
@@ -100,19 +101,28 @@ View('pos', {
 
     function renderCart(flashIndex = -1) {
       const box = $('#cart', el);
+      if (!S.items.length) S.voucher = null; // a voucher needs something to take money off
       if (!S.items.length) {
         box.innerHTML = `<div class="cart-empty">${icon('barcode')}<b>Scan an item to start</b>Or type its name in the box above.</div>`;
       } else {
         box.innerHTML = S.items.map((l, i) => {
-          const amt = (l.ret ? -l.qty : l.qty) * l.price;
+          const off = l.ret ? 0 : discOff(l.disc, l.price);
+          const amt = (l.ret ? -l.qty : l.qty) * round2(l.price - off);
           const left = l.stock - (l.ret ? -l.qty : l.qty);
           return `<div class="cart-row${l.ret ? ' ret-line' : ''}${i === flashIndex ? ' flash' : ''}">
             <div class="grow"><div class="iname">${esc(l.name)}${l.ret ? ' <span class="pill red">Back</span>' : ''}</div>
-              <div class="muted small">${esc(variantText(l) || '')}${variantText(l) ? ' · ' : ''}${canEditPrice ? `<input class="input sm num price-in" data-price="${i}" value="${l.price}" inputmode="decimal">` : money(l.price)}${!l.ret && left < 0 ? ' · <span class="neg">only ' + Math.max(0, l.stock) + ' here</span>' : ''}</div></div>
+              <div class="muted small">${esc(variantText(l) || '')}${variantText(l) ? ' · ' : ''}${canEditPrice ? `<input class="input sm num price-in" data-price="${i}" value="${l.price}" inputmode="decimal">` : money(l.price)}${canDiscount && !l.ret ? ` · <span class="muted">disc</span> <input class="input sm num disc-line" data-disc="${i}" value="${esc(l.disc || '')}" placeholder="Discount" title="Discount on each piece: an amount like 100, or a percent like 10%" autocomplete="off">` : ''}${!l.ret && left < 0 ? ' · <span class="neg">only ' + Math.max(0, l.stock) + ' here</span>' : ''}</div></div>
             <div class="qty"><button data-dec="${i}" tabindex="-1" aria-label="One less">−</button><input data-qty="${i}" value="${l.qty}" inputmode="numeric"><button data-inc="${i}" tabindex="-1" aria-label="One more">+</button></div>
-            <div class="amt${amt < 0 ? ' neg' : ''}">${num(amt)}</div>
+            <div class="amt${amt < 0 ? ' neg' : ''}">${off ? `<s class="muted small">${num(l.qty * l.price)}</s><br>` : ''}${num(amt)}</div>
             <button class="icon-btn" data-rm="${i}" title="Remove" tabindex="-1">✕</button></div>`;
         }).join('');
+        if (S.voucher) {
+          const b = billMath(S);
+          box.innerHTML += `<div class="cart-row voucher-line"><div class="grow"><div class="iname"><span class="pill">Voucher</span> ${esc(S.voucher.code)}</div>
+            <div class="muted small">${S.voucher.kind === 'pct' ? S.voucher.value + '% off the bill' : money(S.voucher.value) + ' off the bill'}${b.voucherNote ? ' · <span class="neg">' + esc(b.voucherNote) + '</span>' : ''}</div></div>
+            <div class="amt neg">${b.voucher ? '−' + num(b.voucher) : '0'}</div>
+            <button class="icon-btn" data-rmv="1" title="Take the voucher off" tabindex="-1">✕</button></div>`;
+        }
         const fl = box.querySelector('.cart-row.flash');
         fl && fl.scrollIntoView({ block: 'nearest' });
       }
@@ -131,7 +141,7 @@ View('pos', {
       focusScan();
     }
 
-    attachPicker(scan, { onPick: addProduct, location: () => locId });
+    attachPicker(scan, { onPick: addProduct, location: () => locId, beforeLookup: (q) => (/^VZ-?[A-Z0-9]{4}-?[A-Z0-9]{4}$/i.test(q) ? (applyVoucher(q), true) : false) });
 
     const cart = $('#cart', el);
     cart.addEventListener('click', (e) => {
@@ -140,6 +150,7 @@ View('pos', {
       if (b.dataset.inc !== undefined) S.items[+b.dataset.inc].qty++;
       else if (b.dataset.dec !== undefined) { const l = S.items[+b.dataset.dec]; if (l.qty > 1) l.qty--; else S.items.splice(+b.dataset.dec, 1); }
       else if (b.dataset.rm !== undefined) S.items.splice(+b.dataset.rm, 1);
+      else if (b.dataset.rmv !== undefined) S.voucher = null;
       else return;
       renderCart();
       focusScan();
@@ -151,6 +162,10 @@ View('pos', {
         if (n > 500) toast('That quantity looks wrong (was a barcode scanned into the quantity box?). Click the scan box first.', 'error', 6000);
         else if (!n || n < 1) S.items.splice(+t.dataset.qty, 1);
         else S.items[+t.dataset.qty].qty = n;
+      } else if (t.dataset.disc !== undefined) {
+        const l = S.items[+t.dataset.disc], v = t.value.trim();
+        l.disc = v && discOff(v, l.price) > 0 ? v : '';
+        if (v && !l.disc) toast('Type the discount as an amount (100) or a percent (10%)', 'error');
       } else if (t.dataset.price !== undefined) {
         const n = Number(t.value);
         if (Number.isFinite(n) && n >= 0) S.items[+t.dataset.price].price = round2(n);
@@ -170,6 +185,24 @@ View('pos', {
     const link = (id, fn) => { const a = $(id, el); if (a) a.addEventListener('click', (e) => { e.preventDefault(); fn(); }); };
     link('#retBtn', toggleRet);
     link('#discLink', () => { S.showDisc = true; renderTotals(); $('#disc', el).focus(); });
+    // A voucher is a line on the bill that takes money off the total. It is checked now and again when the bill is saved.
+    async function applyVoucher(code) {
+      code = String(code || '').trim();
+      if (!code) return;
+      if (!S.items.length) { beep(false); return toast('Add the items first, then the voucher', 'error'); }
+      if (S.voucher) return toast('This bill already has a voucher. Take it off first to use another.', 'error');
+      try {
+        const r = await GET('/api/vouchers/check', { code, amount: billMath({ ...S, voucher: null }).total });
+        if (!r.ok) { beep(false); return toast(r.reason, 'error', 6000); }
+        S.voucher = { code: r.code, kind: r.kind, value: r.value, min_bill: r.min_bill || 0 };
+        S.showVoucher = false; $('#vcode', el).value = '';
+        beep(true); renderCart(); toast(`Voucher applied: ${money(billMath(S).voucher)} off`);
+      } catch (e) { toast(e.message, 'error'); }
+      focusScan();
+    }
+    link('#vouchLink', () => { if (S.voucher) return toast('This bill already has a voucher'); S.showVoucher = true; renderTotals(); $('#vcode', el).focus(); });
+    $('#vApply', el).addEventListener('click', () => applyVoucher($('#vcode', el).value));
+    $('#vcode', el).addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyVoucher(e.target.value); } });
     link('#custLink', () => { S.showCust = true; renderTotals(); $('#cname', el).focus(); });
     // Hold: park this bill (the customer went to try something on), serve the next one, open it again later.
     const heldHere = () => HeldBills.all().filter((h) => h.loc === locId);
@@ -218,7 +251,7 @@ View('pos', {
     $('#clearBtn', el).addEventListener('click', async (e) => {
       e.preventDefault();
       if (S.items.length && !(await confirmBox('Remove all items from this bill?', { ok: 'Clear bill', danger: true }))) return;
-      S = blank(); el.querySelector('#disc').value = ''; el.querySelector('#paid').value = ''; el.querySelector('#cname').value = ''; el.querySelector('#cphone').value = '';
+      S = blank(); el.querySelector('#vcode').value = ''; el.querySelector('#disc').value = ''; el.querySelector('#paid').value = ''; el.querySelector('#cname').value = ''; el.querySelector('#cphone').value = '';
       renderCart(); focusScan();
     });
     if (isAdmin()) {
@@ -236,13 +269,15 @@ View('pos', {
       if (completing || document.querySelector('.modal-wrap')) return;
       if (!S.items.length) { toast('The bill is empty — scan an item first', 'error'); return focusScan(); }
       const t = totals();
+      if (S.voucher && t.voucherNote) { toast(`The voucher can't be used: ${t.voucherNote}`, 'error', 6000); return; }
       if (t.cashGiven !== null && t.total > 0 && t.cashGiven < t.total) { toast(`Cash received is less than the total (${money(t.total)})`, 'error'); return $('#paid', el).focus(); }
       completing = true;
       const btn = $('#doneBtn', el);
       const body = {
         location_id: locId,
-        items: S.items.map((l) => ({ product_id: l.id, qty: l.ret ? -l.qty : l.qty, price: l.price })),
+        items: S.items.map((l) => ({ product_id: l.id, qty: l.ret ? -l.qty : l.qty, price: l.price, disc: l.ret ? '' : l.disc || '' })),
         discount: t.disc,
+        voucher: S.voucher ? S.voucher.code : '',
         payment_method: S.method,
         paid: t.cashGiven ?? '',
         customer_name: S.cname,
@@ -254,7 +289,7 @@ View('pos', {
       if (!sale) return;
       for (const i of sale.items) { const p = ProductCache.list.find((x) => x.id === i.product_id); if (p) p.loc_qty -= i.qty; }
       S = blank();
-      ['#disc', '#paid', '#cname', '#cphone'].forEach((s) => { el.querySelector(s).value = ''; });
+      ['#disc', '#vcode', '#paid', '#cname', '#cphone'].forEach((s) => { el.querySelector(s).value = ''; });
       renderCart();
       if (App.settings.auto_print_bill === '1' && !App.practice) printBill(sale); // (no printing while practising)
       const m = modal({

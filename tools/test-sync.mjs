@@ -484,6 +484,49 @@ await shop.call('POST', '/api/login', { user_id: ahmed.id, pin: '2222' });
 r = await shop.sync();
 ok(r.refused === 0 && (await shop.system('outbox', 5000)).length === 0, 'after the passcode they are sent');
 
+// ---------- Discounts on a bill line, and vouchers ----------
+const v1 = (await owner.call('POST', '/api/vouchers', { kind: 'amt', value: 300, min_bill: 1000, note: 'Diwali' }))[0];
+const vp = await owner.call('POST', '/api/vouchers', { kind: 'pct', value: 10, count: 2, max_uses: 5 });
+ok(/^VZ-[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(v1.code) && vp.length === 2 && vp[0].code !== vp[1].code, 'the owner made vouchers with readable codes');
+r = await owner.sync();
+ok(r.refused === 0, 'vouchers reached the cloud');
+await shop.sync();
+ok((await shop.sql('SELECT COUNT(*) AS n FROM vouchers'))[0].n === 3, 'the shop computer has the vouchers');
+await assert.rejects(shop.call('POST', '/api/vouchers', { kind: 'amt', value: 50 }), /owner/); checks++;
+let c = await shop.call('GET', '/api/vouchers/check', null, { code: v1.code.toLowerCase().replace(/-/g, ''), amount: 2000 });
+ok(c.ok && c.amount === 300, 'a typed code (small letters, no dashes) works: takes off 300');
+c = await shop.call('GET', '/api/vouchers/check', null, { code: v1.code, amount: 500 });
+ok(!c.ok && /at least/.test(c.reason), 'a bill below the voucher\'s minimum is refused: ' + c.reason);
+c = await shop.call('GET', '/api/vouchers/check', null, { code: 'NOPE-1234', amount: 2000 });
+ok(!c.ok && /no voucher/.test(c.reason), 'an unknown code is refused');
+const vb = await shop.call('POST', '/api/sales', { items: [{ product_id: km.id, qty: 1 }], voucher: v1.code });
+ok(vb.subtotal === 2000 && vb.voucher === 300 && vb.voucher_code === v1.code && vb.total === 1700, 'a bill with the voucher: 2000 - 300 = 1700');
+await assert.rejects(shop.call('POST', '/api/sales', { items: [{ product_id: km.id, qty: 1 }], voucher: v1.code }), /already used/); checks++;
+await assert.rejects(shop.call('POST', '/api/sales', { items: [{ product_id: km.id, qty: 1, disc: '10%' }] }), /Giving discounts/); checks++;
+r = await shop.sync();
+ok(r.refused === 0, 'the bill with a voucher reached the cloud');
+const cloudBill = (await db.query('select voucher_code, voucher, total from sales where id = $1', [vb.id])).rows[0];
+ok(cloudBill.voucher_code === v1.code && cloudBill.voucher === 300 && cloudBill.total === 1700, 'the cloud has the voucher on the bill');
+await owner.sync();
+const ob = await owner.call('POST', '/api/sales', { location_id: S1, items: [{ product_id: km.id, qty: 2, disc: '10%' }, { product_id: kl.id, qty: 1, disc: '150' }], discount: 200, voucher: vp[0].code });
+// (2 x 1800) + 1850 = 5450; bill discount 200 -> 5250; voucher 10% = 525; total 4725
+ok(ob.items[0].price === 1800 && ob.items[0].list_price === 2000 && ob.items[1].price === 1850 && ob.subtotal === 5450 && ob.voucher === 525 && ob.total === 4725, 'item discounts, bill discount and voucher add up: ' + ob.total);
+await owner.sync(); await shop.sync();
+ok((await shop.sql('SELECT list_price FROM sale_items WHERE sale_id = ? ORDER BY id', [ob.id]))[0]?.list_price === 2000, 'item discounts reach the shop computer, with the price before the discount');
+const rep2 = await owner.call('GET', '/api/reports', null, { from: '2020-01-01', to: '2099-12-31' });
+ok(rep2.summary.discounts >= 525 + 200 + 400 + 150, 'reports count item, bill and voucher discounts together');
+await owner.call('POST', `/api/sales/${vb.id}/void`, { reason: 'test' });
+c = await owner.call('GET', '/api/vouchers/check', null, { code: v1.code, amount: 2000 });
+ok(c.ok, 'cancelling the bill gives the voucher back');
+const list = await owner.call('GET', '/api/vouchers');
+ok(list.find((v) => v.code === vp[0].code).used === 1 && list.find((v) => v.code === vp[0].code).status === 'ok', 'the voucher list counts how often each was used');
+await assert.rejects(owner.call('DELETE', '/api/vouchers/' + vp[0].id), /Switch it off/); checks++;
+await owner.call('PUT', '/api/vouchers/' + vp[1].id, { active: false });
+c = await owner.call('GET', '/api/vouchers/check', null, { code: vp[1].code, amount: 2000 });
+ok(!c.ok && /switched off/.test(c.reason), 'a switched-off voucher is refused');
+r = await owner.sync();
+ok(r.refused === 0, 'changes to vouchers and the cancelled bill reached the cloud');
+
 // ---------- A removed device stops working ----------
 await owner.rpc('remove_device', { p_id: (await wh.system('info')).device.id });
 await assert.rejects(wh.sync(), /removed/);

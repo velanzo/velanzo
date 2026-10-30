@@ -2,7 +2,7 @@
 // - before saving, the screen asks /api/check/<kind> and shows the warnings with "Go back" or "Continue anyway";
 // - afterwards the owner's "Things to check" report finds the same kinds of things in what was saved (unusual()).
 import * as D from './db.js';
-import { route, toInt, toMoney, str, isDate, can, canSeeCost, userLocation } from './util.js';
+import { route, toInt, toMoney, str, isDate, can, canSeeCost, userLocation, lineDiscount } from './util.js';
 import { label } from './routes/inventory.js';
 
 const { all, get, today } = D;
@@ -45,8 +45,10 @@ const CHECKS = {
     const lines = (Array.isArray(body.items) ? body.items : []).map((it) => {
       const p = product(it.product_id);
       if (!p) return null;
-      const price = can(user, 'change_price') && it.price !== undefined && it.price !== '' ? toMoney(it.price) : p.sale_price;
-      return { p, qty: toInt(it.qty), price };
+      const list = can(user, 'change_price') && it.price !== undefined && it.price !== '' ? toMoney(it.price) : p.sale_price;
+      const qty = toInt(it.qty);
+      const off = qty > 0 ? lineDiscount(it.disc, list) : 0;
+      return { p, qty, price: Math.round((list - off) * 100) / 100, list, off };
     }).filter(Boolean);
     const qtyOf = new Map();
     for (const l of lines) qtyOf.set(l.p.id, (qtyOf.get(l.p.id) || 0) + l.qty);
@@ -65,7 +67,15 @@ const CHECKS = {
     }
     const subtotal = lines.reduce((a, l) => a + l.qty * l.price, 0);
     const discount = Math.max(0, toMoney(body.discount));
+    const warned = out.length;
+    for (const l of lines) {
+      if (l.off > 0 && l.list > 0 && (l.off / l.list) * 100 > L.discount) out.push(`${q(l.p)} has ${Math.round((l.off / l.list) * 100)}% off (${money(l.off)} on ${money(l.list)}).`);
+    }
     if (discount > 0 && subtotal > 0 && (discount / subtotal) * 100 > L.discount) out.push(`The discount ${money(discount)} is ${Math.round((discount / subtotal) * 100)}% of the bill.`);
+    // item discounts and the bill discount together
+    const full = lines.reduce((a, l) => a + (l.qty > 0 ? l.qty * l.list : 0), 0);
+    const allOff = lines.reduce((a, l) => a + l.qty * (l.list - l.price), 0) + discount;
+    if (out.length === warned && full > 0 && (allOff / full) * 100 > L.discount) out.push(`In all, ${money(allOff)} is taken off ${money(full)} (${Math.round((allOff / full) * 100)}%).`);
     if (lines.some((l) => l.qty > 0) && subtotal - discount <= 0) out.push(`The bill total is ${money(Math.max(0, subtotal - discount))}.`);
     return out;
   },
@@ -219,6 +229,18 @@ export function unusual({ from, to, location_id }) {
       WHERE s.status = 'done' AND s.discount > 0 AND s.subtotal > 0 AND s.discount * 100.0 / s.subtotal > ? AND s.created_at BETWEEN ? AND ?${inLoc('s.location_id')}
       ORDER BY s.created_at DESC LIMIT 200`, L.discount, f, t)) {
     add('check', 'Big discount', `Bill ${r.bill_no}: ${money(r.discount)} off ${money(r.subtotal)}`, `${Math.round((r.discount / r.subtotal) * 100)}% discount.`, { ...r, link: `bill:${r.id}` });
+  }
+  for (const r of all(`SELECT s.id, s.bill_no, p.name, p.size, p.color, si.qty, si.price, si.list_price, s.created_at AS at, u.name AS user_name, l.name AS location_name
+      FROM sale_items si JOIN sales s ON s.id = si.sale_id JOIN products p ON p.id = si.product_id
+      LEFT JOIN users u ON u.id = s.user_id LEFT JOIN locations l ON l.id = s.location_id
+      WHERE s.status = 'done' AND si.qty > 0 AND si.list_price > 0 AND (si.list_price - si.price) * 100.0 / si.list_price > ? AND s.created_at BETWEEN ? AND ?${inLoc('s.location_id')}
+      ORDER BY s.created_at DESC LIMIT 200`, L.discount, f, t)) {
+    add('check', 'Big item discount', `Bill ${r.bill_no}: ${label(r)} ${money(r.list_price)} → ${money(r.price)}`, `${Math.round(((r.list_price - r.price) / r.list_price) * 100)}% off.`, { ...r, link: `bill:${r.id}` });
+  }
+  // a voucher with a limit that was used more often than allowed (two shops used it before they synced)
+  for (const r of all(`SELECT v.code, v.max_uses, COUNT(*) AS n, MAX(s.created_at) AS at FROM vouchers v JOIN sales s ON s.voucher_code = v.code
+      WHERE s.status = 'done' GROUP BY v.code, v.max_uses HAVING COUNT(*) > v.max_uses ORDER BY at DESC LIMIT 100`)) {
+    add('high', 'Voucher used too often', `Voucher ${r.code} was used ${r.n} times`, `It allows ${r.max_uses}. Two shops probably used it before their computers synced.`, { ...r, link: 'vouchers' });
   }
   for (const r of all(`SELECT s.id, s.bill_no, s.total, s.void_reason, s.voided_at AS at, u.name AS user_name, l.name AS location_name FROM sales s
       LEFT JOIN users u ON u.id = s.voided_by LEFT JOIN locations l ON l.id = s.location_id
