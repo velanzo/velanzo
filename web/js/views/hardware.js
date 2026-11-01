@@ -4,10 +4,10 @@
 
 const HW_DRIVERS = [
   { what: 'Receipt printer', model: 'Black Copper BC-98AC (80 mm)', file: 'BlackCopper 80mm Printer Driver.exe', ver: '2.17E', size: '2.7 MB',
-    page: 'https://oemdrivers.com/printer-black-copper-bc-98ac', sha: 'd2910ad801d507da48a91087e2a244027d4a777d957d2e5122fdae427d667b9e',
+    href: 'drivers/BlackCopper-80mm-Printer-Driver.exe', page: 'https://oemdrivers.com/printer-black-copper-bc-98ac', sha: 'd2910ad801d507da48a91087e2a244027d4a777d957d2e5122fdae427d667b9e',
     how: 'Run the .exe as administrator with the printer plugged in and switched on. When it says "Printer installed", open Windows → Printers & scanners → the printer → Printer properties → Ports and tick the real USB port (USB002, not "USB PORT:").' },
   { what: 'Label printer', model: 'Black Copper BC-LP1300 (4 inch, made by Xprinter)', file: '15919523892015.zip → For Windows\\Xprinter_4inch_2019.1_M-3.exe', ver: '2019.1.3', size: '41 MB',
-    page: 'https://oemdrivers.com/printer-black-copper-bc-lp1300', sha: '1d57397efd72318027014b2fa866c0b50315cec8ba3191f2f5ecbd3395cf4511',
+    href: 'drivers/Xprinter-4inch-driver-2019.1.zip', page: 'https://oemdrivers.com/printer-black-copper-bc-lp1300', sha: '1d57397efd72318027014b2fa866c0b50315cec8ba3191f2f5ecbd3395cf4511',
     how: 'Extract the zip, run Xprinter_4inch_2019.1_M-3.exe as administrator. In the wizard choose Install printer drivers → model "Xprinter XP-420B" → the USB port of the printer (USB003) → Finish. Then set the paper size to your sticker size.' },
 ];
 
@@ -73,6 +73,19 @@ View('hardware', {
     const status = (ok, none, good) => (ok ? pill('ok', good) : pill('warn', none));
     el.innerHTML = `${hwTabsHtml('hardware')}
       <div class="alert info">These settings belong to <b>this computer</b> (${esc(App.device.label || 'this device')}). Every shop and warehouse computer sets up its own scanner and printers here. You do not need anyone to help: do the steps, press the test buttons, and use the Windows tools if something is wrong.</div>
+
+      <details class="card" open id="secStart"><summary style="font-weight:700;font-size:16px;cursor:pointer">Start here: set up a new computer, step by step</summary>
+        <ol class="steps" style="margin-top:12px">
+          <li><b>Scanner:</b> pair it (Bluetooth) or plug it in. Set the Windows keyboard to <b>English (US)</b>. Test it in <a href="#secScanner">box 1</a>.</li>
+          <li><b>Receipt printer:</b> plug it in, switch it on, load paper. Download its driver in <a href="#secDrivers">Drivers</a> (below), right-click the file → <b>Run as administrator</b>, wait for “Printer installed”.</li>
+          <li>Windows → <b>Printers &amp; scanners</b> → the receipt printer → <b>Printer properties → Ports</b>: tick <b>USB002</b> (not “USB PORT:”). Press <b>Print Test Page</b>. Make it the <b>default printer</b> and turn off “Let Windows manage my default printer”.</li>
+          <li>In <a href="#secReceipt">box 2</a>: Print width <b>64</b>, Space from the left <b>1</b>, <b>Save for this computer</b>, <b>Print test bill</b>. Cut off? Use <b>Print ruler</b> and change the numbers. Press “Yes, it printed correctly”.</li>
+          <li><b>Label printer:</b> plug it in, load stickers. Download the zip in <a href="#secDrivers">Drivers</a>, extract it, run <b>For Windows → Xprinter_4inch_2019.1_M-3.exe</b> as administrator: Install printer drivers → <b>Xprinter XP-420B</b> → its USB port → Finish.</li>
+          <li>Windows → the label printer → <b>Printing preferences</b>: paper = your sticker size, type = labels with gaps; hold Feed to calibrate.</li>
+          <li>In <a href="#secLabel">box 3</a>: type the sticker width and height, <b>Save for this computer</b>, <b>Print test label</b>, scan it in box 1 (it shows 10000001). Press “Yes, it printed correctly”.</li>
+          <li>Printing without a popup: only if this computer prints to <b>one</b> printer, make it the default and start Velanzo with <span class="mono">--kiosk-printing</span> (see Troubleshooting: “The print window opens every time”). With both printers on one computer, choose the printer in the print window each time.</li>
+          <li>Something wrong? Use <b>Windows tools</b> (Check this computer, then Fix printing) and the <b>troubleshooting table</b> below.</li>
+        </ol></details>
 
       <div class="stats">
         <div class="card stat"><div class="label">Barcode scanner</div><div class="value">${st.scanner_at ? 'Tested' : 'Not tested'}</div><div class="sub">${status(!!st.scanner_at, 'press Test below', '✓ ' + esc(since(st.scanner_at)))}</div></div>
@@ -140,11 +153,11 @@ View('hardware', {
         </div>
       </div>
 
-      <div class="card"><h3>4. Drivers</h3>
+      <div class="card" id="secDrivers"><h3>4. Drivers (download here)</h3>
         <p class="muted small" style="margin-top:0">Download only these files. After downloading, check the file with the SHA-256 command (copy it below): the result must match exactly, otherwise delete the file.</p>
         <div class="table-wrap"><table class="tbl"><thead><tr><th>For</th><th>Model</th><th>File</th><th>How</th></tr></thead><tbody>
           ${HW_DRIVERS.map((d) => `<tr><td><b>${esc(d.what)}</b></td><td>${esc(d.model)}</td>
-            <td><a href="${esc(d.page)}" target="_blank" rel="noopener">${esc(d.file)}</a><div class="muted small">version ${esc(d.ver)} · ${esc(d.size)}</div>
+            <td><a class="btn primary sm" href="${esc(d.href)}" download>${icon('download')} Download from Velanzo</a><div class="small" style="margin-top:6px">${esc(d.file)}</div><div class="muted small">version ${esc(d.ver)} · ${esc(d.size)} · <a href="${esc(d.page)}" target="_blank" rel="noopener">other source</a></div>
               <div class="mono small" style="word-break:break-all">SHA-256: ${esc(d.sha)}</div></td><td class="small">${esc(d.how)}</td></tr>`).join('')}
         </tbody></table></div>
         <p class="muted small" style="margin-bottom:0">Another model? Look for the driver on the maker's own website or the CD that came with it, and print a Windows test page before trying Velanzo.</p>
