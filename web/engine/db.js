@@ -270,7 +270,7 @@ export const DEFAULT_SETTINGS = {
   business_phone: '',
   currency: 'Rs',
   bill_footer: 'Thank you for shopping with us!\nExchange within 7 days with this bill.',
-  bill_width: '80',
+  bill_width: '58',
   bill_mm: '', // print width in mm (blank = from the paper width: 72 or 48)
   bill_left: '', // space from the left edge in mm (blank = centred)
   auto_print_bill: '1',

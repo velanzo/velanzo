@@ -100,7 +100,12 @@ const SETTINGS_RENDER = {
           <p class="muted small" style="margin:0 0 6px">People who work here can only do what is switched on. You can also switch things off for one person (Settings → People).</p>
           <div id="sw">${permSwitchesHtml(l ? l.perms : DEFAULT_PLACE_PERMS.shop)}</div>
           <a href="#" id="usual" class="small">Use the usual switches for a ${l?.type === 'warehouse' ? 'warehouse' : 'shop'}</a>`,
-        footer: `<button class="btn" data-close>Cancel</button><button class="btn primary" id="ls">Save</button>`,
+        footer: `${l ? '<button class="btn danger" id="ldel" style="margin-right:auto">Delete</button>' : ''}<button class="btn" data-close>Cancel</button><button class="btn primary" id="ls">Save</button>`,
+      });
+      const ldel = m.$('#ldel');
+      if (ldel) ldel.addEventListener('click', async () => {
+        if (!(await confirmBox(`Delete ${l.name}? This cannot be undone. A place that has bills, stock or purchases in its history cannot be deleted: close it instead.`, { title: 'Delete place', ok: 'Delete', danger: true }))) return;
+        await busy(ldel, async () => { await DEL('/api/locations/' + l.id); await loadMe(); toast('Deleted'); m.close(); SETTINGS_RENDER.locations(el); });
       });
       const typeSel = m.$('[name=type]');
       const usual = () => { m.$('#sw').innerHTML = permSwitchesHtml(DEFAULT_PLACE_PERMS[typeSel.value]); m.$('#usual').textContent = `Use the usual switches for a ${typeSel.value}`; };
@@ -167,7 +172,12 @@ const SETTINGS_RENDER = {
           ${isOwnerRow ? '<p class="muted small">The owner signs in with their email. They choose their own passcode on each owner computer.</p>' : `<div id="permBox"><h3 style="margin:18px 0 4px">What this person can do</h3>
           <label class="check"><input type="checkbox" id="same" ${!u || !u.perms ? 'checked' : ''}> Same as their place</label>
           <div id="sw"></div></div>`}`,
-        footer: `<button class="btn" data-close>Cancel</button><button class="btn primary" id="us">Save</button>`,
+        footer: `${u && u.id !== App.user.id ? '<button class="btn danger" id="udel" style="margin-right:auto">Delete</button>' : ''}<button class="btn" data-close>Cancel</button><button class="btn primary" id="us">Save</button>`,
+      });
+      const udel = m.$('#udel');
+      if (udel) udel.addEventListener('click', async () => {
+        if (!(await confirmBox(`Delete ${u.name}? This cannot be undone. Someone who already made bills or records cannot be deleted: untick "Can sign in" instead.`, { title: 'Delete user', ok: 'Delete', danger: true }))) return;
+        await busy(udel, async () => { await DEL('/api/users/' + u.id); toast('Deleted'); m.close(); SETTINGS_RENDER.users(el); });
       });
       const locSel = m.$('[name=location_id]'), same = m.$('#same');
       const paint = () => {
