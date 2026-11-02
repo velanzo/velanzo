@@ -27,6 +27,8 @@ export function createCloud() {
     const vz = m.match(/^VZ:([a-z]+):([\s\S]*)$/);
     if (vz) return new CloudError(vz[1], vz[2].trim());
     if (/fetch|network|load failed|timed? ?out|offline/i.test(m) || !navigator.onLine) return new CloudError('offline', 'No internet connection');
+    // Sent without a cloud sign-in (the passcode still opens the app, so nothing else shows it).
+    if (/permission denied for function/i.test(m)) return new CloudError('auth', 'This computer is no longer signed in to the cloud. Open "This device" and click "Connect again". Your changes are kept here.');
     if (/could not find the function|schema cache/i.test(m)) return new CloudError('update', 'The cloud database is not up to date yet. The owner must run supabase/UPDATE-ALL.sql once in Supabase (SQL Editor).');
     if (/invalid login credentials/i.test(m)) return new CloudError('login', 'Wrong email or password');
     if (/email not confirmed/i.test(m)) return new CloudError('confirm', 'Please confirm your email first: open the link we sent you, then sign in.');
@@ -103,7 +105,11 @@ export function createCloud() {
     // ---------- Accounts and devices ----------
     session: async () => (enabled ? (await client().auth.getSession()).data.session : null),
     signUp: (email, password) => auth((a) => a.signUp({ email, password })),
-    signIn: (email, password) => auth((a) => a.signInWithPassword({ email, password })),
+    async signIn(email, password) {
+      const d = await auth((a) => a.signInWithPassword({ email, password }));
+      st.problem = null; // signed in again: saving may start again
+      return d;
+    },
     signOut: () => (enabled ? client().auth.signOut().catch(() => {}) : null),
     whoami: () => rpc('velanzo_whoami'),
     // The owner's phone or computer: sees every shop.
@@ -124,6 +130,7 @@ export function createCloud() {
       if (!s) await auth((a) => a.signInAnonymously());
       const r = await rpc('login_with_id', { p_login: login, p_password: password, p_label: label, p_now: localNow() });
       if (!r.ok) throw new CloudError('login', r.error);
+      st.problem = null;
       return r;
     },
     // The owner makes or changes a person's user ID and password.
