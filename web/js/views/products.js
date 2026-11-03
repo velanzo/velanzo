@@ -53,7 +53,7 @@ async function openAddProduct({ forPurchase = false, onCreated } = {}) {
         <td><input class="input sm" data-f="barcode" value="${esc(k.barcode || '')}" placeholder="auto"></td>
         ${forPurchase ? '' : `<td class="r"><input class="input sm num" style="width:90px" data-f="opening_qty" value="${esc(k.opening_qty || '')}" placeholder="0" inputmode="numeric"></td>`}</tr>`; }).join('')}
       </tbody></table></div>
-      ${forPurchase ? '' : `<label class="field" style="margin-top:12px;max-width:300px">Opening stock is at<select class="input" name="opening_location_id">${options(locs, locs.find((l) => l.type === 'warehouse')?.id)}</select>
+      ${forPurchase ? '' : `<label class="field" style="margin-top:12px;max-width:300px">Opening stock is at<select class="input" name="opening_location_id">${options(locs, defLoc(locs, locs.find((l) => l.type === 'warehouse')?.id))}</select>
         <span class="hint">Only for stock you already have. New stock from a supplier should be entered as a Purchase.</span></label>`}`;
   }
   m.el.addEventListener('input', (e) => {
@@ -124,7 +124,7 @@ function openAdjust(p, locId, onDone) {
     title: 'Correct stock',
     body: `<div style="margin-bottom:12px"><b>${esc(p.name)}</b> <span class="muted">${esc(variantText(p))} · ${esc(p.barcode)}</span></div>
       <div class="form-grid">
-        <label class="field">Location<select class="input" name="location_id">${options(locs, locId || locs[0]?.id)}</select></label>
+        <label class="field">Location<select class="input" name="location_id">${options(locs, locId || defLoc(locs, locs[0]?.id))}</select></label>
         <label class="field">What happened?<select class="input" name="mode">
           <option value="set">I counted it — set the exact number</option><option value="remove">Remove pieces (damaged / lost)</option><option value="add">Add pieces (found)</option></select></label>
         <label class="field">Quantity<input class="input num big" name="qty" inputmode="numeric" autofocus></label>
@@ -188,7 +188,7 @@ function openImportProducts(onDone) {
         <li>In Excel choose <b>File → Save As → CSV UTF-8</b>, then pick that file below.</li></ol>
       <div class="form-grid">
         <label class="field">CSV file<input class="input" type="file" id="impFile" accept=".csv,text/csv" style="padding-top:7px"></label>
-        <label class="field">Put the quantities into stock at<select class="input" id="impLoc">${options(locs, locs.find((l) => l.type === 'warehouse')?.id)}</select></label>
+        <label class="field">Put the quantities into stock at<select class="input" id="impLoc">${options(locs, defLoc(locs, locs.find((l) => l.type === 'warehouse')?.id))}</select></label>
       </div>
       <div id="impPrev" style="margin-top:14px"></div>`,
     footer: `<button class="btn" data-close>Cancel</button><button class="btn primary" id="impGo" disabled>Import</button>`,

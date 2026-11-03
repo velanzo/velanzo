@@ -16,7 +16,7 @@ View('pos', {
     let locId;
     if (isAdmin()) {
       const saved = Number(localStorage.getItem('vz_pos_loc'));
-      locId = shops().some((l) => l.id === saved) ? saved : shops()[0]?.id;
+      locId = defLoc(shops(), shops().some((l) => l.id === saved) ? saved : shops()[0]?.id);
       if (!locId) { el.innerHTML = '<div class="card empty">Add a shop first in <a href="#/settings/locations">Settings → Shops & warehouse</a>.</div>'; return; }
     } else {
       locId = App.user.location_id;

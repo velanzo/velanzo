@@ -95,7 +95,7 @@ async function purchaseForm(el, { order, edit = null }) {
   {
     if (edit) setTitle(`Draft ${edit.purchase_no}`); else if (order) setTitle('New purchase order');
     const draftKey = edit ? null : `vz_purchase_${App.user.id}${order ? '_order' : ''}`;
-    const blank = () => ({ supplier_id: '', invoice_no: '', date: todayStr(), location_id: isAdmin() ? warehouses()[0]?.id || '' : App.user.location_id, paid: '', notes: '', expected_date: '', lines: [] });
+    const blank = () => ({ supplier_id: '', invoice_no: '', date: todayStr(), location_id: isAdmin() ? defLoc(App.locations.filter((l) => l.active), warehouses()[0]?.id || '') : App.user.location_id, paid: '', notes: '', expected_date: '', lines: [] });
     let S;
     if (edit) {
       S = { supplier_id: edit.supplier_id || '', invoice_no: edit.invoice_no || '', date: edit.date, location_id: edit.location_id, paid: '', notes: edit.notes || '', expected_date: edit.expected_date || '',

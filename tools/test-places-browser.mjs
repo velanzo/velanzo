@@ -38,6 +38,18 @@ try {
   await run(`click([...document.querySelectorAll('.place-card')].find((c) => /Shop 1/.test(c.textContent))); await until(() => document.querySelector('#ldel')); click('#ldel');
     await until(() => document.querySelector('#cOk')); click('#cOk'); await sleep(800);`);
   ok(await run(`return /still|history/.test(document.body.innerText) && [...document.querySelectorAll('.place-card')].some((c) => /Shop 1/.test(c.textContent));`), 'a place in use is not deleted and the message says why');
+  // ---- Settings → Shop configuration: the default place comes up first in the forms ----
+  await run(`await go('#/settings/shopconfig'); await until(() => document.querySelector('#defLoc'));`);
+  ok(await run(`return [...document.querySelectorAll('.tabs a')].some((a) => a.textContent === 'Shop configuration') && document.querySelector('#defLoc').value === '';`), 'the tab exists and starts with "None: choose each time"');
+  await run(`set('#defLoc', '${demo.shop_location}'); click('#saveDef'); await sleep(500);`);
+  await run(`await go('#/purchases/new'); await until(() => document.querySelector('#loc'));`);
+  ok(await run(`return document.querySelector('#loc').value === '${demo.shop_location}';`), 'a new purchase goes into the default place');
+  await run(`await go('#/dispatch/new'); await until(() => document.querySelector('#from'));`);
+  ok(await run(`return document.querySelector('#from').value === '${demo.shop_location}';`), 'a new parcel is sent from the default place');
+  await run(`await go('#/settings/shopconfig'); await until(() => document.querySelector('#defLoc'));`);
+  ok(await run(`return document.querySelector('#defLoc').value === '${demo.shop_location}';`), 'the choice is remembered on this computer');
+  await run(`set('#defLoc', ''); click('#saveDef'); await sleep(500); Object.keys(localStorage).filter((k) => k.startsWith('vz_purchase_')).forEach((k) => localStorage.removeItem(k)); await go('#/purchases/new'); await until(() => document.querySelector('#loc'));`);
+  ok(await run(`return document.querySelector('#loc').value === '${demo.warehouse_location}';`), 'with no default, a purchase goes to the warehouse as before');
   console.log(`\nAll ${checks} place checks passed.`);
 } finally { await b.close(); }
 process.exit(0);

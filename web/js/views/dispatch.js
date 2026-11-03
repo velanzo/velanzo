@@ -68,7 +68,7 @@ async function dispatchForm(el, { edit = null }) {
     const draftKey = edit ? null : `vz_dispatch_${App.user.id}`;
     const fromList = isAdmin() ? App.locations.filter((l) => l.active) : App.locations.filter((l) => l.id === App.user.location_id);
     const blank = () => {
-      const from = isAdmin() ? (warehouses()[0] || fromList[0])?.id : App.user.location_id;
+      const from = isAdmin() ? defLoc(fromList, (warehouses()[0] || fromList[0])?.id) : App.user.location_id;
       const fromType = locById(from)?.type;
       const to = App.locations.find((l) => l.active && l.id !== from && l.type !== fromType)?.id || App.locations.find((l) => l.active && l.id !== from)?.id;
       return { from, to, notes: '', lines: [] };
