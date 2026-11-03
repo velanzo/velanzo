@@ -31,13 +31,13 @@ try {
 
   await run(`await go('#/settings/locations'); await until(() => document.querySelector('#add')); click('#add'); await until(() => document.querySelector('[name=name]'));
     set('[name=name]', 'Spare warehouse'); set('[name=code]', 'W9'); set('[name=type]', 'warehouse'); click('#ls'); await until(() => [...document.querySelectorAll('.place-card')].some((c) => /Spare warehouse/.test(c.textContent)));`);
-  await run(`click([...document.querySelectorAll('.place-card')].find((c) => /Spare warehouse/.test(c.textContent))); await until(() => document.querySelector('#lDel')); click('#lDel');
+  await run(`click([...document.querySelectorAll('.place-card')].find((c) => /Spare warehouse/.test(c.textContent))); await until(() => document.querySelector('#ldel')); click('#ldel');
     await until(() => document.querySelector('#cOk')); click('#cOk'); await until(() => ![...document.querySelectorAll('.place-card')].some((c) => /Spare warehouse/.test(c.textContent)));`);
   ok(true, 'an empty warehouse is deleted from Settings → Shops & warehouse');
 
-  await run(`click([...document.querySelectorAll('.place-card')].find((c) => /Shop 1/.test(c.textContent))); await until(() => document.querySelector('#lDel')); click('#lDel');
+  await run(`click([...document.querySelectorAll('.place-card')].find((c) => /Shop 1/.test(c.textContent))); await until(() => document.querySelector('#ldel')); click('#ldel');
     await until(() => document.querySelector('#cOk')); click('#cOk'); await sleep(800);`);
-  ok(await run(`return /still has|history/.test(document.body.innerText) && [...document.querySelectorAll('.place-card')].some((c) => /Shop 1/.test(c.textContent));`), 'a place in use is not deleted and the message says why');
+  ok(await run(`return /still|history/.test(document.body.innerText) && [...document.querySelectorAll('.place-card')].some((c) => /Shop 1/.test(c.textContent));`), 'a place in use is not deleted and the message says why');
   console.log(`\nAll ${checks} place checks passed.`);
 } finally { await b.close(); }
 process.exit(0);
