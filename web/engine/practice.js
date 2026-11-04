@@ -44,7 +44,9 @@ export function finish() {
     run('UPDATE sync_ctx SET applying = 1');
     for (const t of KEEP) {
       run(`DELETE FROM ${t}`);
-      run(`INSERT INTO ${t} SELECT * FROM ${copyOf(t)}`);
+      // (a copy made before an update may have fewer columns)
+      const cols = all(`PRAGMA table_info(${copyOf(t)})`).map((c) => c.name).filter((c) => D.tableColumns(t).includes(c)).map((c) => `"${c}"`).join(', ');
+      run(`INSERT INTO ${t} (${cols}) SELECT ${cols} FROM ${copyOf(t)}`);
       D.exec(`DROP TABLE ${copyOf(t)}`);
     }
     run('UPDATE sync_ctx SET applying = ?', D.deviceInfo().mode === 'cloud' ? 0 : 1);

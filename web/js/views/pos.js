@@ -192,6 +192,7 @@ View('pos', {
       if (!S.items.length) { beep(false); return toast('Add the items first, then the voucher', 'error'); }
       if (S.voucher) return toast('This bill already has a voucher. Take it off first to use another.', 'error');
       try {
+        await Cloud.fresh(); // (another shop may have just used it)
         const r = await GET('/api/vouchers/check', { code, amount: billMath({ ...S, voucher: null }).total });
         if (!r.ok) { beep(false); return toast(r.reason, 'error', 6000); }
         S.voucher = { code: r.code, kind: r.kind, value: r.value, min_bill: r.min_bill || 0 };

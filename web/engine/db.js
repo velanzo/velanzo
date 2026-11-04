@@ -44,6 +44,17 @@ export const SYNC_TABLES = ['settings', 'locations', 'users', 'suppliers', 'prod
   'supplier_payments', 'dispatches', 'dispatch_items', 'sales', 'sale_items', 'expenses', 'vouchers'];
 export const BACKUP_TABLES = [...SYNC_TABLES.slice(0, 5), 'stock', ...SYNC_TABLES.slice(5)];
 export const BACKUP_VERSION = 3;
+// Several computers on the same records (see the last migration):
+// - these documents have a status and lines that belong together: a change made on old information is refused by the cloud;
+export const VERSIONED_TABLES = ['purchases', 'dispatches', 'sales'];
+// - on these records only the columns that really changed are sent, so changes to different columns are both kept.
+export const MERGE_COLS = {
+  locations: ['name', 'code', 'type', 'address', 'phone', 'perms', 'active'],
+  users: ['name', 'role', 'location_id', 'perms', 'pin_salt', 'pin_hash', 'email', 'active'],
+  suppliers: ['name', 'phone', 'address', 'notes'],
+  products: ['barcode', 'name', 'category', 'size', 'color', 'cost_price', 'sale_price', 'active', 'updated_at'],
+  vouchers: ['code', 'kind', 'value', 'min_bill', 'expires', 'max_uses', 'note', 'active'],
+};
 
 // Each entry is one schema version of this device's database. Never edit an old entry; add a new one.
 const MIGRATIONS = [
@@ -251,6 +262,16 @@ const MIGRATIONS = [
   );
   ${outboxTriggers('vouchers')}
   `,
+  // Several computers on the same records: the outbox notes what each change was based on (outbox.base).
+  // A document keeps the cloud's version number (rev); other records keep their old values, to send only what changed.
+  `
+  ALTER TABLE purchases ADD COLUMN rev INTEGER;
+  ALTER TABLE dispatches ADD COLUMN rev INTEGER;
+  ALTER TABLE sales ADD COLUMN rev INTEGER;
+  ALTER TABLE outbox ADD COLUMN base TEXT;
+  ${VERSIONED_TABLES.map((t) => baseTrigger(t, 'OLD.rev')).join('\n')}
+  ${Object.entries(MERGE_COLS).map(([t, cols]) => baseTrigger(t, `json_object(${cols.map((c) => `'${c}', OLD.${c}`).join(', ')})`)).join('\n')}
+  `,
 ];
 export const SCHEMA_VERSION = MIGRATIONS.length;
 
@@ -262,6 +283,12 @@ function outboxTriggers(t) {
   CREATE TRIGGER ${t}_ob_i AFTER INSERT ON ${t} ${when} BEGIN INSERT INTO outbox(grp, tbl, row_key) VALUES ((SELECT grp FROM sync_ctx), '${t}', NEW.${key}); END;
   CREATE TRIGGER ${t}_ob_u AFTER UPDATE ON ${t} ${when} BEGIN INSERT INTO outbox(grp, tbl, row_key) VALUES ((SELECT grp FROM sync_ctx), '${t}', NEW.${key}); END;
   CREATE TRIGGER ${t}_ob_d AFTER DELETE ON ${t} ${when} BEGIN INSERT INTO outbox(grp, tbl, row_key, del) VALUES ((SELECT grp FROM sync_ctx), '${t}', OLD.${key}, 1); END;`;
+}
+
+function baseTrigger(t, base) {
+  return `
+  DROP TRIGGER ${t}_ob_u;
+  CREATE TRIGGER ${t}_ob_u AFTER UPDATE ON ${t} WHEN (SELECT applying FROM sync_ctx) = 0 BEGIN INSERT INTO outbox(grp, tbl, row_key, base) VALUES ((SELECT grp FROM sync_ctx), '${t}', NEW.id, ${base}); END;`;
 }
 
 export const DEFAULT_SETTINGS = {

@@ -34,10 +34,20 @@ export function createCloud() {
     if (/email not confirmed/i.test(m)) return new CloudError('confirm', 'Please confirm your email first: open the link we sent you, then sign in.');
     return new CloudError('other', m);
   }
-  async function rpc(fn, args) {
+  async function rpc(fn, args, tried) {
     let res;
     try { res = await client().rpc(fn, args || {}); } catch (e) { throw asError(e); }
-    if (res.error) throw asError(res.error);
+    if (res.error) {
+      // The sign-in ran out (a laptop that slept, for example): renew it once, without bothering anyone.
+      if (/\bjwt\b|\bjws/i.test(String(res.error.message))) {
+        if (!tried) {
+          const again = await client().auth.refreshSession().catch(() => null);
+          if (again && !again.error && again.data?.session) return rpc(fn, args, true);
+        }
+        throw new CloudError('auth', 'This computer is no longer signed in to the cloud. Open "This device" and click "Connect again". Your changes are kept here.');
+      }
+      throw asError(res.error);
+    }
     return res.data;
   }
   async function auth(fn) {
@@ -62,15 +72,16 @@ export function createCloud() {
       st.online = true;
       st.lastSync = localNow();
       st.problem = null;
-      if (out && out.received) { ProductCache.invalidate(); if (out.reset) toast('This device downloaded everything again.'); }
+      if (out && out.reset) toast('This device downloaded everything again.');
       if (out && out.refused) toast(`${out.refused} change${out.refused > 1 ? 's were' : ' was'} not accepted by the cloud: ${out.refusedMessages[0]}`, 'error', 9000);
+      if (out && out.changed) { ProductCache.invalidate(); await remoteChanged(out.tables); }
       return out;
     } catch (e) {
       const err = e instanceof CloudError ? e : asError(e);
       if (err.kind === 'offline') st.online = false;
       else if (err.kind === 'removed') st.problem = { stop: true, short: 'Device removed', text: err.message };
       else if (err.kind === 'device' || err.kind === 'auth') st.problem = { stop: true, short: 'Not connected', text: err.message, reconnect: true };
-      else st.problem = { short: 'Not saved', text: err.message };
+      else st.problem = { short: err.kind === 'update' ? 'Cloud needs updating' : e.stage === 'download' ? 'Not up to date' : 'Not saved', text: err.message };
       return null;
     } finally {
       st.syncing = false;
@@ -89,6 +100,12 @@ export function createCloud() {
       if (!active) return;
       clearTimeout(soon);
       soon = setTimeout(syncNow, 1200);
+    },
+    // About to change a document or delete something: get the latest first (a few seconds at most), so this computer
+    // sees right away if another computer already did it.
+    async fresh() {
+      if (!active || !navigator.onLine) return;
+      await Promise.race([syncNow(), new Promise((r) => { setTimeout(r, 3000); })]);
     },
     // Keep syncing while the app is open: every 20 seconds, and as soon as the internet comes back.
     start() {

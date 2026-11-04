@@ -42,6 +42,10 @@ const options = (list, selected, { blank } = {}) =>
 async function api(method, url, body) {
   const u = new URL(url, 'http://local');
   const req = { method, path: u.pathname, query: Object.fromEntries(u.searchParams), body: typeof body === 'string' ? JSON.parse(body) : (body || {}) };
+  // (another computer may have just done the same thing: see the latest before doing it here)
+  if (method === 'DELETE' || (method === 'PUT' && /^\/api\/(purchases|dispatches)\//.test(u.pathname))
+    || (method === 'POST' && (/\/(confirm|receive|reset|send|void|cancel|cancel-order)$/.test(u.pathname)
+      || /^\/api\/(stock\/adjust|products|locations)$/.test(u.pathname) || (u.pathname === '/api/sales' && req.body.voucher)))) await Cloud.fresh();
   let res;
   try { res = await Engine.api(req); } catch (e) { throw new Error('Could not read the data on this device: ' + e.message); }
   if (res.status === 401 && u.pathname !== '/api/login') {
@@ -431,6 +435,35 @@ async function refreshBadges() {
   } catch { /* ignore */ }
 }
 
+// Pages that only show something: when another computer changes the data, these redraw by themselves...
+const LIVE_VIEWS = ['home', 'device', 'purchases/:id', 'dispatch/:id'];
+// ...and these offer to, because they may hold a search or filter the person is using.
+const OFFER_VIEWS = ['dashboard', 'purchases', 'dispatch', 'sales', 'stock', 'products', 'products/:id', 'suppliers', 'suppliers/:id', 'expenses', 'reports', 'activity', 'vouchers'];
+
+// Something arrived from another computer (see Cloud.syncNow).
+async function remoteChanged(tables) {
+  if (!App.user) return;
+  // new shops, settings or switches count from now on, not from the next time Velanzo opens
+  if (tables.some((t) => ['settings', 'locations', 'users'].includes(t))) {
+    try {
+      await loadMe();
+      const nav = $('#nav');
+      if (nav) { nav.innerHTML = navHtml(); $$('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.nav === (App.view?.nav || App.view?.path?.split('/')[0]))); }
+    } catch { return; } // (nobody is logged in any more: the login screen is showing)
+  }
+  if (!App.view || document.querySelector('.modal-wrap')) return;
+  if (LIVE_VIEWS.includes(App.view.pattern)) { router(); return; }
+  if (!OFFER_VIEWS.includes(App.view.pattern) || $('#freshBar')) return;
+  const main = $('.main');
+  if (!main) return;
+  const bar = document.createElement('div');
+  bar.id = 'freshBar';
+  bar.className = 'alert info flex';
+  bar.innerHTML = '<span class="grow">New changes arrived from another computer.</span><button class="btn sm primary">Show them</button>';
+  bar.querySelector('button').addEventListener('click', () => router());
+  main.prepend(bar);
+}
+
 // The small status at the top: is everything saved to the cloud?
 function paintSync() {
   const pill = $('#syncPill');
@@ -476,6 +509,8 @@ async function router() {
   if (!found || (found.allow && !found.allow())) return go(homeFor());
   while (App.cleanups.length) { try { App.cleanups.pop()(); } catch { /* ignore */ } }
   if (!$('#shell')) renderShell();
+  $('#freshBar')?.remove();
+  App.view = { pattern: found.pattern, nav: found.nav, path };
   const nav = found.nav || path.split('/')[0];
   $$('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.nav === nav));
   setTitle(typeof found.title === 'function' ? found.title(params) : found.title);
