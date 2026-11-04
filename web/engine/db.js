@@ -326,6 +326,8 @@ export function init(adapter) {
       exec(`PRAGMA user_version = ${i + 1}`);
     });
   }
+  // A computer on the cloud always notes its changes to send (nothing may leave this switched off).
+  if (get("SELECT value FROM device WHERE key = 'mode'")?.value === 'cloud') run('UPDATE sync_ctx SET applying = 0');
 }
 
 export function getSettings() {

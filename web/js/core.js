@@ -444,6 +444,8 @@ const OFFER_VIEWS = ['dashboard', 'purchases', 'dispatch', 'sales', 'stock', 'pr
 // Something arrived from another computer (see Cloud.syncNow).
 async function remoteChanged(tables) {
   if (!App.user) return;
+  // a sale screen left open all day uses the new prices (the items on a bill being made stay as they are)
+  if (tables.some((t) => t === 'products' || t === 'stock') && ProductCache.list.length) ProductCache.load(ProductCache.loc, true).catch(() => {});
   // new shops, settings or switches count from now on, not from the next time Velanzo opens
   if (tables.some((t) => ['settings', 'locations', 'users'].includes(t))) {
     try {

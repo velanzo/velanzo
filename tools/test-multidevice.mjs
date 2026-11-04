@@ -427,6 +427,156 @@ await scenario('24. "Download everything again" works, and nothing is lost if ch
   ok(!(await B.system('info')).sync.rebuild, 'done');
 });
 
+// ---------- 9. The same login on several computers ----------
+await scenario('25. The same person signs in on a second computer: nobody is put out', async () => {
+  const uid2 = 'cccccccc-0000-0000-0000-000000000003';
+  await db.query("insert into auth.users values ($1, null, now()) on conflict do nothing", [uid2]);
+  const SHOP2 = device('shop2', uid2);
+  const login2 = await SHOP2.rpc('login_with_id', { p_login: 'ahmed', p_password: 'ahmed-pw-1', p_label: 'Second counter' });
+  ok(login2.ok && login2.id !== login.id, 'the second computer signs in, with its own number');
+  await SHOP2.system('setupCloud', { ...login2, label: 'Second counter' });
+  await SHOP2.system('bindUser', login2.user_id);
+  await SHOP2.sync();
+  await SHOP2.call('POST', '/api/login', { user_id: ahmed.id, pin: '3333' });
+  const p = await newItem();
+  await SHOP2.sync();
+  const before = await cloudStock(S1, p.id);
+  // both work, at the same time
+  await SHOP.call('POST', '/api/sales', { items: [{ product_id: p.id, qty: 1 }] });
+  await SHOP2.call('POST', '/api/sales', { items: [{ product_id: p.id, qty: 2 }] });
+  let problem = null;
+  try { await SHOP.sync(); await SHOP2.sync(); await SHOP.sync(); } catch (e) { problem = e.message; }
+  ok(!problem, 'the first computer keeps working' + (problem ? `: ${problem}` : ''));
+  ok(await cloudStock(S1, p.id) === before - 3, 'both bills reached the cloud');
+  ok(await stockAt(SHOP, S1, p.id) === before - 3 && await stockAt(SHOP2, S1, p.id) === before - 3, 'both computers show the same stock');
+  const seen = async (d) => (await d.sql('SELECT bill_no FROM sales ORDER BY bill_no')).map((r) => r.bill_no).join();
+  ok(await seen(SHOP) === await seen(SHOP2), 'both computers show the same bills');
+  // one signs out: the other is not affected
+  await SHOP2.rpc('release_device', { p_device: login2.id });
+  await SHOP2.system('forgetDevice', {});
+  await SHOP.call('POST', '/api/sales', { items: [{ product_id: p.id, qty: 1 }] });
+  const r = await SHOP.sync();
+  ok(r.refused === 0 && await cloudStock(S1, p.id) === before - 4, 'one signs out, the other keeps working');
+  await SHOP2.stop();
+});
+
+await scenario('26. Signing a person in while an owner sign-in is on the computer does not stop the owner computers', async () => {
+  // (the old way: the same account counted as "one computer", so all the owner's computers were switched off)
+  const r = await cloudRpc(OWNER, 'login_with_id', { p_login: 'ahmed', p_password: 'ahmed-pw-1', p_label: 'Left signed in' });
+  ok(r.ok, '(the person signs in)');
+  const active = (await db.query('select count(*)::int n from devices where auth_uid = $1 and location_id is null and active = 1', [OWNER])).rows[0].n;
+  ok(active === 2, `the owner's computers stay on (${active} of 2)`);
+  let problem = null;
+  try { await A.sync(); await B.sync(); } catch (e) { problem = e.message; }
+  ok(!problem, 'and keep syncing' + (problem ? `: ${problem}` : ''));
+  await db.query('update devices set active = 0 where id = $1', [r.id]);
+});
+
+await scenario('27. A computer signing in again retires its old number, and only its own', async () => {
+  const uid3 = 'cccccccc-0000-0000-0000-000000000004';
+  await db.query("insert into auth.users values ($1, null, now()) on conflict do nothing", [uid3]);
+  const r3 = await cloudRpc(uid3, 'login_with_id', { p_login: 'ahmed', p_password: 'ahmed-pw-1', p_label: 'Signed in again' });
+  await cloudRpc(uid3, 'replace_device', { p_old: login.id, p_new: r3.id }).catch(() => {});
+  const shopRow = (await db.query('select active from devices where id = $1', [login.id])).rows[0];
+  ok(shopRow.active === 0, "the person's old number is retired");
+  await db.query('update devices set active = 1 where id = $1', [login.id]); // (the test's shop computer goes on)
+  await db.query('update devices set active = 0 where id = $1', [r3.id]);
+  const owner1 = (await A.system('info')).device.id;
+  await cloudRpc(uid3, 'replace_device', { p_old: owner1, p_new: r3.id }).catch(() => {});
+  ok((await db.query('select active from devices where id = $1', [owner1])).rows[0].active === 1, "nobody can retire someone else's computer");
+});
+
+await scenario("28. The owner moves a person to another place: their computer follows, nobody signs out", async () => {
+  await A.sync();
+  const shop2 = (await A.call('GET', '/api/locations')).find((l) => l.code === 'S2');
+  await A.call('PUT', '/api/locations/' + shop2.id, { perms: ['sell', 'returns', 'discount', 'receive', 'expenses', 'add_items', 'void_bills'] });
+  await A.call('PUT', '/api/users/' + ahmed.id, { location_id: shop2.id });
+  await A.sync();
+  let problem = null;
+  try { await SHOP.sync(); } catch (e) { problem = e.message; }
+  ok(!problem, 'the computer does not get stuck' + (problem ? `: ${problem}` : ''));
+  ok((await SHOP.system('info')).device.location_id === shop2.id, 'it now belongs to the new place');
+  ok((await SHOP.system('info')).user_id === ahmed.id, 'the person is still logged in');
+  const p = await newItem();
+  const bill = await SHOP.call('POST', '/api/sales', { items: [{ product_id: p.id, qty: 1 }] });
+  const r = await SHOP.sync();
+  ok(r.refused === 0 && bill.location_id === shop2.id, 'they sell at the new place');
+  await A.call('PUT', '/api/users/' + ahmed.id, { location_id: S1 });
+  await A.sync(); await SHOP.sync();
+  ok((await SHOP.system('info')).device.location_id === S1, 'and back again');
+});
+
+await scenario('29. A change with nothing in it still brings back what the cloud has', async () => {
+  const p = await newItem();
+  await A.call('PUT', '/api/products/' + p.id, { sale_price: 2222 });
+  await A.sync();
+  // B saves the item unchanged, then receives A's change while its own save is still waiting
+  await B.call('PUT', '/api/products/' + p.id, {});
+  const row = (await B.sql('SELECT * FROM products WHERE id = ?', [p.id]))[0];
+  await B.system('applyPull', [{ t: 'products', r: { ...row, sale_price: 2222 } }]);
+  ok((await B.sql('SELECT sale_price FROM products WHERE id = ?', [p.id]))[0].sale_price !== 2222, '(the download skipped it, because a change was waiting)');
+  await B.sync(); await B.sync();
+  ok((await B.sql('SELECT sale_price FROM products WHERE id = ?', [p.id]))[0].sale_price === 2222, 'it still ends up with the new price');
+});
+
+await scenario('30. A computer that somehow differs from the cloud repairs itself', async () => {
+  const check = (d) => createSyncer({ system: d.system, rpc: d.rpc, checkEvery: 0 });
+  await A.sync(); await B.sync();
+  let r = await check(B).syncOnce();
+  ok(r.checked?.compared && r.checked.same && !r.repaired, 'nothing wrong: it compares and leaves everything alone: ' + JSON.stringify(r.checked));
+  r = await check(SHOP).syncOnce();
+  ok(r.checked?.compared && r.checked.same && !r.repaired, 'the same on a shop computer: ' + JSON.stringify(r.checked));
+  // damage it, the ways a missed download would
+  const p = await newItem(4);
+  await B.sql('UPDATE sync_ctx SET applying = 1');
+  await B.sql('DELETE FROM products WHERE id = ?', [p.id]);
+  await B.sql('UPDATE stock SET qty = qty + 7 WHERE product_id = ?', [p.id]);
+  await B.sql('UPDATE sync_ctx SET applying = 0');
+  r = await check(B).syncOnce();
+  ok(r.repaired === true, 'a difference is found and repaired: ' + (r.checked?.different || []).join(', '));
+  ok((await B.sql('SELECT 1 FROM products WHERE id = ?', [p.id])).length === 1 && await stockAt(B, WH, p.id) === 4, 'the item and its stock are right again');
+  await sameEverywhere(A, B, 'both computers end up the same, without signing out');
+  r = await check(B).syncOnce();
+  ok(r.checked?.same === true, 'and it stays that way');
+  // a second difference soon after is reported, not repaired over and over
+  await B.sql('UPDATE sync_ctx SET applying = 1');
+  await B.sql('UPDATE stock SET qty = qty + 7 WHERE product_id = ?', [p.id]);
+  await B.sql('UPDATE sync_ctx SET applying = 0');
+  r = await check(B).syncOnce();
+  ok(r.checked?.same === false && !r.repaired, 'never more than one repair in half an hour');
+  await B.system('requestRebuild');
+  await B.sync();
+  ok(await stockAt(B, WH, p.id) === 4, '"Download everything again" fixes it at any time');
+});
+
+await scenario('31. Too much at once for the cloud: it sends less at a time', async () => {
+  const before = (await db.query('select count(*)::int n from expenses')).rows[0].n;
+  for (let i = 0; i < 60; i++) await B.call('POST', '/api/expenses', { amount: 1 + i, category: 'Batch' });
+  let refusedBig = 0;
+  const small = async (fn, args) => {
+    if (fn === 'push' && args.p_groups.length > 30) { refusedBig++; throw new Error('canceling statement due to statement timeout'); }
+    return B.rpc(fn, args);
+  };
+  const r = await createSyncer({ system: B.system, rpc: small }).syncOnce();
+  ok(refusedBig > 0 && r.sent === 60, `all 60 went up in smaller pieces (${r.sent})`);
+  ok((await db.query('select count(*)::int n from expenses')).rows[0].n === before + 60, 'all 60 are in the cloud');
+  await A.sync();
+});
+
+await scenario('32. While the owner restores a backup, other computers keep what they have', async () => {
+  const usersBefore = (await SHOP.sql('SELECT COUNT(*) AS n FROM users'))[0].n;
+  await db.query("update meta set value = gen_random_uuid()::text where key = 'epoch'");
+  const flaky = async (fn, args) => {
+    if (fn === 'pull') { const r = await SHOP.rpc(fn, args); return { ...r, rows: args.p_since === 0 ? r.rows.filter((x) => x.t !== 'users') : r.rows }; }
+    return SHOP.rpc(fn, args);
+  };
+  await createSyncer({ system: SHOP.system, rpc: flaky }).syncOnce();
+  ok((await SHOP.sql('SELECT COUNT(*) AS n FROM users'))[0].n === usersBefore && (await SHOP.system('info')).user_id === ahmed.id, 'the people stay, nobody is logged out');
+  const r = await SHOP.sync();
+  ok(r.reset === true && (await SHOP.system('info')).user_id === ahmed.id, 'and once the cloud is complete it downloads everything');
+  await A.sync(); await B.sync();
+});
+
 await sameEverywhere(A, B, '\nFinally: the two owner computers hold exactly the same data');
 for (const d of [A, B, SHOP]) await d.stop();
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed:\n - ${failures.join('\n - ')}` : `\nAll ${passed} multi-computer checks passed.`);

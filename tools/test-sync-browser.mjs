@@ -64,8 +64,9 @@ try {
   // ---- what the status says when something is wrong ----
   await run(`Cloud.status().problem = { short: 'Not up to date', text: 'test reason' }; paintSync();`);
   ok(await run(`return document.querySelector('#syncPill').textContent.trim() === 'Not up to date' && document.querySelector('#syncPill').title === 'test reason';`), 'a problem shows with its reason');
-  await run(`await Cloud.syncNow(); await sleep(200);`);
-  ok(await run(`return document.querySelector('#syncPill').textContent.trim() === 'All saved online';`), 'and clears by itself when syncing works again');
+  await run(`await Cloud.syncNow(); await until(() => !/Saving|waiting/.test(document.querySelector('#syncPill').textContent));`);
+  const after = await run(`return document.querySelector('#syncPill').textContent.trim() + ' / ' + JSON.stringify(Cloud.status().problem);`);
+  ok(after.startsWith('All saved online'), 'and clears by itself when syncing works again: ' + after);
 
   // ---- Download everything again keeps the person logged in ----
   await run(`await go('#/device'); await until(() => document.querySelector('#redlBtn')); click('#redlBtn'); await sleep(3000);`);

@@ -79,6 +79,7 @@ const Setup = (() => {
     const signup = mode === 'signup';
     show(card(`${logo}<h1>${signup ? 'Create your owner account' : 'Owner sign in'}</h1>
       <p class="muted">${signup ? 'For a new business. You will use this email and password to sign in on your phone or computer.' : 'Use the email and password of your Velanzo owner account.'}</p>
+      ${App.device?.id && !fromLocal ? '<div class="alert info">Signing in again reconnects this computer. Your work on it is kept.</div>' : ''}
       <form id="f">
         <label class="field">Email<input class="input" name="email" type="email" autocomplete="username" required></label>
         <label class="field">Password<input class="input" name="password" type="password" autocomplete="${signup ? 'new-password' : 'current-password'}" minlength="${signup ? 8 : 1}" required>
@@ -89,7 +90,7 @@ const Setup = (() => {
     const fg = $('#forgot');
     if (fg) fg.addEventListener('click', (e) => { e.preventDefault(); showForgotPassword(fromLocal); });
     $('#toggle').addEventListener('click', (e) => { e.preventDefault(); showOwner(signup ? 'signin' : 'signup', { fromLocal }); });
-    $('#back').addEventListener('click', (e) => { e.preventDefault(); if (fromLocal) boot(); else showWelcome(); });
+    $('#back').addEventListener('click', (e) => { e.preventDefault(); if (fromLocal || App.device?.id) boot(); else showWelcome(); });
     $('#f').addEventListener('submit', async (e) => {
       e.preventDefault();
       const v = formValues(e.target);
@@ -122,13 +123,14 @@ const Setup = (() => {
   // A shop or warehouse person signs in with the user ID and password the owner made for them.
   function showSignIn() {
     show(card(`${logo}<h1>Sign in</h1><p class="muted">Type the user ID and password the owner gave you.</p>
+      ${App.device?.id ? '<div class="alert info">Signing in again reconnects this computer. Your work on it is kept.</div>' : ''}
       <form id="f" autocomplete="on">
         <label class="field">User ID<input class="input" name="login" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
         <label class="field">Password<input class="input" name="password" type="password" autocomplete="current-password" required></label>
         <button class="btn primary lg block">Sign in</button>${errBox()}
       </form>
       <div class="setup-links"><a href="#" id="back">Back</a></div>`));
-    $('#back').addEventListener('click', (e) => { e.preventDefault(); showWelcome(); });
+    $('#back').addEventListener('click', (e) => { e.preventDefault(); if (App.device?.id) boot(); else showWelcome(); });
     $('#f').addEventListener('submit', async (e) => {
       e.preventDefault();
       const v = formValues(e.target);
@@ -146,6 +148,7 @@ const Setup = (() => {
 
   // Set this device up as cloud device number d.id, download everything, then start or log in.
   async function connect(d, email) {
+    const oldDevice = App.device?.id; // (signing in again: the work on this computer stays and goes up under the new number)
     await Engine.system('setupCloud', { id: d.id, code: d.code, location_id: d.location_id, label: d.label });
     App.device = (await Engine.system('info')).device;
     show(card(`${logo}<h1>Getting your data…</h1><p class="muted" id="prog">Connecting</p><div class="progress"><div></div></div>`));
@@ -153,6 +156,7 @@ const Setup = (() => {
     const out = await Cloud.syncNow();
     Cloud.onProgress = null;
     if (!out) throw new Error(Cloud.status().problem?.text || 'Could not download the data. Check the internet and try again.');
+    if (oldDevice && oldDevice !== d.id) Cloud.replaceDevice(oldDevice, d.id).catch(() => {});
     Cloud.start();
     // this computer now belongs to the person who signed in on it
     if (d.user_id) await Engine.system('bindUser', d.user_id);

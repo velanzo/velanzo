@@ -32,8 +32,8 @@ if (CLOUD) {
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
 async function session(user) {
   const exp = Math.floor(Date.now() / 1000) + 3600;
-  const access = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: user.id, exp, role: 'authenticated', aud: 'authenticated', email: user.email || '', is_anonymous: !!user.anonymous })}.dev`;
   const refresh = crypto.randomBytes(16).toString('hex');
+  const access = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: user.id, exp, role: 'authenticated', aud: 'authenticated', email: user.email || '', is_anonymous: !!user.anonymous, session_id: refresh })}.dev`;
   await cloud.db.query('insert into dev_auth_tokens values ($1, $2)', [refresh, user.id]);
   return {
     access_token: access, token_type: 'bearer', expires_in: 3600, expires_at: exp, refresh_token: refresh,
@@ -99,7 +99,15 @@ async function handleAuth(req, res, url, body) {
     const r = (await cloud.db.query('select * from dev_auth_users where id = $1', [id])).rows[0];
     return send(res, 200, (await session(r)).user);
   }
-  if (p === '/logout') { res.writeHead(204); return res.end(); }
+  // like Supabase: scope=global (its default) ends the sign-in on every computer of the account, scope=local only here
+  if (p === '/logout') {
+    const id = uidFrom(req), scope = url.searchParams.get('scope') || 'global';
+    let sid = null;
+    try { sid = JSON.parse(Buffer.from(String(req.headers.authorization).split('.')[1], 'base64url').toString()).session_id; } catch { /* no session */ }
+    if (scope === 'global') await cloud.db.query('delete from dev_auth_tokens where user_id = $1', [id]);
+    else if (scope === 'local') await cloud.db.query('delete from dev_auth_tokens where token = $1', [sid]);
+    res.writeHead(204); return res.end();
+  }
   return authError(res, 404, 'Not found', 'not_found');
 }
 
@@ -107,7 +115,7 @@ async function handleAuth(req, res, url, body) {
 async function handleRpc(req, res, url, body) {
   const fn = url.pathname.split('/').pop();
   const allowed = ['push', 'pull', 'velanzo_whoami', 'create_owner', 'register_owner_device', 'remove_device', 'restore_begin',
-    'set_user_login', 'login_with_id', 'release_device', 'list_user_logins',
+    'set_user_login', 'login_with_id', 'release_device', 'replace_device', 'sync_check', 'list_user_logins',
     'request_pin_reset', 'check_pin_reset', 'use_pin_reset', 'list_pin_resets', 'decide_pin_reset'];
   if (!allowed.includes(fn)) return send(res, 404, { code: 'PGRST202', message: `Could not find the function public.${fn}` });
   try {

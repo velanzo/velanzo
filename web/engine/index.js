@@ -68,6 +68,8 @@ export const system = {
   waiting: () => Sync.waiting(),
   replaceAll: (rows, st) => Sync.replaceAll(rows, st),
   requestRebuild: () => Sync.requestRebuild(),
+  moveDevice: (locationId) => Sync.moveDevice(locationId),
+  compareWithCloud: (cloud) => Sync.compareWithCloud(cloud),
   // An owner with no PIN yet (e.g. after restoring a backup from the old version) chooses one on an owner device.
   setFirstPin: async ({ user_id, pin }) => {
     const u = D.get('SELECT * FROM users WHERE id = ? AND active = 1', user_id);

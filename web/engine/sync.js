@@ -115,7 +115,8 @@ function writeRows(rows, pending, out) {
     } catch (e) {
       // Another record here already has this barcode, code or number (it never reached the cloud, or is about to be refused).
       // The cloud is right: skip this one for now and download everything again once nothing is waiting.
-      if (!/UNIQUE constraint failed/.test(String(e && e.message))) throw e;
+      // (Whatever else this computer's database objects to must not stop it either.)
+      if (!/constraint failed/i.test(String(e && e.message))) throw e;
       D.setDevice({ rebuild: 1 });
       continue;
     }
@@ -160,6 +161,37 @@ export function replaceAll(rows, st) {
 
 // "Download everything again": the next sync does it, once nothing is waiting.
 export const requestRebuild = () => D.setDevice({ rebuild: 1 });
+
+// The owner moved the person of this computer to another place. Their own record moves at once, so they stay logged in.
+export function moveDevice(locationId) {
+  const bound = Number(get("SELECT value FROM device WHERE key = 'bound_user'")?.value) || Number(get("SELECT value FROM device WHERE key = 'user_id'")?.value) || 0;
+  tx(() => {
+    run('UPDATE sync_ctx SET applying = 1');
+    if (bound) run('UPDATE users SET location_id = ? WHERE id = ?', locationId, bound);
+    D.setDevice({ location_id: locationId });
+    run('UPDATE sync_ctx SET applying = 0');
+  });
+}
+
+// Compares what is here with what the cloud says this computer should have. It only counts when nothing is waiting here
+// and nothing new has happened in the cloud since the last download.
+const COMPARE_SUM = { products: 'ROUND(sale_price * 100)', stock: 'qty', purchases: 'rev', dispatches: 'rev', sales: 'rev' };
+const REPAIR_GAP = 30 * 60000; // (never more than one repair in half an hour)
+export function compareWithCloud(cloud) {
+  if (waiting() || Number(cloud.max_rev || 0) > state().cursor) return { compared: false };
+  const different = [];
+  for (const t of [...D.SYNC_TABLES, 'stock']) {
+    const here = get(`SELECT COUNT(*) AS n, COALESCE(SUM(${COMPARE_SUM[t] || 0}), 0) AS s FROM ${t}${t === 'stock' ? ' WHERE qty <> 0' : ''}`);
+    const there = cloud.tables?.[t] || { n: 0, s: 0 };
+    if (Number(here.n) !== Number(there.n) || Number(here.s) !== Number(there.s)) different.push(t);
+  }
+  const at = now();
+  if (!different.length) { D.setDevice({ checked_at: at, check_ok: 1 }); return { compared: true, same: true }; }
+  const last = Date.parse(String(get("SELECT value FROM device WHERE key = 'repaired_at'")?.value || '').replace(' ', 'T')) || 0;
+  const repair = Date.now() - last > REPAIR_GAP;
+  D.setDevice({ checked_at: at, check_ok: repair ? 1 : 0, ...(repair ? { repaired_at: at } : {}) });
+  return { compared: true, same: false, different, repair };
+}
 
 // ---------- Sync bookkeeping kept on this device ----------
 export function state() {

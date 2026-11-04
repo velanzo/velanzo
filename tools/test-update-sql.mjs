@@ -14,7 +14,7 @@ await db.exec(fs.readFileSync(path.join(ROOT, 'supabase', 'migrations', '2026101
 const sql = fs.readFileSync(path.join(ROOT, 'supabase', 'UPDATE-ALL.sql'), 'utf8');
 await db.exec(sql);
 await db.exec(sql);
-const fns = ['request_pin_reset', 'login_with_id', 'set_user_login'];
+const fns = ['request_pin_reset', 'login_with_id', 'set_user_login', 'sync_check', 'replace_device', '_follow_user'];
 for (const f of fns) {
   const r = await db.query('select 1 from pg_proc where proname = $1', [f]);
   if (!r.rows.length) { console.error('missing function ' + f); process.exit(1); }

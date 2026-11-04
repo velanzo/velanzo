@@ -32,7 +32,8 @@ View('device', {
         <div class="card"><h3>${icon('cloud')} Saving online</h3>
           ${cloud ? `<dl class="kv"><dt>Status</dt><dd>${cs.problem ? `<span class="pill red">${esc(cs.problem.short)}</span> ${esc(cs.problem.text)}` : !cs.online ? '<span class="pill warn">No internet</span>' : '<span class="pill ok">Connected</span>'}</dd>
             <dt>Waiting to send</dt><dd>${s.waiting ? `<b>${s.waiting}</b> change${s.waiting > 1 ? 's' : ''}` : 'Nothing — all saved'}</dd>
-            <dt>Last saved</dt><dd>${s.last_sync_at ? esc(fmtDT(s.last_sync_at)) : 'Not yet'}</dd></dl>
+            <dt>Last saved</dt><dd>${s.last_sync_at ? esc(fmtDT(s.last_sync_at)) : 'Not yet'}</dd>
+            <dt>Compared with the cloud</dt><dd>${s.checked_at ? `${esc(fmtDT(s.checked_at))} · ${s.check_ok ? '<span class="pill ok">The same</span>' : '<span class="pill warn">Different</span> <span class="muted small">Use Download everything again below.</span>'}${s.repaired_at ? ` <span class="muted small">(repaired itself ${esc(fmtDT(s.repaired_at))})</span>` : ''}` : 'Not yet'}</dd></dl>
             <button class="btn primary" id="syncBtn">${icon('cloud')} Save now</button>
             ${cs.problem?.reconnect ? '<button class="btn" id="reBtn">Connect again</button>' : ''}`
           : `<p class="muted">This device is not connected to the cloud. Everything is kept here; download a backup regularly (Settings → Backup & data).</p>
@@ -90,8 +91,9 @@ View('device', {
     $('#forgetBtn', el).addEventListener('click', async () => {
       const st = await GET('/api/sync/status');
       if (cloud && st.waiting) return toast(`${st.waiting} change${st.waiting > 1 ? 's are' : ' is'} not in the cloud yet. Connect to the internet and wait for "All saved online" first.`, 'error', 8000);
-      if (!(await confirmBox(cloud ? 'Remove Velanzo from this device? The data stays in the cloud. To use this device again you will need a new code from the owner.'
+      if (!(await confirmBox(cloud ? 'Remove Velanzo from this device? The data stays in the cloud. To use this device again, sign in with your user ID and password.'
         : 'Remove Velanzo and ALL its data from this device? This cannot be undone. Make sure you downloaded a backup.', { title: 'Remove from this device', ok: 'Remove', danger: true }))) return;
+      if (cloud) await Cloud.releaseDevice(d.id).catch(() => {});
       await Engine.system('forgetDevice');
       await Cloud.signOut();
       location.hash = '';

@@ -67,12 +67,15 @@ route('GET', '/api/badges', 'any', ({ user }) => {
 });
 
 export function syncStatus() {
-  const d = Object.fromEntries(all("SELECT key, value FROM device WHERE key IN ('last_sync_at', 'mode')").map((r) => [r.key, r.value]));
+  const d = Object.fromEntries(all("SELECT key, value FROM device WHERE key IN ('last_sync_at', 'mode', 'checked_at', 'check_ok', 'repaired_at')").map((r) => [r.key, r.value]));
   return {
     waiting: get('SELECT COUNT(DISTINCT grp) AS n FROM outbox').n,
     errors: get('SELECT COUNT(*) AS n FROM sync_errors').n,
     last_sync_at: d.last_sync_at || null,
     mode: d.mode || '',
+    checked_at: d.checked_at || null,
+    check_ok: d.check_ok === '1',
+    repaired_at: d.repaired_at || null,
   };
 }
 route('GET', '/api/sync/status', 'any', () => syncStatus());

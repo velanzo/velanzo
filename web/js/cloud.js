@@ -5,7 +5,7 @@ import { createSyncer, localNow } from '../engine/syncer.js';
 export function createCloud() {
   const cfg = window.VELANZO_CONFIG || {};
   const enabled = !!(cfg.supabaseUrl && cfg.supabaseAnonKey);
-  let sb = null, timer = null, soon = null, active = false;
+  let sb = null, timer = null, soon = null, active = false, lastRun = 0;
   const st = { online: navigator.onLine, syncing: false, lastSync: null, problem: null };
 
   function client() {
@@ -26,6 +26,7 @@ export function createCloud() {
     const m = String((err && err.message) || err || '');
     const vz = m.match(/^VZ:([a-z]+):([\s\S]*)$/);
     if (vz) return new CloudError(vz[1], vz[2].trim());
+    if (/statement timeout|too large/i.test(m)) return new CloudError('slow', m); // (not "no internet": the syncer sends less at a time)
     if (/fetch|network|load failed|timed? ?out|offline/i.test(m) || !navigator.onLine) return new CloudError('offline', 'No internet connection');
     // Sent without a cloud sign-in (the passcode still opens the app, so nothing else shows it).
     if (/permission denied for function/i.test(m)) return new CloudError('auth', 'This computer is no longer signed in to the cloud. Open "This device" and click "Connect again". Your changes are kept here.');
@@ -34,21 +35,42 @@ export function createCloud() {
     if (/email not confirmed/i.test(m)) return new CloudError('confirm', 'Please confirm your email first: open the link we sent you, then sign in.');
     return new CloudError('other', m);
   }
+  const NOT_SIGNED_IN = 'This computer is no longer signed in to the cloud. Open "This device" and click "Connect again". Your work on this computer is kept.';
+  // Renews the sign-in → 'ok', 'gone' (really signed out) or 'offline' (the cloud could not be asked: nothing is wrong with the sign-in).
+  async function renewSession() {
+    let r;
+    try { r = await client().auth.refreshSession(); } catch { return 'offline'; }
+    if (r.data?.session) return 'ok';
+    const e = r.error;
+    return e && e.name !== 'AuthSessionMissingError' && (e.name === 'AuthRetryableFetchError' || !e.status || e.status >= 500) ? 'offline' : 'gone';
+  }
+  const CALL_LIMIT = 60000; // a call that never answers must not stop syncing for ever
   async function rpc(fn, args, tried) {
     let res;
-    try { res = await client().rpc(fn, args || {}); } catch (e) { throw asError(e); }
+    try {
+      res = await Promise.race([client().rpc(fn, args || {}), new Promise((_, no) => { setTimeout(() => no(new CloudError('offline', 'The cloud did not answer.')), CALL_LIMIT); })]);
+    } catch (e) { throw e instanceof CloudError ? e : asError(e); }
     if (res.error) {
-      // The sign-in ran out (a laptop that slept, for example): renew it once, without bothering anyone.
-      if (/\bjwt\b|\bjws/i.test(String(res.error.message))) {
-        if (!tried) {
-          const again = await client().auth.refreshSession().catch(() => null);
-          if (again && !again.error && again.data?.session) return rpc(fn, args, true);
-        }
-        throw new CloudError('auth', 'This computer is no longer signed in to the cloud. Open "This device" and click "Connect again". Your changes are kept here.');
+      // The sign-in ran out (a laptop that slept, for example), or could not be renewed for a moment: try once more
+      // before saying anything. Only a sign-in that is really gone needs a person.
+      if (/\bjwt\b|\bjws|permission denied for function/i.test(String(res.error.message))) {
+        const how = tried ? 'gone' : await renewSession();
+        if (how === 'ok') return rpc(fn, args, true);
+        if (how === 'offline') throw new CloudError('offline', 'No internet connection');
+        throw new CloudError('auth', NOT_SIGNED_IN);
       }
       throw asError(res.error);
     }
     return res.data;
+  }
+  // Only this computer signs out. (By default Supabase ends the sign-in on every computer using the same account.)
+  async function signOutHere() {
+    if (!enabled) return;
+    try { await client().auth.signOut({ scope: 'local' }); } catch { /* no internet */ }
+    // without internet the sign-in would stay on this computer: remove it anyway
+    try {
+      if (localStorage.getItem('velanzo-auth')) { sb?.auth.stopAutoRefresh?.(); localStorage.removeItem('velanzo-auth'); sb = null; }
+    } catch { /* storage off */ }
   }
   async function auth(fn) {
     let res;
@@ -64,7 +86,8 @@ export function createCloud() {
   });
 
   async function syncNow() {
-    if (!enabled || App.device.mode !== 'cloud' || st.problem?.stop) return null;
+    if (!enabled || App.device.mode !== 'cloud') return null;
+    lastRun = Date.now();
     st.syncing = true;
     paint();
     try {
@@ -79,8 +102,9 @@ export function createCloud() {
     } catch (e) {
       const err = e instanceof CloudError ? e : asError(e);
       if (err.kind === 'offline') st.online = false;
-      else if (err.kind === 'removed') st.problem = { stop: true, short: 'Device removed', text: err.message };
-      else if (err.kind === 'device' || err.kind === 'auth') st.problem = { stop: true, short: 'Not connected', text: err.message, reconnect: true };
+      // (it keeps trying: as soon as the sign-in works again, this goes away by itself)
+      else if (err.kind === 'removed') st.problem = { short: 'Device removed', text: 'This computer was removed from Velanzo. Click "Connect again" to sign in. Your work on this computer is kept.', reconnect: true };
+      else if (err.kind === 'device' || err.kind === 'auth') st.problem = { short: 'Not connected', text: NOT_SIGNED_IN, reconnect: true };
       else st.problem = { short: err.kind === 'update' ? 'Cloud needs updating' : e.stage === 'download' ? 'Not up to date' : 'Not saved', text: err.message };
       return null;
     } finally {
@@ -116,6 +140,7 @@ export function createCloud() {
       window.addEventListener('online', () => { st.online = true; syncNow(); });
       window.addEventListener('offline', () => { st.online = false; paint(); });
       document.addEventListener('visibilitychange', () => { if (!document.hidden) syncNow(); });
+      window.addEventListener('focus', () => { if (Date.now() - lastRun > 5000) syncNow(); });
     },
     stop() { active = false; clearInterval(timer); },
 
@@ -127,7 +152,7 @@ export function createCloud() {
       st.problem = null; // signed in again: saving may start again
       return d;
     },
-    signOut: () => (enabled ? client().auth.signOut().catch(() => {}) : null),
+    signOut: signOutHere,
     whoami: () => rpc('velanzo_whoami'),
     // The owner's phone or computer: sees every shop.
     async registerOwnerDevice(email, label) {
@@ -143,7 +168,9 @@ export function createCloud() {
     },
     // A shop or warehouse person signs in with the user ID and password the owner made for them.
     async loginWithId(login, password, label) {
-      const s = (await client().auth.getSession()).data.session;
+      let s = (await client().auth.getSession()).data.session;
+      // A person's computer has its own sign-in. An owner's sign-in left on this computer belongs to the owner's other computers.
+      if (s && !s.user?.is_anonymous) { await signOutHere(); s = null; }
       if (!s) await auth((a) => a.signInAnonymously());
       const r = await rpc('login_with_id', { p_login: login, p_password: password, p_label: label, p_now: localNow() });
       if (!r.ok) throw new CloudError('login', r.error);
@@ -155,6 +182,8 @@ export function createCloud() {
     listUserLogins: () => rpc('list_user_logins'),
     // This computer stops being a device of the business (sign out).
     releaseDevice: (id) => rpc('release_device', { p_device: id }),
+    // This computer signed in again and has a new number: the old one is no longer in use.
+    replaceDevice: (oldId, newId) => rpc('replace_device', { p_old: oldId, p_new: newId }),
     removeDevice: (id) => rpc('remove_device', { p_id: id }),
     restoreBegin: () => rpc('restore_begin'),
 
