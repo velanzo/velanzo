@@ -148,11 +148,10 @@ function printBill(sale) { printDoc(billHtml(sale), receiptCss(), sale.bill_no, 
 // items: [{ product, copies }]
 function labelHtml(p) {
   const S = App.settings;
-  const w = Math.max(20, Number(S.label_width) || 50), h = Math.max(12, Number(S.label_height) || 25);
+  const w = Math.max(20, Number(S.label_width) || 50);
   const m = Barcode.fit(p.barcode, w - 3); // (1.5 mm padding each side)
   const bc = m ? Barcode.svg(p.barcode, { height: 40, moduleMm: m }) : Barcode.svg(p.barcode, { height: 40, quiet: 6 });
   return `<div class="label">
-    ${h >= 22 ? `<div class="biz">${esc(S.business_name)}</div>` : ''}
     ${S.label_show_name !== '0' ? `<div class="name">${esc(p.name)}</div>` : ''}
     ${variantText(p) ? `<div class="var">${esc(variantText(p))}</div>` : ''}
     <div class="bcw">${bc}</div>
@@ -180,7 +179,6 @@ function labelCss() {
   body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #000; }
   .label { width: ${w}mm; height: ${h}mm; padding: 0.8mm 1.5mm; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
   .label > div { flex-shrink: 0; }
-  .biz { font-size: ${small ? 6 : 7}pt; font-weight: 700; letter-spacing: .4px; line-height: 1.1; }
   .name { font-size: ${small ? 6 : 7}pt; line-height: 1.1; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .var { font-size: ${small ? 6 : 7.5}pt; font-weight: 700; line-height: 1.1; }
   .label > .bcw { width: 100%; flex: 1 1 auto; min-height: 0; max-height: ${Math.round(h * 0.45)}mm; display: flex; justify-content: center; }
@@ -230,7 +228,6 @@ function labelPreviewHtml(p) {
   const w = Number(S.label_width) || 50, h = Number(S.label_height) || 25;
   const scale = 3.2; // px per mm on screen
   return `<div class="label-preview" style="width:${w * scale}px;height:${h * scale}px">
-    <div class="lp-biz">${esc(S.business_name)}</div>
     ${S.label_show_name !== '0' ? `<div class="lp-name">${esc(p.name)}${variantText(p) ? ' · ' + esc(variantText(p)) : ''}</div>` : ''}
     <div class="lp-bc" style="max-height:${h * scale * 0.42}px">${Barcode.svg(p.barcode, { height: 40, quiet: 6 })}</div>
     <div class="lp-code">${esc(p.barcode)}</div>

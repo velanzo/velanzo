@@ -380,7 +380,6 @@ label.field > .input, label.field > select, label.field > textarea, label.field 
 .label-preview { display: inline-flex; flex-direction: column; align-items: center; justify-content: space-between; border: 1px dashed #9aa1af; background: #fff; padding: 4px 6px; overflow: hidden; font-family: Arial, sans-serif; }
 .label-preview > * { flex-shrink: 0; }
 .label-preview .lp-bc { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; }
-.label-preview .lp-biz { font-weight: 700; font-size: 10px; letter-spacing: .5px; }
 .label-preview .lp-name { font-size: 10px; text-align: center; line-height: 1.15; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .label-preview svg { width: 100%; }
 .label-preview .lp-code { font-size: 9px; letter-spacing: 1px; }
