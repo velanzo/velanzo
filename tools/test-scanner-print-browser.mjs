@@ -110,7 +110,7 @@ try {
   // printer settings belong to this computer: saved in the device, not in the business settings
   await run(`set('#fb [name=bill_mm]', '64'); set('#fb [name=bill_left]', '1'); click('#fb button.primary'); await sleep(900);`);
   ok(await run(`const me = await GET('/api/me'); const biz = await GET('/api/settings'); return me.device.print.bill_mm === '64' && me.device.print.bill_left === '1' && App.settings.bill_mm === '64' && !biz.bill_mm;`), 'printer settings are saved on this computer only (the business settings do not change)');
-  await run(`set('#fl [name=label_width]', '40'); set('#fl [name=label_height]', '30'); click('#fl button.primary'); await sleep(900);`);
+  await run(`set('#fl [name=label_width]', '40'); set('#fl [name=label_height]', '30'); set('#fl [name=label_across]', '1'); click('#fl button.primary'); await sleep(900);`);
   ok(await run(`return (await GET('/api/me')).device.print.label_width === '40' && labelCss().includes('40mm 30mm');`), 'the sticker size is saved on this computer and used by the labels');
   ok(await run(`return !!document.querySelector('#dlCheck') && !!document.querySelector('#dlFix') && document.querySelectorAll('.cmd-row').length >= 8 && document.body.innerText.includes('BlackCopper 80mm Printer Driver.exe') && document.body.innerText.includes('d2910ad801d507da');`), 'the Hardware page has the tools, the commands and the driver with its SHA-256');
   await run(`window.print = () => {}; PrintLog.save([]); click('#testBill'); await sleep(500); click('#testLbl'); await sleep(500);`);
@@ -160,7 +160,7 @@ try {
   }
 
   // ---- the label and bill pages ----
-  const docs = await run(`App.settings.label_mode = 'roll'; App.settings.label_width = '50'; App.settings.label_height = '25';
+  const docs = await run(`App.settings.label_mode = 'roll'; App.settings.label_width = '50'; App.settings.label_height = '25'; App.settings.label_across = '1';
     const ps = ProductCache.list.slice(0, 2).concat([ProductCache.list.find((x) => x.barcode === '0123456789012')]);
     const labels = '<!doctype html><html><head><meta charset="utf-8"><style>' + labelCss() + '</style></head><body>' + ps.map((x) => labelHtml(x)).join('') + '</body></html>';
     const sale = (await GET('/api/sales', { from: '2000-01-01' }))[0];

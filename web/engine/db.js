@@ -302,10 +302,10 @@ export const DEFAULT_SETTINGS = {
   bill_left: '', // space from the left edge in mm (blank = centred)
   auto_print_bill: '1',
   label_mode: 'roll',
-  label_width: '50',
-  label_height: '25',
+  label_width: '38',
+  label_height: '28',
   label_columns: '4',
-  label_across: '1', // stickers side by side on a roll
+  label_across: '2', // stickers side by side on a roll
   label_gap: '2', // mm between those stickers
   label_show_price: '1',
   label_show_name: '1',

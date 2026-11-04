@@ -1,6 +1,6 @@
 // Keeps Velanzo's own files on this device so it opens and works without internet.
 // When a new version is published, change VERSION: devices pick it up the next time they are online.
-const VERSION = 'velanzo-2.4.1';
+const VERSION = 'velanzo-2.4.2';
 const CORE = [
   './', 'index.html', 'config.js', 'manifest.webmanifest', 'favicon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'css/app.css', 'worker.js',

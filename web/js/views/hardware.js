@@ -141,7 +141,7 @@ View('hardware', {
             <div class="full" id="lprev"></div>
             <div class="full" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">Save for this computer</button>
               <button type="button" class="btn" id="testLbl">${icon('printer')} Print test label</button></div></form>
-          <div class="hint" style="margin-top:8px">Common sizes: 50×25, 38×25, 40×30 mm. Measure one sticker, not the roll.</div>
+          <div class="hint" style="margin-top:8px">Common sizes: 38×28, 50×25, 38×25, 40×30 mm. Measure one sticker, not the roll.</div>
           <div id="lbOk" style="margin-top:12px"></div>
           <details><summary>Steps, driver and fixes for the label printer</summary>
             <ol class="steps">
