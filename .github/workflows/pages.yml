@@ -36,8 +36,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-      # each publish gets its own version, so every device picks up the new files
-      - run: sed -i "s/const VERSION = 'velanzo-[^']*'/const VERSION = 'velanzo-${GITHUB_SHA::10}'/" web/sw.js
+      # each publish gets its own cache version, so every device picks up the new files (the app still shows APP_VERSION)
+      - run: |
+          sed -i "s/const VERSION = 'velanzo-' + APP_VERSION;/const VERSION = 'velanzo-' + APP_VERSION + '-${GITHUB_SHA::10}';/" web/sw.js
+          grep -q "${GITHUB_SHA::10}" web/sw.js
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web
