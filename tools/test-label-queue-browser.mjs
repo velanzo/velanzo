@@ -42,17 +42,17 @@ try {
   ok(await run(`return JSON.parse(localStorage.vz_labels).length === 3 && document.querySelector('#addLbl').classList.contains('hidden') && !document.querySelector('#list [data-sel]:checked');`), 'the three items are in the barcode list and the ticks are cleared');
   // the menu entry opens the list
   await run(`click('a[data-nav="labels"]'); await until(() => document.querySelector('#qList [data-c]'));`);
-  ok(await run(`return document.querySelectorAll('#qList [data-c]').length === 3;`), 'the Barcodes page lists the three items, one sticker each');
-  await run(`click('#qList [data-inc="0"]'); click('#qList [data-inc="0"]'); await sleep(200);`);
+  ok(await run(`const stock = (await GET('/api/stock', {})).rows; return [...document.querySelectorAll('#qList [data-c]')].length === 3 && JSON.parse(localStorage.vz_labels).every((x) => x.copies === stock.find((r) => r.id === x.product.id).total);`), 'the Barcodes page lists the three items, one sticker per piece in stock');
+  await run(`set('#qList [data-c="0"]', '1'); await sleep(100); set('#qList [data-c="2"]', '1'); await sleep(100); click('#qList [data-inc="0"]'); click('#qList [data-inc="0"]'); await sleep(200);`);
   ok(await run(`return document.querySelector('#qList [data-c="0"]').value === '3';`), '+ twice makes 3');
   await run(`click('#qList [data-dec="0"]'); await sleep(200);`);
   ok(await run(`return document.querySelector('#qList [data-c="0"]').value === '2';`), '− makes 2');
   await run(`set('#qList [data-c="1"]', '25'); await sleep(200);`);
   ok(await run(`return document.querySelector('#qList [data-c="1"]').value === '25' && /Print 28 labels/.test(document.querySelector('#printBtn').textContent);`), 'typing 25 in a box works; the print button counts 28 labels');
   if (SHOTS) await p.shot(path.join(SHOTS, 'barcodes-list.png'));
-  // adding the same item again from Stock adds one more sticker to its line
+  // adding the same item again from Stock sets its line back to the stock count
   await run(`await go('#/stock'); await until(() => document.querySelectorAll('#list [data-sel]').length >= 1); document.querySelector('#list [data-sel]').click(); click('#addLbl'); await sleep(300);`);
-  ok(await run(`const q = JSON.parse(localStorage.vz_labels); return q.length === 3 && q[0].copies === 3;`), 'the same item again adds one more sticker, no duplicate line');
+  ok(await run(`const q = JSON.parse(localStorage.vz_labels), stock = (await GET('/api/stock', {})).rows; return q.length === 3 && q[0].copies === stock.find((r) => r.id === q[0].product.id).total;`), 'the same item again takes the stock count, no duplicate line');
   // select all, and the removed test button
   await run(`await go('#/stock'); await until(() => document.querySelector('#selAll')); click('#selAll'); await sleep(200);`);
   ok(await run(`const n = document.querySelectorAll('#list [data-sel]').length; return n > 3 && document.querySelector('#addLbl').textContent.includes('Add ' + n + ' to');`), 'the header box selects every item shown');

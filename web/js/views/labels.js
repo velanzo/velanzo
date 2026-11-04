@@ -4,12 +4,13 @@
 const LABEL_KEY = 'vz_labels';
 function getLabelQueue() { try { return JSON.parse(localStorage.getItem(LABEL_KEY) || '[]'); } catch { return []; } }
 function setLabelQueue(q) { try { localStorage.setItem(LABEL_KEY, JSON.stringify(q)); } catch { /* ignore */ } }
-function addToLabelQueue(items, replace = false) {
+// setCopies: an item already on the list gets this number of labels, instead of adding to it (a stock count must not double).
+function addToLabelQueue(items, replace = false, setCopies = false) {
   const q = replace ? [] : getLabelQueue();
   for (const it of items) {
     const p = it.product;
     const ex = q.find((x) => x.product.id === p.id);
-    if (ex) ex.copies += it.copies;
+    if (ex) ex.copies = setCopies ? it.copies : ex.copies + it.copies;
     else q.push({ product: { id: p.id, name: p.name, size: p.size, color: p.color, barcode: p.barcode, sale_price: p.sale_price }, copies: it.copies });
   }
   setLabelQueue(q);

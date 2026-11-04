@@ -120,7 +120,7 @@ route('POST', '/api/products', ['add_items', 'buy'], ({ body, user }) => tx(() =
       id, barcode, name, category, size, color, cost, price, now());
     const opening = toInt(v.opening_qty, 0);
     if (opening) D.moveStock(id, openingLoc, opening, 'opening', null, null, user.id, 'Opening stock');
-    created.push(get('SELECT * FROM products WHERE id = ?', id));
+    created.push({ ...get('SELECT * FROM products WHERE id = ?', id), stock_total: opening });
   }
   return hideCost(user, created);
 }));

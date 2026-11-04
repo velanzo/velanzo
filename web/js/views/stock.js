@@ -61,14 +61,18 @@ View('stock', {
     let lastRows = [];
     const addLbl = $('#addLbl', el);
     if (addLbl) addLbl.addEventListener('click', () => {
-      const items = [...st.sel.values()].map((r) => ({ product: { id: r.id, name: r.name, size: r.size, color: r.color, barcode: r.barcode, sale_price: r.sale_price }, copies: 1 }));
-      addToLabelQueue(items);
-      const n = items.length;
+      // one label per piece shown; items with nothing in stock get none
+      const picked = [...st.sel.values()];
+      const items = picked.filter((r) => r.total > 0).map((r) => ({ product: { id: r.id, name: r.name, size: r.size, color: r.color, barcode: r.barcode, sale_price: r.sale_price }, copies: r.total }));
+      addToLabelQueue(items, false, true);
+      const n = items.length, skipped = picked.length - n, labels = items.reduce((a, x) => a + x.copies, 0);
       st.sel.clear();
       $$('[data-sel]', el).forEach((c) => { c.checked = false; });
       const all = $('#selAll', el); if (all) { all.checked = false; all.indeterminate = false; }
       addLbl.classList.add('hidden'); $('#selInfo', el).classList.add('hidden');
-      toast(`${n} item${n === 1 ? '' : 's'} added to Barcodes. Set how many stickers each needs there.`, 'ok', 5000);
+      const left = skipped ? ` ${skipped} with no stock left out.` : '';
+      if (n) toast(`${n} item${n === 1 ? '' : 's'} added to Barcodes: ${labels} label${labels === 1 ? '' : 's'}, one per piece.${left}`, 'ok', 5000);
+      else toast('Nothing added: these items have no stock.', 'warn', 5000);
     });
     let t;
     $('#q', el).addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { st.q = e.target.value.trim(); load(); }, 250); });

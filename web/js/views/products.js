@@ -266,10 +266,18 @@ View('products', {
     });
     $('#lblBtn', el).addEventListener('click', async () => {
       const all = await GET('/api/products', { active: 'all', all: 1 });
-      addToLabelQueue(all.filter((p) => selected.has(p.id)).map((p) => ({ product: p, copies: Math.max(1, p.stock_total) })));
+      const inStock = all.filter((p) => selected.has(p.id) && p.stock_total > 0);
+      if (!inStock.length) return toast('Nothing added: these items have no stock.', 'warn', 5000);
+      addToLabelQueue(inStock.map((p) => ({ product: p, copies: p.stock_total })), false, true);
       go('labels');
     });
-    $('#addBtn').addEventListener('click', () => openAddProduct({ onCreated: (list) => { if (list.length) { addToLabelQueue(list.map((p) => ({ product: p, copies: 1 }))); load(); askLabels(list); } } }));
+    $('#addBtn').addEventListener('click', () => openAddProduct({ onCreated: (list) => {
+      load();
+      const inStock = list.filter((p) => p.stock_total > 0); // labels only for what has a quantity
+      if (!inStock.length) return;
+      addToLabelQueue(inStock.map((p) => ({ product: p, copies: p.stock_total })), false, true);
+      askLabels(inStock);
+    } }));
     $('#impBtn').addEventListener('click', () => openImportProducts(load));
     await load();
   },
