@@ -23,7 +23,8 @@ View('device', {
     el.innerHTML = `
       <div class="grid-2" style="margin-top:0">
         <div class="card"><h3>${icon('device')} ${esc(d.label || 'This device')}</h3>
-          <dl class="kv"><dt>Place</dt><dd>${d.location_id ? esc(locName(d.location_id)) : 'Owner (all shops)'}</dd>
+          <dl class="kv"><dt>Version</dt><dd><b>${esc(APP_VERSION)}</b> <button class="btn sm" id="updBtn">Check for update</button></dd>
+            <dt>Place</dt><dd>${d.location_id ? esc(locName(d.location_id)) : 'Owner (all shops)'}</dd>
             <dt>Device letter</dt><dd>${esc(d.code)} <span class="muted small">(in its bill numbers, e.g. S1-${esc(d.code)}0001)</span></dd>
             <dt>Data</dt><dd>${cloud ? 'Saved on this device and in the cloud' : 'Saved on this device only'}${usage ? ` · ${(usage / 1048576).toFixed(1)} MB` : ''}</dd>
             <dt>Kept safe</dt><dd>${persisted ? '<span class="pill ok">Yes</span>' : '<span class="pill warn">Not guaranteed</span> <span class="muted small">Install the app (below) so the browser keeps the data.</span>'}</dd></dl>
@@ -59,6 +60,14 @@ View('device', {
           ${cloud ? '<button class="btn" id="redlBtn">Download everything again</button>' : ''}
           <button class="btn danger" id="forgetBtn">Remove Velanzo from this device</button></div></div>`;
 
+    const ub = $('#updBtn', el);
+    ub.addEventListener('click', () => busy(ub, async () => {
+      const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+      if (!reg) throw new Error('This browser cannot check for updates.');
+      try { await reg.update(); } catch { throw new Error('Could not check for an update. Check the internet and try again.'); }
+      // (a new version shows the "Restart now" bar as soon as it has finished downloading)
+      toast(reg.installing || reg.waiting ? 'A new version is downloading. A "Restart now" bar appears when it is ready.' : `You have the latest version (${APP_VERSION}).`, 'info', 6000);
+    }));
     const sb = $('#syncBtn', el);
     if (sb) sb.addEventListener('click', () => busy(sb, async () => { await Cloud.syncNow(); router(); }));
     const cb = $('#connectBtn', el);

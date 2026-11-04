@@ -398,6 +398,7 @@ function renderShell() {
             ${AppInstall.installed() ? '' : `<a href="#" id="getAppBtn">${icon('download')}<span>Get the app (PC, Android, iPhone)</span></a>`}
             <a href="#/training">${icon('help')}<span>Training</span></a>
             <a href="manual/index.html" target="_blank" rel="noopener">${icon('file')}<span>Written guide</span></a>
+            <a href="#/device">${icon('device')}<span>Version ${esc(APP_VERSION)}</span></a>
           </div></details>
       </div>
     </div></header>

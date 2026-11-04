@@ -1,10 +1,11 @@
 // Keeps Velanzo's own files on this device so it opens and works without internet.
-// When a new version is published, change VERSION: devices pick it up the next time they are online.
-const VERSION = 'velanzo-2.4.3';
+// When a new version is published, change APP_VERSION in js/version.js: devices pick it up the next time they are online.
+importScripts('js/version.js');
+const VERSION = 'velanzo-' + APP_VERSION;
 const CORE = [
   './', 'index.html', 'config.js', 'manifest.webmanifest', 'favicon.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'css/app.css', 'worker.js',
-  'js/barcode.js', 'js/qr.js', 'js/bridge.js', 'js/core.js', 'js/charts.js', 'js/print.js', 'js/hwscripts.js', 'js/tour.js', 'js/setup.js', 'js/cloud.js', 'js/main.js',
+  'js/version.js', 'js/barcode.js', 'js/qr.js', 'js/bridge.js', 'js/core.js', 'js/charts.js', 'js/print.js', 'js/hwscripts.js', 'js/tour.js', 'js/setup.js', 'js/cloud.js', 'js/main.js',
   'js/views/dashboard.js', 'js/views/home.js', 'js/views/pos.js', 'js/views/sales.js', 'js/views/products.js', 'js/views/purchases.js',
   'js/views/labels.js', 'js/views/dispatch.js', 'js/views/stock.js', 'js/views/accounts.js', 'js/views/reports.js', 'js/views/vouchers.js', 'js/views/settings.js', 'js/views/hardware.js', 'js/views/device.js', 'js/views/training.js', 'js/views/manage-data.js',
   'engine/index.js', 'engine/practice.js', 'engine/db.js', 'engine/util.js', 'engine/session.js', 'engine/sync.js', 'engine/syncer.js',
