@@ -613,3 +613,4 @@ h3 > svg { width: 20px; height: 20px; vertical-align: -4px; margin-right: 4px; c
 .cart-row .disc-line:placeholder-shown { border-style: dashed; }
 .cart-row.voucher-line { background: #f3f5ff; border-top: 1px dashed var(--accent); }
 .disc-in.v-in .btn { height: 38px; }
+.toast.new-version { display: flex; align-items: center; gap: 12px; }

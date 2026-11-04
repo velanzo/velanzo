@@ -3,7 +3,7 @@
 // devices, backup & data. Plus "My passcode" for everyone.
 
 const SETTINGS_TABS = [
-  ['business', 'Business'], ['printing', 'Bills & labels'], ['locations', 'Shops & warehouse'], ['users', 'Users'],
+  ['business', 'Business'], ['printing', 'Bills & labels'], ['locations', 'Shops & warehouse'], ['shopconfig', 'Shop configuration'], ['users', 'Users'],
   ['backup', 'Backup & data'], ['hardware', 'Hardware', '#/hardware'], ['queue', 'Print queue', '#/hardware/queue'],
 ];
 
@@ -74,6 +74,19 @@ const SETTINGS_RENDER = {
         <div class="full"><button class="btn primary">Save</button></div></form></div>
       <div class="alert info" style="max-width:760px;margin-top:16px">The <b>printers, paper width, sticker size and barcode scanner</b> are set on each computer, not here: open <a href="#/hardware"><b>Hardware</b></a> on that computer. It also has the drivers, the steps, the checks and the Windows tools.</div>`;
     $('#fb', el).addEventListener('submit', (e) => { e.preventDefault(); saveSettings(formValues(e.target), e.target.querySelector('button')); });
+  },
+  // Choices that belong to this computer (like the printers): which place comes up first in the forms.
+  async shopconfig(el) {
+    const places = App.locations.filter((l) => l.active);
+    el.innerHTML = `<div class="alert info">These choices are for <b>this computer</b> only (${esc(App.device.label || 'this device')}). Other computers have their own.</div>
+      <div class="card" style="max-width:640px"><h3>Default place</h3>
+        <p class="muted small" style="margin-top:0">Pick the shop or warehouse you work with most. It is chosen for you when you <b>add or receive stock</b>, make a <b>purchase</b>, <b>correct stock</b>, import quantities, <b>send a parcel from</b> it, and <b>sell</b> (when it is a shop). You can still change it in each form.</p>
+        <label class="field">Default place<select class="input" id="defLoc">${options(places.map((l) => [l.id, `${l.name} (${l.type === 'shop' ? 'shop' : 'warehouse'})`]), App.settings.default_location || '', { blank: 'None: choose each time' })}</select></label>
+        <div style="margin-top:14px"><button class="btn primary" id="saveDef">Save for this computer</button></div></div>`;
+    $('#saveDef', el).addEventListener('click', (e) => busy(e.currentTarget, async () => {
+      await savePrintSettings({ default_location: $('#defLoc', el).value });
+      toast('Saved');
+    }));
   },
   async locations(el) {
     const locs = await GET('/api/locations');

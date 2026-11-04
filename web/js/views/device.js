@@ -1,6 +1,13 @@
 'use strict';
 // "This device": is everything saved online, installing the app, and starting again.
 
+// Which bill, order, parcel or item a refused change was about (read from what was sent).
+function refusedWhat(rows) {
+  const m = String(rows || '').match(/"(bill_no|purchase_no|dispatch_no|name|code)":"([^"]+)"/);
+  if (!m) return 'A change';
+  return ({ bill_no: 'Bill ', purchase_no: 'Purchase ', dispatch_no: 'Parcel ' }[m[1]] || '') + m[2];
+}
+
 
 View('device', {
   title: 'This device',
@@ -11,7 +18,7 @@ View('device', {
     const cloud = Cloud.enabled && d.mode === 'cloud';
     let persisted = null, usage = null;
     try { persisted = await navigator.storage.persisted(); const e = await navigator.storage.estimate(); usage = e.usage; } catch { /* not supported */ }
-    const errors = isAdmin() && s.errors ? await GET('/api/sync/errors') : [];
+    const errors = s.errors ? await GET('/api/sync/errors') : [];
     const installed = matchMedia('(display-mode: standalone)').matches;
     el.innerHTML = `
       <div class="grid-2" style="margin-top:0">
@@ -32,9 +39,9 @@ View('device', {
         </div>
       </div>
       ${errors.length ? `<div class="card"><div class="card-head"><h3 style="margin:0">Changes the cloud did not accept</h3><div class="actions"><button class="btn sm" id="clrErr">Clear list</button></div></div>
-        <p class="muted small" style="margin-top:0">These were made on this device but refused (for example because a switch was off). They are not in the cloud.</p>
-        <div class="table-wrap"><table class="tbl"><thead><tr><th>When</th><th>Why</th></tr></thead><tbody>
-        ${errors.map((x) => `<tr><td class="nowrap">${esc(fmtDT(x.created_at))}</td><td>${esc(x.message)}</td></tr>`).join('')}</tbody></table></div></div>` : ''}
+        <p class="muted small" style="margin-top:0">These were made on this device but refused (for example because a switch was off, or another computer changed the same thing first). They are not in the cloud, and this device now shows what the cloud has. Do them again if they are still needed.</p>
+        <div class="table-wrap"><table class="tbl"><thead><tr><th>When</th><th>What</th><th>Why</th></tr></thead><tbody>
+        ${errors.map((x) => `<tr><td class="nowrap">${esc(fmtDT(x.created_at))}</td><td>${esc(refusedWhat(x.rows))}</td><td>${esc(x.message)}</td></tr>`).join('')}</tbody></table></div></div>` : ''}
       <div class="grid-2">
         <div class="card"><h3>Install Velanzo</h3>
           ${installed ? '<p>Velanzo is installed on this device.</p>'
@@ -64,12 +71,11 @@ View('device', {
     if (ib) ib.addEventListener('click', () => AppInstall.open());
     const rd = $('#redlBtn', el);
     if (rd) rd.addEventListener('click', () => busy(rd, async () => {
+      await Engine.system('requestRebuild');
       await Cloud.syncNow();
-      if ((await GET('/api/sync/status')).waiting) throw new Error('Some changes are still waiting to be sent. Connect to the internet first.');
-      await Engine.system('resetLocal');
-      await Cloud.syncNow();
+      if ((await GET('/api/sync/status')).waiting) throw new Error('Some changes are still waiting to be sent. Connect to the internet first; the download happens right after.');
+      if (Cloud.status().problem) throw new Error(Cloud.status().problem.text);
       await loadMe();
-      toast('Downloaded everything again');
       router();
     }));
     $('#forgetBtn', el).addEventListener('click', async () => {

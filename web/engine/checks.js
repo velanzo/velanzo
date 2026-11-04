@@ -94,7 +94,8 @@ const CHECKS = {
     if (!body.order && paid > total + 0.001) out.push(`Paid ${money(paid)} is more than the total ${money(total)}.`);
     const inv = str(body.invoice_no, 60), sup = toInt(body.supplier_id);
     if (inv && sup) {
-      const dup = get("SELECT purchase_no FROM purchases WHERE supplier_id = ? AND invoice_no = ? COLLATE NOCASE AND status <> 'void' LIMIT 1", sup, inv);
+      // (body.id: the draft being confirmed is not a duplicate of itself)
+      const dup = get("SELECT purchase_no FROM purchases WHERE supplier_id = ? AND invoice_no = ? COLLATE NOCASE AND status <> 'void' AND id <> ? LIMIT 1", sup, inv, toInt(body.id));
       if (dup) out.push(`Invoice ${inv} from this supplier was already entered (${dup.purchase_no}).`);
     }
     if (body.order && isDate(body.expected_date) && body.expected_date < today()) out.push('The expected date is in the past.');

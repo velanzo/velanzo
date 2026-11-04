@@ -527,6 +527,18 @@ ok(!c.ok && /switched off/.test(c.reason), 'a switched-off voucher is refused');
 r = await owner.sync();
 ok(r.refused === 0, 'changes to vouchers and the cancelled bill reached the cloud');
 
+// ---------- Deleting a shop or warehouse ----------
+const tmpWh = await owner.call('POST', '/api/locations', { name: 'Spare warehouse', code: 'W9', type: 'warehouse', perms: ['receive'] });
+await owner.sync(); await shop.sync();
+ok((await db.query('select count(*)::int n from locations where id = $1', [tmpWh.id])).rows[0].n === 1 && (await shop.sql('SELECT COUNT(*) AS n FROM locations WHERE id = ?', [tmpWh.id]))[0].n === 1, 'a new warehouse reaches the cloud and the shop computer');
+await assert.rejects(owner.call('DELETE', '/api/locations/' + S1), /still|history/); checks++;
+await assert.rejects(owner.call('DELETE', '/api/locations/' + WH), /still|history/); checks++;
+await owner.call('DELETE', '/api/locations/' + tmpWh.id);
+r = await owner.sync();
+ok(r.refused === 0 && (await db.query('select count(*)::int n from locations where id = $1', [tmpWh.id])).rows[0].n === 0, 'the owner deleted the empty warehouse: it is gone from the cloud');
+await shop.sync();
+ok((await shop.sql('SELECT COUNT(*) AS n FROM locations WHERE id = ?', [tmpWh.id]))[0].n === 0, 'and from the shop computer');
+
 // ---------- A removed device stops working ----------
 await owner.rpc('remove_device', { p_id: (await wh.system('info')).device.id });
 await assert.rejects(wh.sync(), /removed/);

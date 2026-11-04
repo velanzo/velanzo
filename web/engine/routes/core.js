@@ -76,8 +76,8 @@ export function syncStatus() {
   };
 }
 route('GET', '/api/sync/status', 'any', () => syncStatus());
-route('GET', '/api/sync/errors', 'owner', () => all('SELECT * FROM sync_errors ORDER BY id DESC LIMIT 200'));
-route('POST', '/api/sync/errors/clear', 'owner', () => { run('DELETE FROM sync_errors'); });
+route('GET', '/api/sync/errors', 'any', () => all('SELECT * FROM sync_errors ORDER BY id DESC LIMIT 200'));
+route('POST', '/api/sync/errors/clear', 'any', () => { run('DELETE FROM sync_errors'); });
 
 // ---------- Settings ----------
 route('GET', '/api/settings', 'any', () => D.getSettings());

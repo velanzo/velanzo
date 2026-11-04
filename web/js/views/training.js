@@ -107,7 +107,7 @@ const NAV_TEXT = {
   'Receive stock': 'Parcels sent to your shop. Count them and press confirm.',
   'Dispatch order': 'Send items from the warehouse to a shop, and see what is on the way.',
   Purchase: 'Write down stock that came from a supplier. This is where the flow starts.',
-  Labels: 'Print barcode stickers for your items.',
+  Barcodes: 'Print barcode stickers for your items.',
   Items: 'All your items with sizes, colours, prices and barcodes. Add new ones here.',
   Stock: 'How many pieces of each item are at every shop and the warehouse.',
   Expenses: 'Write down money you spend (rent, tea, transport …).',

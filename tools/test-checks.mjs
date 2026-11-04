@@ -37,6 +37,11 @@ ok(has(await warn('purchase', { location_id: WH, items: [{ product_id: shirt.id,
 await call('POST', '/api/purchases', { supplier_id: sup.id, location_id: WH, invoice_no: '123111', paid: 1000, items: [{ product_id: henley.id, qty: 10, cost: 111 }, { product_id: shirt.id, qty: 20, cost: 500 }] });
 ok(has(await warn('purchase', { supplier_id: sup.id, location_id: WH, invoice_no: '123111', items: [{ product_id: shirt.id, qty: 1, cost: 500 }] }), /already entered/), 'the same supplier invoice twice is flagged');
 ok(has(await warn('purchase', { location_id: WH, items: [{ product_id: shirt.id, qty: 1, cost: 1000 }] }), /up 100%/), 'a cost far from last time is flagged');
+// a draft being confirmed is not a duplicate of itself (but of another purchase it still is)
+const dr = await call('POST', '/api/purchases', { supplier_id: sup.id, location_id: WH, invoice_no: 'DRAFT-1', draft: true, items: [{ product_id: shirt.id, qty: 1, cost: 500 }] });
+ok(!has(await warn('purchase', { id: dr.id, supplier_id: sup.id, location_id: WH, invoice_no: 'DRAFT-1', order: true, items: [{ product_id: shirt.id, qty: 1, cost: 500 }] }), /already entered/), 'confirming a draft does not warn about its own invoice');
+ok(has(await warn('purchase', { supplier_id: sup.id, location_id: WH, invoice_no: 'DRAFT-1', order: true, items: [{ product_id: shirt.id, qty: 1, cost: 500 }] }), /already entered/), 'another order with the same invoice is still flagged');
+await call('POST', `/api/purchases/${dr.id}/cancel-order`, { reason: 'test' });
 
 ok(has(await warn('dispatch', { items: [{ product_id: henley.id, qty: 5 }] }), /no selling price/), 'sending an item with no selling price is flagged');
 await call('POST', '/api/dispatches', { from_location_id: WH, to_location_id: S1, items: [{ product_id: henley.id, qty: 5 }, { product_id: shirt.id, qty: 10 }] });

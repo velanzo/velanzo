@@ -47,9 +47,8 @@ View('labels', {
           <td><button class="icon-btn" data-rm="${i}">✕</button></td></tr>`).join('')}</tbody></table></div>
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
           <button class="btn ghost" id="clr">Clear list</button>
-          <button class="btn" id="one">Print 1 of each (test)</button>
           <button class="btn primary lg" id="printBtn">${icon('printer')} Print ${total} label${total === 1 ? '' : 's'}</button></div>`
-        : '<div class="empty">The list is empty. Scan an item, pick a purchase above, or select items on the Products page.</div>';
+        : '<div class="empty">The list is empty. Scan an item, pick a purchase above, or tick items on the Stock page and press “Add to barcode printing”.</div>';
       $('#prev', el).innerHTML = queue.length ? labelPreviewHtml(queue[0].product) : 'Add an item to see the label.';
     }
     async function freshQueue() {
@@ -86,10 +85,12 @@ View('labels', {
       else if (b.dataset.rm !== undefined) queue.splice(+b.dataset.rm, 1);
       else if (b.id === 'clr') { if (!(await confirmBox('Remove all items from the label list?', { ok: 'Clear', danger: true }))) return; queue = []; }
       else if (b.id === 'printBtn') { await busy(b, freshQueue); return printLabels(queue.map((x) => ({ product: x.product, copies: Number(x.copies) || 0 }))); }
-      else if (b.id === 'one') { await busy(b, freshQueue); return printLabels(queue.map((x) => ({ product: x.product, copies: 1 }))); }
       else return;
       render();
     });
+    // click in a quantity box: the number is selected, so typing replaces it; Enter confirms
+    $('#qList', el).addEventListener('focusin', (e) => { if (e.target.dataset.c !== undefined) e.target.select(); });
+    $('#qList', el).addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.dataset.c !== undefined) { e.preventDefault(); e.target.blur(); } });
     $('#qList', el).addEventListener('change', (e) => {
       if (e.target.dataset.c === undefined) return;
       queue[+e.target.dataset.c].copies = Math.max(0, parseInt(e.target.value, 10) || 0);

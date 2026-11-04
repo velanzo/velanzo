@@ -65,6 +65,9 @@ export const system = {
   applyPull: (rows) => Sync.applyPull(rows),
   saveState: (values) => Sync.saveState(values),
   resetLocal: () => Sync.resetLocal(),
+  waiting: () => Sync.waiting(),
+  replaceAll: (rows, st) => Sync.replaceAll(rows, st),
+  requestRebuild: () => Sync.requestRebuild(),
   // An owner with no PIN yet (e.g. after restoring a backup from the old version) chooses one on an owner device.
   setFirstPin: async ({ user_id, pin }) => {
     const u = D.get('SELECT * FROM users WHERE id = ? AND active = 1', user_id);

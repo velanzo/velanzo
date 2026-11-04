@@ -95,7 +95,7 @@ async function purchaseForm(el, { order, edit = null }) {
   {
     if (edit) setTitle(`Draft ${edit.purchase_no}`); else if (order) setTitle('New purchase order');
     const draftKey = edit ? null : `vz_purchase_${App.user.id}${order ? '_order' : ''}`;
-    const blank = () => ({ supplier_id: '', invoice_no: '', date: todayStr(), location_id: isAdmin() ? warehouses()[0]?.id || '' : App.user.location_id, paid: '', notes: '', expected_date: '', lines: [] });
+    const blank = () => ({ supplier_id: '', invoice_no: '', date: todayStr(), location_id: isAdmin() ? defLoc(App.locations.filter((l) => l.active), warehouses()[0]?.id || '') : App.user.location_id, paid: '', notes: '', expected_date: '', lines: [] });
     let S;
     if (edit) {
       S = { supplier_id: edit.supplier_id || '', invoice_no: edit.invoice_no || '', date: edit.date, location_id: edit.location_id, paid: '', notes: edit.notes || '', expected_date: edit.expected_date || '',
@@ -217,7 +217,7 @@ async function purchaseForm(el, { order, edit = null }) {
     const sb = $('#saveBtn', el);
     sb.addEventListener('click', () => busy(sb, async () => {
       const body = bodyOf();
-      if (!(await looksRight('purchase', body))) return;
+      if (!(await looksRight('purchase', edit ? { ...body, id: edit.id } : body))) return;
       let r;
       if (edit) { r = await PUT('/api/purchases/' + edit.id, body); await POST(`/api/purchases/${edit.id}/confirm`); } else r = await POST('/api/purchases', body);
       forget();
@@ -253,8 +253,8 @@ View('purchases/:id', {
         <dt>Supplier invoice</dt><dd>${esc(p.invoice_no || '—')}</dd><dt>Date</dt><dd>${esc(fmtDate(p.date))}</dd><dt>${p.status === 'done' ? 'Received at' : 'Goes to'}</dt><dd>${esc(p.location_name)}</dd>
         <dt>Entered by</dt><dd>${esc(p.user_name || '')} · ${esc(fmtDT(p.created_at))}</dd>
         <dt>${ordered || draft ? 'Order total' : 'Total'}</dt><dd><b>${money(p.total)}</b>${ordered || draft ? '' : ` · paid now ${money(p.paid)}`}</dd>${p.notes ? `<dt>Notes</dt><dd>${esc(p.notes)}</dd>` : ''}</dl></div>
-      <div class="card flush"><div class="table-wrap"><table class="tbl"><thead><tr><th>Item</th><th>Barcode</th><th class="r">Qty</th><th class="r">Cost</th><th class="r">Sale price now</th><th class="r">Amount</th></tr></thead><tbody>
-        ${p.items.map((i) => `<tr class="click" data-pid="${i.product_id}"><td><b>${esc(i.name)}</b> <span class="muted">${esc(variantText(i))}</span></td><td class="mono">${esc(i.barcode)}</td><td class="r">${i.qty}${!ordered && i.ordered_qty != null && i.ordered_qty !== i.qty ? ` <span class="muted small">(ordered ${i.ordered_qty})</span>` : ''}</td><td class="r">${money(i.cost)}</td><td class="r">${money(i.sale_price)}</td><td class="r">${money(i.qty * i.cost)}</td></tr>`).join('')}
+      <div class="card flush"><div class="table-wrap"><table class="tbl"><thead><tr><th>Item</th><th>Barcode</th><th class="r">Qty</th><th class="r">Cost</th><th class="r">${ordered || draft ? "Sale price" : "Sale price now"}</th><th class="r">Amount</th></tr></thead><tbody>
+        ${p.items.map((i) => `<tr class="click" data-pid="${i.product_id}"><td><b>${esc(i.name)}</b> <span class="muted">${esc(variantText(i))}</span></td><td class="mono">${esc(i.barcode)}</td><td class="r">${i.qty}${!ordered && i.ordered_qty != null && i.ordered_qty !== i.qty ? ` <span class="muted small">(ordered ${i.ordered_qty})</span>` : ''}</td><td class="r">${money(i.cost)}</td><td class="r">${money(ordered || draft ? i.planned_price ?? i.sale_price : i.sale_price)}</td><td class="r">${money(i.qty * i.cost)}</td></tr>`).join('')}
       </tbody><tfoot><tr><td colspan="2">Total</td><td class="r">${p.total_qty}</td><td></td><td></td><td class="r">${money(p.total)}</td></tr></tfoot></table></div></div>`;
     $('.tbl', el).addEventListener('click', (e) => { const r = e.target.closest('[data-pid]'); if (r) go('products/' + r.dataset.pid); });
     const lb = $('#lblBtn');
@@ -264,7 +264,7 @@ View('purchases/:id', {
     });
     const cb = $('#confirmBtn');
     if (cb) cb.addEventListener('click', () => busy(cb, async () => {
-      const body = { supplier_id: p.supplier_id, invoice_no: p.invoice_no, location_id: p.location_id, order: true, expected_date: p.expected_date, items: p.items.map((i) => ({ product_id: i.product_id, qty: i.qty, cost: i.cost, sale_price: i.planned_price ?? '' })) };
+      const body = { id: p.id, supplier_id: p.supplier_id, invoice_no: p.invoice_no, location_id: p.location_id, order: true, expected_date: p.expected_date, items: p.items.map((i) => ({ product_id: i.product_id, qty: i.qty, cost: i.cost, sale_price: i.planned_price ?? '' })) };
       if (!(await looksRight('purchase', body))) return;
       await POST(`/api/purchases/${p.id}/confirm`);
       toast(`Order ${p.purchase_no} confirmed — nothing is in stock until it arrives`);
