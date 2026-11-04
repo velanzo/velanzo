@@ -735,7 +735,7 @@ function attachPicker(input, { onPick, location = () => '', showStock = true, sh
 
 // ---------- Starting up ----------
 // Printer settings belong to the computer (a shop and a warehouse use different printers and paper), the rest to the business.
-const PRINT_KEYS = ['default_location', 'bill_width', 'bill_mm', 'bill_left', 'auto_print_bill', 'label_mode', 'label_width', 'label_height', 'label_columns', 'label_across', 'label_gap', 'label_show_price', 'label_show_name', 'dispatch_paper'];
+const PRINT_KEYS = ['default_location', 'bill_width', 'bill_mm', 'bill_left', 'auto_print_bill', 'label_mode', 'label_width', 'label_height', 'label_columns', 'label_across', 'label_gap', 'label_top', 'label_show_price', 'label_show_name', 'dispatch_paper'];
 // The place chosen in Settings → Shop configuration for this computer, when it is one of `list`; otherwise `fallback`.
 function defLoc(list, fallback) {
   const id = Number(App.settings.default_location);

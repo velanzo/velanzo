@@ -174,14 +174,15 @@ function labelCss() {
   const w = Math.max(20, Number(S.label_width) || 50);
   const h = Math.max(12, Number(S.label_height) || 25);
   const small = h < 22;
+  const top = S.label_mode === 'a4' ? 0 : Math.max(0, Math.min(15, Number(S.label_top) || 0));
   const base = `
   * { box-sizing: border-box; }
   body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #000; }
   .label { width: ${w}mm; height: ${h}mm; padding: 0.8mm 1.5mm; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-  .label > div { flex-shrink: 0; }
+  .label > div { flex-shrink: 0;${top ? ` position: relative; top: ${top}mm;` : ''} }
   .name { font-size: ${small ? 6 : 7}pt; line-height: 1.1; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .var { font-size: ${small ? 6 : 7.5}pt; font-weight: 700; line-height: 1.1; }
-  .label > .bcw { width: 100%; flex: 1 1 auto; min-height: 0; max-height: ${Math.round(h * 0.45)}mm; display: flex; justify-content: center; }
+  .label > .bcw { width: 100%; flex: 1 1 auto; min-height: 0; max-height: ${Math.round(h * 0.3)}mm; display: flex; justify-content: center; }
   .bcw svg { width: 100%; height: 100%; }
   .code { font-size: ${small ? 6 : 7}pt; letter-spacing: 1px; line-height: 1.1; }
   .price { font-size: ${small ? 7 : 9}pt; font-weight: 700; line-height: 1.15; }`;
@@ -229,7 +230,7 @@ function labelPreviewHtml(p) {
   const scale = 3.2; // px per mm on screen
   return `<div class="label-preview" style="width:${w * scale}px;height:${h * scale}px">
     ${S.label_show_name !== '0' ? `<div class="lp-name">${esc(p.name)}${variantText(p) ? ' · ' + esc(variantText(p)) : ''}</div>` : ''}
-    <div class="lp-bc" style="max-height:${h * scale * 0.42}px">${Barcode.svg(p.barcode, { height: 40, quiet: 6 })}</div>
+    <div class="lp-bc" style="max-height:${h * scale * 0.3}px">${Barcode.svg(p.barcode, { height: 40, quiet: 6 })}</div>
     <div class="lp-code">${esc(p.barcode)}</div>
     ${S.label_show_price !== '0' ? `<div class="lp-price">${esc(S.currency)} ${num(p.sale_price)}</div>` : ''}
   </div>`;
