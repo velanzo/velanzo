@@ -161,6 +161,15 @@ function labelHtml(p) {
   </div>`;
 }
 
+// A roll can have several stickers side by side: the printer's page is then one whole row.
+function labelRow() {
+  const S = App.settings;
+  const w = Math.max(20, Number(S.label_width) || 50);
+  const across = S.label_mode === 'a4' ? 1 : Math.max(1, Math.min(4, Math.round(Number(S.label_across)) || 1));
+  const gap = across > 1 ? Math.max(0, Math.min(10, Number(S.label_gap) || 0)) : 0;
+  return { across, gap, width: across * w + (across - 1) * gap };
+}
+
 function labelCss() {
   const S = App.settings;
   const w = Math.max(20, Number(S.label_width) || 50);
@@ -185,6 +194,14 @@ function labelCss() {
     .sheet { display: grid; grid-template-columns: repeat(${cols}, ${w}mm); gap: 2mm; justify-content: center; }
     .label { outline: 0.2mm dashed #bbb; break-inside: avoid; }`;
   }
+  const row = labelRow();
+  if (row.across > 1) {
+    return base + `
+    @page { size: ${row.width}mm ${h}mm; margin: 0; }
+    .lrow { display: flex; gap: ${row.gap}mm; width: ${row.width}mm; height: ${h}mm; overflow: hidden; page-break-after: always; break-after: page; }
+    .lrow:last-child { page-break-after: auto; break-after: auto; }
+    .label { flex: 0 0 ${w}mm; }`;
+  }
   return base + `
   @page { size: ${w}mm ${h}mm; margin: 0; }
   .label { page-break-after: always; break-after: page; }
@@ -196,10 +213,16 @@ function printLabels(items) {
   for (const it of items) for (let i = 0; i < it.copies; i++) all.push(labelHtml(it.product));
   if (!all.length) return toast('Nothing to print — set how many labels you need', 'error');
   if (all.length > 3000) return toast('Too many labels at once (max 3000). Print in smaller batches.', 'error');
-  const body = App.settings.label_mode === 'a4' ? `<div class="sheet">${all.join('')}</div>` : all.join('');
   const S = App.settings;
+  const row = labelRow();
+  let body = all.join('');
+  if (S.label_mode === 'a4') body = `<div class="sheet">${body}</div>`;
+  else if (row.across > 1) {
+    body = '';
+    for (let i = 0; i < all.length; i += row.across) body += `<div class="lrow">${all.slice(i, i + row.across).join('')}</div>`;
+  }
   if (S.label_mode === 'a4') printDoc(body, labelCss(), 'Barcode labels', 'a4', 'A4');
-  else printDoc(body, labelCss(), 'Barcode labels', 'label', { width: (Number(S.label_width) || 50) * 1000, height: (Number(S.label_height) || 25) * 1000 });
+  else printDoc(body, labelCss(), 'Barcode labels', 'label', { width: row.width * 1000, height: (Number(S.label_height) || 25) * 1000 });
 }
 
 function labelPreviewHtml(p) {

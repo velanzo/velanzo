@@ -278,6 +278,8 @@ export const DEFAULT_SETTINGS = {
   label_width: '50',
   label_height: '25',
   label_columns: '4',
+  label_across: '1', // stickers side by side on a roll
+  label_gap: '2', // mm between those stickers
   label_show_price: '1',
   label_show_name: '1',
   dispatch_paper: 'a4',

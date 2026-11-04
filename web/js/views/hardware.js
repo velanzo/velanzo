@@ -134,6 +134,8 @@ View('hardware', {
             <label class="field">Labels across (A4 only)<input class="input num" name="label_columns" value="${esc(S.label_columns)}" inputmode="numeric"></label>
             <label class="field">Sticker width (mm)<input class="input num" name="label_width" value="${esc(S.label_width)}" inputmode="numeric"></label>
             <label class="field">Sticker height (mm)<input class="input num" name="label_height" value="${esc(S.label_height)}" inputmode="numeric"></label>
+            <label class="field">Stickers across the roll<select class="input" name="label_across">${options([['1', '1 sticker'], ['2', '2 stickers side by side'], ['3', '3 stickers side by side'], ['4', '4 stickers side by side']], S.label_across || '1')}</select></label>
+            <label class="field">Gap between side-by-side stickers (mm)<input class="input num" name="label_gap" value="${esc(S.label_gap ?? '2')}" inputmode="decimal"></label>
             <label class="check"><input type="checkbox" name="label_show_name" ${S.label_show_name !== '0' ? 'checked' : ''}> Show item name</label>
             <label class="check"><input type="checkbox" name="label_show_price" ${S.label_show_price !== '0' ? 'checked' : ''}> Show price</label>
             <div class="full" id="lprev"></div>
@@ -145,7 +147,7 @@ View('hardware', {
             <ol class="steps">
               <li>Plug the printer in (USB), switch it on, load the label roll, close the cover.</li>
               <li>Install its Windows driver (see the table below). Black Copper BC-LP1300 uses the Xprinter driver: choose <b>Xprinter XP-420B</b> and its USB port.</li>
-              <li>Printer preferences: paper = your <b>sticker size</b>, type = <b>labels with gaps</b>. Then <b>calibrate</b> (hold Feed a few seconds, it feeds a few labels).</li>
+              <li>Printer preferences: paper = your <b>sticker size</b> (stickers side by side: the width of the <b>whole row</b>, gaps included), type = <b>labels with gaps</b>. Then <b>calibrate</b> (hold Feed a few seconds, it feeds a few labels).</li>
               <li>Type the same width and height here, press <b>Save</b> and <b>Print test label</b>. In the print window choose the label printer, Margins: None, Scale: Default.</li>
               <li>Scan the test label in the scanner box above: it shows <b>10000001</b>.</li>
               <li>Pale or grey bars: raise darkness, lower speed in the printer preferences.</li>
@@ -239,7 +241,7 @@ View('hardware', {
       items: [{ ...sample, qty: 2, price: 2450 }, { name: 'Cotton Shirt', size: 'L', color: 'White', barcode: '10000002', qty: 1, price: 1800 }],
       subtotal: 6700, discount: 200, total: 6500, paid: 7000, change_due: 500, payment_method: 'cash' })));
     $('#ruler', el).addEventListener('click', () => withForm(formValues($('#fb', el)), printRuler));
-    $('#testLbl', el).addEventListener('click', () => withForm(lvals(), () => printLabels([{ product: sample, copies: 1 }])));
+    $('#testLbl', el).addEventListener('click', () => withForm(lvals(), () => printLabels([{ product: sample, copies: labelRow().across }])));
 
     // "did it print right?" confirmations
     const confirmBlock = (id, key, what) => {

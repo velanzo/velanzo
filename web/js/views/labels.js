@@ -23,7 +23,7 @@ View('labels', {
     let queue = getLabelQueue();
     const purchases = await GET('/api/purchases', { from: addDays(todayStr(), -60) });
     el.innerHTML = `
-      <div class="alert info flex"><span>Labels: <b>${esc(S.label_width)} × ${esc(S.label_height)} mm</b>, ${S.label_mode === 'a4' ? `A4 sticker sheet, ${esc(S.label_columns)} across` : 'label printer (one label per sticker)'}.</span>
+      <div class="alert info flex"><span>Labels: <b>${esc(S.label_width)} × ${esc(S.label_height)} mm</b>, ${S.label_mode === 'a4' ? `A4 sticker sheet, ${esc(S.label_columns)} across` : labelRow().across > 1 ? `label printer, ${labelRow().across} stickers across` : 'label printer (one label per sticker)'}.</span>
         ${isAdmin() ? '<a href="#/settings/printing" style="margin-left:auto">Change label size</a>' : ''}</div>
       <div class="grid-2" style="margin-top:0;grid-template-columns:1fr 320px">
         <div class="card">
