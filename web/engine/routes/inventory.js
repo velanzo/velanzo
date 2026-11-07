@@ -118,7 +118,7 @@ route('POST', '/api/products', ['add_items', 'buy'], ({ body, user }) => tx(() =
     const id = D.newId();
     run(
       'INSERT INTO products(id, barcode, name, category, size, color, cost_price, sale_price, article_no, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      id, barcode, name, category, size, color, cost, price, str(v.article_no, 40) || article, now());
+      id, barcode, name, category, size, color, cost, v.sale_price !== undefined && v.sale_price !== '' && v.sale_price !== null ? toMoney(v.sale_price) : price, str(v.article_no, 40) || article, now());
     const opening = toInt(v.opening_qty, 0);
     if (opening) D.moveStock(id, openingLoc, opening, 'opening', null, null, user.id, 'Opening stock');
     created.push({ ...get('SELECT * FROM products WHERE id = ?', id), stock_total: opening });

@@ -3,6 +3,7 @@
 
 const MOVE_NAMES = { purchase: 'Purchased', opening: 'Opening stock', dispatch_out: 'Sent out', dispatch_in: 'Received', sale: 'Sold', return: 'Customer return', adjust: 'Stock correction', void: 'Cancelled' };
 const QUICK_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', 'Free Size'];
+const KIDS_SIZES = ['1-2Y', '2-3Y', '3-4Y', '4-5Y', '5-6Y', '6-7Y', '7-8Y', '8-9Y', '9-10Y'];
 let productMeta = null;
 async function loadMeta(force) {
   if (!productMeta || force) productMeta = await GET('/api/product-meta');
@@ -28,6 +29,7 @@ async function openAddProduct({ forPurchase = false, onCreated } = {}) {
         </div>
         <label class="field full">Sizes <span class="hint">— click to add, or type them separated by commas. Leave empty if there are no sizes.</span>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">${QUICK_SIZES.map((s) => `<button type="button" class="btn sm" data-size="${esc(s)}">${esc(s)}</button>`).join('')}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 6px;align-items:center"><span class="muted small">Kids:</span>${KIDS_SIZES.map((s) => `<button type="button" class="btn sm" data-size="${esc(s)}">${esc(s)}</button>`).join('')}<button type="button" class="btn sm primary" id="allKids">All kids sizes</button></div>
           <input class="input" name="sizes" placeholder="e.g. S, M, L, XL   or   28, 30, 32, 34"></label>
         <label class="field full">Colours <span class="hint">— separated by commas. Leave empty if there is only one colour.</span>
           <input class="input" name="colors" list="dlColor" placeholder="e.g. Black, Navy Blue, Maroon"></label>
@@ -48,10 +50,11 @@ async function openAddProduct({ forPurchase = false, onCreated } = {}) {
   function renderVariants() {
     const vs = variants();
     m.$('#varBox').innerHTML = `<div class="muted small" style="margin-bottom:6px">This will create <b>${vs.length}</b> item${vs.length > 1 ? 's' : ''}, each with its own barcode:</div>
-      <div class="table-wrap" style="max-height:300px;overflow-y:auto;border:1px solid var(--line);border-radius:8px"><table class="tbl"><thead><tr><th>Item</th><th>Barcode <span class="muted" style="text-transform:none">(leave empty = make one)</span></th>
+      <div class="table-wrap" style="max-height:300px;overflow-y:auto;border:1px solid var(--line);border-radius:8px"><table class="tbl"><thead><tr><th>Item</th><th>Barcode <span class="muted" style="text-transform:none">(leave empty = make one)</span></th><th class="r">Sale price <span class="muted" style="text-transform:none">(empty = ${esc(f().sale_price || 'the one above')})</span></th>
       ${forPurchase ? '' : `<th class="r">Opening stock</th>`}</tr></thead><tbody>
       ${vs.map((v) => { const k = keep.get(v.key) || {}; return `<tr data-key="${esc(v.key)}"><td><b>${esc(f().name || 'Item')}</b> <span class="muted">${esc([v.size, v.color].filter(Boolean).join(' / '))}</span></td>
         <td><input class="input sm" data-f="barcode" value="${esc(k.barcode || '')}" placeholder="auto"></td>
+        <td class="r"><input class="input sm num" style="width:90px" data-f="sale_price" value="${esc(k.sale_price || '')}" placeholder="${esc(f().sale_price || '0')}" inputmode="decimal"></td>
         ${forPurchase ? '' : `<td class="r"><input class="input sm num" style="width:90px" data-f="opening_qty" value="${esc(k.opening_qty || '')}" placeholder="0" inputmode="numeric"></td>`}</tr>`; }).join('')}
       </tbody></table></div>
       ${forPurchase ? '' : `<label class="field" style="margin-top:12px;max-width:300px">Opening stock is at<select class="input" name="opening_location_id">${options(locs, defLoc(locs, locs.find((l) => l.type === 'warehouse')?.id))}</select>
@@ -60,8 +63,9 @@ async function openAddProduct({ forPurchase = false, onCreated } = {}) {
   m.el.addEventListener('input', (e) => {
     const tr = e.target.closest('tr[data-key]');
     if (tr) { const k = keep.get(tr.dataset.key) || {}; k[e.target.dataset.f] = e.target.value; keep.set(tr.dataset.key, k); return; }
-    if (['sizes', 'colors', 'name'].includes(e.target.name)) renderVariants();
+    if (['sizes', 'colors', 'name', 'sale_price'].includes(e.target.name)) renderVariants();
   });
+  m.$('#allKids').addEventListener('click', () => { const inp = m.$('[name=sizes]'); inp.value = [...new Set([...splitList(inp.value), ...KIDS_SIZES])].join(', '); renderVariants(); });
   m.$$('[data-size]').forEach((b) => b.addEventListener('click', () => {
     const inp = m.$('[name=sizes]');
     const list = splitList(inp.value);
@@ -236,6 +240,7 @@ View('products', {
         <select class="input" id="cat">${options(meta.categories, '', { blank: 'All categories' })}</select>
         <label class="check"><input type="checkbox" id="hid"> Show hidden items</label>
         <button class="btn" id="lblBtn" disabled>${icon('printer')} Labels for selected</button>
+        ${can('add_items') ? '<button class="btn" id="priceBtn" disabled>Change price</button>' : ''}
       </div>
       <div class="card flush" id="list"><div class="loading">Loading…</div></div>`;
     let rows = [];
@@ -255,10 +260,23 @@ View('products', {
       const b = $('#lblBtn', el);
       b.disabled = !selected.size;
       b.innerHTML = `${icon('printer')} Labels for selected${selected.size ? ` (${selected.size})` : ''}`;
+      const pb = $('#priceBtn', el);
+      if (pb) { pb.disabled = !selected.size; pb.textContent = `Change price${selected.size ? ` (${selected.size})` : ''}`; }
     }
     let t;
     $('#q', el).addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { st.q = e.target.value.trim(); load(); }, 250); });
     $('#cat', el).addEventListener('change', (e) => { st.category = e.target.value; load(); });
+    // e.g. sizes 1-2Y to 4-5Y at 1500 and 5-6Y to 9-10Y at 1900: tick those sizes, press Change price
+    $('#priceBtn', el)?.addEventListener('click', async () => {
+      const list = rows.filter((p) => selected.has(p.id));
+      const v = await promptBox(`New sale price for the ${list.length} ticked item${list.length > 1 ? 's' : ''}: ${list.slice(0, 12).map((p) => `${p.name} ${variantText(p)}`.trim()).join(', ')}${list.length > 12 ? ' …' : ''}`, { title: 'Change price', ok: 'Change price', placeholder: 'e.g. 1900' });
+      if (v === null) return;
+      const price = Number(String(v).replace(/,/g, ''));
+      if (!(price > 0)) return toast('Type a price above 0', 'error');
+      for (const p of list) await PUT('/api/products/' + p.id, { sale_price: price });
+      toast(`${list.length} item${list.length > 1 ? 's' : ''} now sell for ${money(price)}. Print new labels for them.`, 'ok', 6000);
+      ProductCache.invalidate(); selected.clear(); load();
+    });
     $('#hid', el).addEventListener('change', (e) => { st.hidden = e.target.checked; load(); });
     $('#list', el).addEventListener('click', (e) => {
       if (e.target.id === 'selAll') { rows.forEach((p) => (e.target.checked ? selected.add(p.id) : selected.delete(p.id))); $$('[data-sel]', el).forEach((c) => { c.checked = e.target.checked; }); return updateSel(); }
