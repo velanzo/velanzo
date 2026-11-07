@@ -62,6 +62,7 @@ foreach ($p in $printers) {
   if ($cim.WorkOffline) { Say FIX "'$($p.Name)' shows as OFFLINE. Switch the printer on and plug in its USB cable. If it is on and still offline: Windows Printers & scanners, the printer, Open print queue, menu Printer, untick 'Use Printer Offline'." }
   if ($p.Name -match '\([0-9]+\)$') { Say WARN "'$($p.Name)' looks like a duplicate of another printer. Use the one without (1) in its name; you can remove this one in Windows." }
   if ($p.PortName -eq 'USB PORT:' -or $p.PortName -eq '') { Say FIX "'$($p.Name)' uses the port '$($p.PortName)', which the installer made by mistake. Run 'Fix printing' and choose 2 to point it at the real USB port." }
+  elseif ($p.PortName -match '^(COM|LPT)[0-9]+:?$') { Say FIX "'$($p.Name)' uses the port $($p.PortName) (a serial or parallel port). A USB printer prints nothing there. Run 'Fix printing' and choose 2." }
   elseif ($p.PortName -like 'USB0*') { Say OK "'$($p.Name)' is on the USB port $($p.PortName)" }
   if ($bad.Count -gt 0) { Say FIX ("'{0}' has {1} stuck job(s) in error. Run 'Fix printing' and choose 1." -f $p.Name, $bad.Count) }
   elseif ($jobs.Count -gt 0) { Say WARN ("'{0}' has {1} job(s) waiting in its queue." -f $p.Name, $jobs.Count) }
@@ -121,7 +122,8 @@ function Clear-Queue {
 }
 function Fix-Ports {
   $usbPorts = @(Get-PrinterPort | Where-Object { $_.Name -like 'USB0*' -and $_.Description -notmatch 'Virtual printer port' })
-  $bad = @(Real-Printers | Where-Object { $_.PortName -eq 'USB PORT:' -or $_.PortName -eq '' })
+  # (a COM or LPT port is a wrong port too: the installer can put a USB printer there, and nothing prints)
+  $bad = @(Real-Printers | Where-Object { $_.PortName -eq 'USB PORT:' -or $_.PortName -eq '' -or $_.PortName -match '^(COM|LPT)[0-9]+:?$' })
   if ($bad.Count -eq 0) { Write-Host 'No printer is on a wrong port.' -ForegroundColor Green; return }
   if ($usbPorts.Count -eq 0) { Write-Host 'No printer is plugged in on USB. Plug it in, switch it on, and try again.' -ForegroundColor Yellow; return }
   foreach ($p in $bad) {
@@ -140,11 +142,49 @@ function Set-Default {
     Write-Host "'$($names[$i])' is now the default, and Windows will not change it by itself." -ForegroundColor Green
   }
 }
+# A command straight to the label printer (it understands TSPL). The printer keeps the setting in its own memory.
+function Send-Raw($printer, $text) {
+  if (-not ('VzRaw' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices;
+public static class VzRaw {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] public class DOCINFO { public string pDocName; public string pOutputFile; public string pDataType; }
+  [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool OpenPrinter(string n, out IntPtr h, IntPtr d);
+  [DllImport("winspool.drv", SetLastError = true)] static extern bool ClosePrinter(IntPtr h);
+  [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)] static extern int StartDocPrinter(IntPtr h, int level, [In] DOCINFO di);
+  [DllImport("winspool.drv", SetLastError = true)] static extern bool EndDocPrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError = true)] static extern bool StartPagePrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError = true)] static extern bool EndPagePrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError = true)] static extern bool WritePrinter(IntPtr h, byte[] b, int n, out int w);
+  public static bool Send(string printer, string text) {
+    IntPtr h; if (!OpenPrinter(printer, out h, IntPtr.Zero)) return false;
+    var di = new DOCINFO { pDocName = "Velanzo printer setting", pDataType = "RAW" };
+    if (StartDocPrinter(h, 1, di) == 0) { ClosePrinter(h); return false; }
+    StartPagePrinter(h); var b = System.Text.Encoding.ASCII.GetBytes(text); int w; bool ok = WritePrinter(h, b, b.Length, out w);
+    EndPagePrinter(h); EndDocPrinter(h); ClosePrinter(h); return ok;
+  }
+}
+'@
+  }
+  return [VzRaw]::Send($printer, $text)
+}
+function Set-Ribbon($on) {
+  $names = @(Real-Printers | Where-Object { $_.DriverName -match 'Xprinter|TSC|Label|LP' -or $_.Name -match 'label|barcode|sticker' } | ForEach-Object { $_.Name })
+  if ($names.Count -eq 0) { $names = @(Real-Printers | ForEach-Object { $_.Name }) }
+  $i = Pick 'Which one is the barcode label printer?' $names
+  if ($i -lt 0) { return }
+  $word = 'OFF'
+  if ($on) { $word = 'ON' }
+  if (Send-Raw $names[$i] ('SET RIBBON ' + $word + [char]13 + [char]10)) {
+    if ($on) { Write-Host "Ribbon switched ON for '$($names[$i])'. The printer remembers it, also after switching off." -ForegroundColor Green }
+    else { Write-Host "Ribbon switched OFF for '$($names[$i])' (labels without a black ribbon)." -ForegroundColor Green }
+  } else { Write-Host "Could not reach '$($names[$i])'. Is it switched on and on its USB port (choice 2)?" -ForegroundColor Yellow }
+}
 Write-Host ''
 Write-Host 'Velanzo - fix printing (it asks before each change)' -ForegroundColor Cyan
 do {
-  $m = Pick 'What do you want to fix?' @('Clear stuck print jobs (restarts the print service)', 'Point a printer at its real USB port (when it says path not found)', 'Choose the default printer (and stop Windows changing it)', 'Do all three')
-  switch ($m) { 0 { Clear-Queue } 1 { Fix-Ports } 2 { Set-Default } 3 { Clear-Queue; Fix-Ports; Set-Default } }
+  $m = Pick 'What do you want to fix?' @('Clear stuck print jobs (restarts the print service)', 'Point a printer at its real USB port (when it says path not found, or nothing prints)', 'Choose the default printer (and stop Windows changing it)', 'Do all three', 'Label printer WITH a black ribbon: switch the ribbon on (ribbon not winding, print faint)', 'Label printer WITHOUT a ribbon: switch the ribbon off')
+  switch ($m) { 0 { Clear-Queue } 1 { Fix-Ports } 2 { Set-Default } 3 { Clear-Queue; Fix-Ports; Set-Default } 4 { Set-Ribbon $true } 5 { Set-Ribbon $false } }
   if ($m -ge 0) { $again = Read-Host 'Fix something else? (y/n)' } else { $again = 'n' }
 } while ($again -eq 'y')
 Write-Host ''

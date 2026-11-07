@@ -16,6 +16,8 @@ const HW_FIXES = [
   ['The bill comes out blank or very pale', 'The paper roll is the wrong way round, or the density is low.', 'Scratch the paper with a fingernail: the side that turns dark is the print side, it must face the print head (up as it leaves the printer). Then raise Density in the printer preferences.'],
   ['The right side of the bill is cut off', 'The printer prints less than the paper is wide (a 3 inch roll is 76 mm).', 'Hardware → Receipt printer → press "Print ruler", read the biggest number you can see, then set Print width a little below it (for example 64) and 1 mm from the left.'],
   ['A job is in the queue with "Error" and nothing prints', 'The printer is on a wrong port (the installer made "USB PORT:"), or it is switched off.', 'Run "Fix printing" (Windows tools below), choose 2. Or Windows → Printers & scanners → the printer → Printer properties → Ports → tick USB002 / USB003.'],
+  ['Label printer: the black ribbon does not wind back, print is faint or missing', 'The printer is set for labels without a ribbon (direct thermal).', 'Run "Fix printing" (Windows tools below) and choose 5: it switches the ribbon on, and the printer remembers it. Check the ribbon too: ink side towards the labels, its end taped to the empty core at the top.'],
+  ['Nothing prints and the printer port is COM or LPT', 'The installer put the USB printer on a wrong port.', 'Run "Fix printing" and choose 2: it moves the printer to its USB port.'],
   ['"Save print output as" window appears', 'The default printer is Microsoft Print to PDF.', 'Make the real printer the default (Fix printing, choose 3). Turn off "Let Windows manage my default printer".'],
   ['The default printer keeps changing', 'Windows sets the default to the last printer used.', 'Settings → Bluetooth & devices → Printers & scanners → turn OFF "Let Windows manage my default printer", then set the default again.'],
   ['The print window opens every time', 'Normal for Chrome.', 'For the shop counter only: close Chrome, add  --kiosk-printing  at the end of the Chrome shortcut Target. Everything printed from that Chrome then goes straight to the default printer.'],
@@ -172,7 +174,7 @@ View('hardware', {
           <button class="btn primary" id="dlCheck">${icon('download')} Check this computer</button>
           <button class="btn" id="dlFix">${icon('download')} Fix printing</button></div>
         <ul class="muted small" style="margin:6px 0 12px"><li><b>Check this computer</b> only <u>reads</u>: printers, drivers, USB ports, default printer, stuck jobs, errors of the last 24 hours. It tells you what to do and saves a report on the Desktop.</li>
-          <li><b>Fix printing</b> asks before each change: clear stuck jobs, put a printer on its real USB port, choose the default printer. It asks for administrator permission.</li></ul>
+          <li><b>Fix printing</b> asks before each change: clear stuck jobs, put a printer on its real USB port, choose the default printer, switch the label printer's ribbon on or off. It asks for administrator permission.</li></ul>
         <label class="field">Paste the report here (Desktop → Velanzo-hardware-report.txt)<textarea class="input" id="rep" rows="3" placeholder="Paste the report text here…"></textarea></label>
         <div style="margin-top:8px"><button class="btn" id="readRep">Read the report</button></div>
         <div id="repOut" style="margin-top:12px"></div>
