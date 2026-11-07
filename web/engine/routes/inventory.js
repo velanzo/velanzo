@@ -19,12 +19,12 @@ export function sortProducts(rows) {
     sizeRank(a.size) - sizeRank(b.size) ||
     String(a.size || '').localeCompare(String(b.size || '')));
 }
-// Every word typed must match the name, barcode, category, colour or size.
+// Every word typed must match the name, barcode, article number, category, colour or size.
 function searchWhere(q, where, params) {
   for (const w of str(q, 100).split(/\s+/).filter(Boolean)) {
-    where.push('(p.name LIKE ? OR p.barcode LIKE ? OR p.category LIKE ? OR p.color LIKE ? OR p.size = ? COLLATE NOCASE)');
+    where.push('(p.name LIKE ? OR p.barcode LIKE ? OR p.article_no LIKE ? OR p.category LIKE ? OR p.color LIKE ? OR p.size = ? COLLATE NOCASE)');
     const like = `%${w}%`;
-    params.push(like, like, like, like, w);
+    params.push(like, like, like, like, like, w);
   }
 }
 const hideCost = (user, rows) => {
@@ -101,6 +101,7 @@ route('GET', '/api/products/:id', 'any', ({ params, user }) => {
 route('POST', '/api/products', ['add_items', 'buy'], ({ body, user }) => tx(() => {
   const name = need(str(body.name, 120), 'Item name');
   const category = str(body.category, 60);
+  const article = str(body.article_no, 40) || null;
   const cost = canSeeCost(user) ? toMoney(body.cost_price) : 0;
   const price = toMoney(body.sale_price);
   const variants = Array.isArray(body.variants) && body.variants.length ? body.variants : [{}];
@@ -116,8 +117,8 @@ route('POST', '/api/products', ['add_items', 'buy'], ({ body, user }) => tx(() =
     if (!barcode) barcode = D.newBarcode();
     const id = D.newId();
     run(
-      'INSERT INTO products(id, barcode, name, category, size, color, cost_price, sale_price, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      id, barcode, name, category, size, color, cost, price, now());
+      'INSERT INTO products(id, barcode, name, category, size, color, cost_price, sale_price, article_no, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      id, barcode, name, category, size, color, cost, price, str(v.article_no, 40) || article, now());
     const opening = toInt(v.opening_qty, 0);
     if (opening) D.moveStock(id, openingLoc, opening, 'opening', null, null, user.id, 'Opening stock');
     created.push({ ...get('SELECT * FROM products WHERE id = ?', id), stock_total: opening });
@@ -131,6 +132,7 @@ route('PUT', '/api/products/:id', 'add_items', ({ params, body, user }) => {
   const f = {
     name: need(str(body.name ?? p.name, 120), 'Item name'),
     category: str(body.category ?? p.category, 60),
+    article: str(body.article_no ?? p.article_no, 40) || null,
     size: str(body.size ?? p.size, 30),
     color: str(body.color ?? p.color, 40),
     barcode: need(str(body.barcode ?? p.barcode, 60), 'Barcode'),
@@ -138,8 +140,8 @@ route('PUT', '/api/products/:id', 'add_items', ({ params, body, user }) => {
     price: toMoney(body.sale_price ?? p.sale_price),
     active: body.active === undefined ? p.active : (body.active ? 1 : 0),
   };
-  run('UPDATE products SET name = ?, category = ?, size = ?, color = ?, barcode = ?, cost_price = ?, sale_price = ?, active = ?, updated_at = ? WHERE id = ?',
-    f.name, f.category, f.size, f.color, f.barcode, f.cost, f.price, f.active, now(), id);
+  run('UPDATE products SET name = ?, category = ?, article_no = ?, size = ?, color = ?, barcode = ?, cost_price = ?, sale_price = ?, active = ?, updated_at = ? WHERE id = ?',
+    f.name, f.category, f.article, f.size, f.color, f.barcode, f.cost, f.price, f.active, now(), id);
   return hideCost(user, [get('SELECT * FROM products WHERE id = ?', id)])[0];
 });
 

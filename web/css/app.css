@@ -615,3 +615,8 @@ h3 > svg { width: 20px; height: 20px; vertical-align: -4px; margin-right: 4px; c
 .toast.new-version { display: flex; align-items: center; gap: 12px; }
 
 .label-zoom { display: inline-block; outline: 1px dashed #9aa1af; line-height: normal; }
+
+.appbar-refresh { color: #fff; font-size: 20px; width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,.14); }
+.appbar-refresh:hover { background: rgba(255,255,255,.26); }
+.appbar-refresh.spin { animation: vzspin 0.9s linear infinite; }
+@keyframes vzspin { to { transform: rotate(360deg); } }

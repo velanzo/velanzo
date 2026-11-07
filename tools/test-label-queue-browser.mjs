@@ -58,6 +58,16 @@ try {
   ok(await run(`const n = document.querySelectorAll('#list [data-sel]').length; return n > 3 && document.querySelector('#addLbl').textContent.includes('Add ' + n + ' to');`), 'the header box selects every item shown');
   await run(`await go('#/labels'); await until(() => document.querySelector('#printBtn'));`);
   ok(await run(`return !document.querySelector('#one') && !/1 of each/.test(document.body.innerText);`), 'there is no "Print 1 of each" button any more');
+  // ---- the article number: a field on items, printed on the label instead of the barcode's number ----
+  await run(`await go('#/products'); await until(() => document.querySelector('#addBtn')); click('#addBtn'); await until(() => document.querySelector('.modal-wrap [name=article_no]'));`);
+  ok(true, 'adding an item has an Article number field');
+  await run(`set('.modal-wrap [name=name]', 'Article test ' + Date.now()); set('.modal-wrap [name=article_no]', 'W22GGTOWJT-01'); set('.modal-wrap [name=sale_price]', '2799');
+    await sleep(200); document.querySelectorAll('.modal-wrap [data-f=opening_qty]').forEach((e) => { e.value = '1'; e.dispatchEvent(new Event('input', { bubbles: true })); });
+    click('.modal-wrap #apSave'); await sleep(1500); if (document.querySelector('#wGo')) { click('#wGo'); await sleep(1200); } if (document.querySelector('#cOk')) { click('#cOk'); await sleep(1200); }`);
+  const lbl = await run(`const p = (await GET('/api/products', { q: 'W22GGTOWJT-01', all: 1 }))[0]; PrintLog.save([]); printLabels([{ product: p, copies: 1 }]); await sleep(700);
+    const e = PrintLog.all()[0]; return { body: e.body, barcode: p.barcode, article: p.article_no };`);
+  ok(lbl.article === 'W22GGTOWJT-01', 'the item keeps its article number');
+  ok(lbl.body.includes('W22GGTOWJT-01') && !lbl.body.includes('>' + lbl.barcode + '<') && /<svg/.test(lbl.body), 'the label shows the article number under the barcode (the barcode still scans the same)');
   console.log(`\nAll ${checks} barcode list checks passed.`);
 } finally { await b.close(); }
 process.exit(0);

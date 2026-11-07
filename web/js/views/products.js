@@ -21,6 +21,7 @@ async function openAddProduct({ forPurchase = false, onCreated } = {}) {
       <div class="form-grid">
         <label class="field full">Item name *<input class="input" name="name" placeholder="e.g. Lawn Kurta Embroidered" autofocus></label>
         <label class="field">Category<input class="input" name="category" list="dlCat" placeholder="e.g. Kurta, Shirt, Jeans"></label>
+        <label class="field">Article number<input class="input mono" name="article_no" placeholder="e.g. W22GGTOWJT-01" autocomplete="off"><span class="hint">Printed on the label. The same for all sizes and colours.</span></label>
         <div class="form-grid" style="gap:14px">
           <label class="field">Cost price<input class="input num" name="cost_price" inputmode="decimal" placeholder="0"></label>
           <label class="field">Sale price<input class="input num" name="sale_price" inputmode="decimal" placeholder="0"></label>
@@ -74,7 +75,7 @@ async function openAddProduct({ forPurchase = false, onCreated } = {}) {
     const v = f();
     if (!v.name) throw new Error('Enter the item name');
     const body = {
-      name: v.name, category: v.category, cost_price: v.cost_price, sale_price: v.sale_price, opening_location_id: v.opening_location_id,
+      name: v.name, category: v.category, article_no: v.article_no, cost_price: v.cost_price, sale_price: v.sale_price, opening_location_id: v.opening_location_id,
       variants: variants().map((x) => ({ size: x.size, color: x.color, ...(keep.get(x.key) || {}) })),
     };
     if (!(await looksRight('product', body))) return;
@@ -96,6 +97,7 @@ async function openEditProduct(p, onSaved) {
       <label class="field">Size<input class="input" name="size" value="${esc(p.size || '')}"></label>
       <label class="field">Colour<input class="input" name="color" list="dlColor2" value="${esc(p.color || '')}"></label>
       <label class="field">Category<input class="input" name="category" list="dlCat2" value="${esc(p.category || '')}"></label>
+      <label class="field">Article number<input class="input mono" name="article_no" value="${esc(p.article_no || '')}" autocomplete="off"></label>
       <label class="field">Barcode<input class="input mono" name="barcode" value="${esc(p.barcode)}"><span class="hint">Change only if the printed labels are wrong.</span></label>
       <label class="field">Cost price<input class="input num" name="cost_price" value="${esc(p.cost_price ?? '')}"></label>
       <label class="field">Sale price<input class="input num" name="sale_price" value="${esc(p.sale_price)}"></label>
@@ -183,7 +185,7 @@ function openImportProducts(onDone) {
     size: 'wide',
     body: `<ol style="margin:0 0 14px;padding-left:20px;line-height:1.7">
         <li><a href="#" id="tplLink">Download the template</a> and open it in Excel.</li>
-        <li>Fill one row per item (per size/colour). Columns: <b>name</b>, category, size, color, cost_price, sale_price, qty, barcode.<br>
+        <li>Fill one row per item (per size/colour). Columns: <b>name</b>, category, article_no, size, color, cost_price, sale_price, qty, barcode.<br>
           <span class="muted small">Leave <b>barcode</b> empty to make new barcodes. Items with an existing barcode get updated; <b>qty</b> is added to stock.</span></li>
         <li>In Excel choose <b>File → Save As → CSV UTF-8</b>, then pick that file below.</li></ol>
       <div class="form-grid">
@@ -299,7 +301,7 @@ View('products/:id', {
     el.innerHTML = `
       <div class="grid-2" style="margin-top:0">
         <div class="card"><div style="display:flex;gap:18px;flex-wrap:wrap">
-          <dl class="kv grow"><dt>Barcode</dt><dd class="mono">${esc(p.barcode)}</dd><dt>Category</dt><dd>${esc(p.category || '—')}</dd><dt>Size</dt><dd>${esc(p.size || '—')}</dd><dt>Colour</dt><dd>${esc(p.color || '—')}</dd>
+          <dl class="kv grow"><dt>Barcode</dt><dd class="mono">${esc(p.barcode)}</dd>${p.article_no ? `<dt>Article number</dt><dd class="mono">${esc(p.article_no)}</dd>` : ''}<dt>Category</dt><dd>${esc(p.category || '—')}</dd><dt>Size</dt><dd>${esc(p.size || '—')}</dd><dt>Colour</dt><dd>${esc(p.color || '—')}</dd>
             <dt>Cost price</dt><dd>${money(p.cost_price)}</dd><dt>Sale price</dt><dd><b>${money(p.sale_price)}</b></dd>
             <dt>Profit per piece</dt><dd>${money(p.sale_price - p.cost_price)} ${p.sale_price ? `<span class="muted">(${Math.round(((p.sale_price - p.cost_price) / p.sale_price) * 100)}%)</span>` : ''}</dd>
             <dt>Total sold</dt><dd>${d.sold} pieces</dd><dt>Status</dt><dd>${p.active ? '<span class="pill ok">In use</span>' : '<span class="pill">Hidden</span>'}</dd></dl>

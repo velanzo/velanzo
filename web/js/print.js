@@ -146,18 +146,25 @@ function printBill(sale) { printDoc(billHtml(sale), receiptCss(), sale.bill_no, 
 
 // ---------- Barcode labels ----------
 // items: [{ product, copies }]
+// The logo printed on top of the barcode labels (black and white, made for thermal printers).
+const LABEL_LOGO = 'data:image/png;base64,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';
+// The name on the labels: the one set on the Hardware page, or the first word of the business name (Velanzo Clothing → VELANZO).
+const labelBrand = () => String(App.settings.label_brand || String(App.settings.business_name || '').trim().split(/\s+/)[0] || '').toUpperCase();
+
 // One sticker, laid out like a shop's own price tag: the business on top, a wide barcode, the code and the price
 // in one row, the item's name in capitals, then its colour (left) and size (right).
 function labelHtml(p) {
   const S = App.settings;
   const w = Math.max(20, Number(S.label_width) || 50);
-  const m = Barcode.fit(p.barcode, w - 3); // (1.5 mm padding each side)
-  const bc = m ? Barcode.svg(p.barcode, { height: 40, moduleMm: m }) : Barcode.svg(p.barcode, { height: 40, quiet: 6 });
+  // as long as the sticker allows (0.5 mm margins, small quiet zones: the sticker around it is white), in whole printer dots
+  const m = Barcode.fit(p.barcode, w - 1, 4);
+  const bc = m ? Barcode.svg(p.barcode, { height: 40, moduleMm: m, quiet: 4 }) : Barcode.svg(p.barcode, { height: 40, quiet: 4 });
   const showPrice = S.label_show_price !== '0';
   return `<div class="label">
-    ${S.label_show_brand !== '0' ? `<div class="lb-brand">${esc(S.business_name || '')}</div>` : ''}
+    ${S.label_show_logo !== '0' ? `<div class="lb-logo"><img src="${LABEL_LOGO}" alt=""></div>` : ''}
+    ${S.label_show_brand !== '0' ? `<div class="lb-brand">${esc(labelBrand())}</div>` : ''}
     <div class="bcw">${bc}</div>
-    <div class="lb-row"><span class="lb-code">${esc(p.barcode)}</span>${showPrice ? `<span class="lb-price">${esc(S.currency)} ${num(p.sale_price).replace(/,/g, '')}</span>` : ''}</div>
+    <div class="lb-row"><span class="lb-code">${esc(p.article_no || p.barcode)}</span>${showPrice ? `<span class="lb-price">${esc(S.currency)} ${num(p.sale_price).replace(/,/g, '')}</span>` : ''}</div>
     ${S.label_show_name !== '0' ? `<div class="lb-name">${esc(String(p.name || '').toUpperCase())}</div>` : ''}
     ${p.color || p.size ? `<div class="lb-row lb-var"><span>${esc(p.color || '')}</span><span>${esc(p.size || '')}</span></div>` : ''}
   </div>`;
@@ -186,7 +193,10 @@ function labelLookCss(scope = '') {
   ${x}.label > div { flex-shrink: 0;${top ? ` position: relative; top: ${top}mm;` : ''} }
   ${x}.lb-brand { text-align: center; font-size: ${small ? 6.5 : 8}pt; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; line-height: 1.05;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  ${x}.label > .bcw { width: 100%; flex: 1 1 auto; min-height: 0; max-height: ${Math.round(h * 0.34)}mm; display: flex; justify-content: center; }
+  ${x}.label > .lb-logo { display: flex; justify-content: center; flex: 1 1 auto; min-height: 0; max-height: ${(h * 0.19).toFixed(1)}mm; }
+  ${x}.lb-logo img { height: 100%; width: auto; }
+  ${x}.label > .bcw { width: calc(100% + 2mm); margin: 0 -1mm; flex: none; height: ${Math.max(6.2, h * 0.22).toFixed(1)}mm; display: flex; justify-content: center; }
+  /* (at least 6 mm tall: short enough to look neat, tall enough for any scanner; the logo gives way first) */
   ${x}.bcw svg { width: 100%; height: 100%; }
   ${x}.lb-row { display: flex; justify-content: space-between; align-items: baseline; gap: 1mm; white-space: nowrap; line-height: 1.1; }
   ${x}.lb-code { font-family: 'Courier New', Courier, monospace; font-weight: 700; font-size: ${small ? 6.5 : 7.5}pt; letter-spacing: 0; }

@@ -168,7 +168,7 @@ route('POST', '/api/backup/import', 'owner', ({ body }) => ({ counts: importData
 
 // ---------- Excel (CSV) export ----------
 const EXPORTS = {
-  products: { sql: `SELECT p.barcode, p.name, p.category, p.size, p.color, p.cost_price, p.sale_price,
+  products: { sql: `SELECT p.barcode, p.article_no, p.name, p.category, p.size, p.color, p.cost_price, p.sale_price,
       COALESCE((SELECT SUM(qty) FROM stock WHERE product_id = p.id), 0) AS total_stock, CASE p.active WHEN 1 THEN 'yes' ELSE 'no' END AS active
       FROM products p ORDER BY p.name, p.color, p.size` },
   stock: { sql: `SELECT l.name AS location, p.barcode, p.name, p.category, p.size, p.color, s.qty, p.cost_price, p.sale_price,
@@ -248,15 +248,15 @@ route('POST', '/api/import/products', 'add_items', ({ body, user }) => tx(() => 
     }
     const has = (k) => r[k] !== undefined && String(r[k]).trim() !== '';
     if (p) {
-      run('UPDATE products SET name = ?, category = ?, size = ?, color = ?, cost_price = ?, sale_price = ?, active = 1, updated_at = ? WHERE id = ?',
-        name || p.name, has('category') ? str(r.category, 60) : p.category, has('size') ? size : p.size, has('color') ? color : p.color,
+      run('UPDATE products SET name = ?, category = ?, article_no = ?, size = ?, color = ?, cost_price = ?, sale_price = ?, active = 1, updated_at = ? WHERE id = ?',
+        name || p.name, has('category') ? str(r.category, 60) : p.category, has('article_no') ? str(r.article_no, 40) : p.article_no, has('size') ? size : p.size, has('color') ? color : p.color,
         has('cost_price') ? toMoney(r.cost_price) : p.cost_price, has('sale_price') ? toMoney(r.sale_price) : p.sale_price, now(), p.id);
       updated++;
     } else {
       if (!name) { errors.push(`Row ${line}: item name is missing`); return; }
       p = { id: D.newId() };
-      run('INSERT INTO products(id, barcode, name, category, size, color, cost_price, sale_price, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        p.id, barcode || D.newBarcode(), name, str(r.category, 60), size, color, toMoney(r.cost_price), toMoney(r.sale_price), now());
+      run('INSERT INTO products(id, barcode, name, category, size, color, cost_price, sale_price, article_no, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        p.id, barcode || D.newBarcode(), name, str(r.category, 60), size, color, toMoney(r.cost_price), toMoney(r.sale_price), str(r.article_no, 40) || null, now());
       created++;
     }
     if (qty) { D.moveStock(p.id, loc, qty, 'opening', null, null, user.id, 'Imported from file'); stocked += qty; }

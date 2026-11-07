@@ -52,7 +52,7 @@ export const MERGE_COLS = {
   locations: ['name', 'code', 'type', 'address', 'phone', 'perms', 'active'],
   users: ['name', 'role', 'location_id', 'perms', 'pin_salt', 'pin_hash', 'email', 'active'],
   suppliers: ['name', 'phone', 'address', 'notes'],
-  products: ['barcode', 'name', 'category', 'size', 'color', 'cost_price', 'sale_price', 'active', 'updated_at'],
+  products: ['barcode', 'name', 'category', 'size', 'color', 'cost_price', 'sale_price', 'active', 'updated_at', 'article_no'],
   vouchers: ['code', 'kind', 'value', 'min_bill', 'expires', 'max_uses', 'note', 'active'],
 };
 
@@ -270,7 +270,12 @@ const MIGRATIONS = [
   ALTER TABLE sales ADD COLUMN rev INTEGER;
   ALTER TABLE outbox ADD COLUMN base TEXT;
   ${VERSIONED_TABLES.map((t) => baseTrigger(t, 'OLD.rev')).join('\n')}
-  ${Object.entries(MERGE_COLS).map(([t, cols]) => baseTrigger(t, `json_object(${cols.map((c) => `'${c}', OLD.${c}`).join(', ')})`)).join('\n')}
+  ${Object.entries(MERGE_COLS).map(([t, cols]) => baseTrigger(t, mergeBase(t === 'products' ? cols.filter((c) => c !== 'article_no') : cols))).join('\n')}
+  `,
+  // Article number: the style code of an item (the same for all its sizes and colours), printed on its label.
+  `
+  ALTER TABLE products ADD COLUMN article_no TEXT;
+  ${baseTrigger('products', mergeBase(MERGE_COLS.products))}
   `,
 ];
 export const SCHEMA_VERSION = MIGRATIONS.length;
@@ -285,6 +290,7 @@ function outboxTriggers(t) {
   CREATE TRIGGER ${t}_ob_d AFTER DELETE ON ${t} ${when} BEGIN INSERT INTO outbox(grp, tbl, row_key, del) VALUES ((SELECT grp FROM sync_ctx), '${t}', OLD.${key}, 1); END;`;
 }
 
+function mergeBase(cols) { return `json_object(${cols.map((c) => `'${c}', OLD.${c}`).join(', ')})`; }
 function baseTrigger(t, base) {
   return `
   DROP TRIGGER ${t}_ob_u;
@@ -309,6 +315,8 @@ export const DEFAULT_SETTINGS = {
   label_gap: '2', // mm between those stickers
   label_top: '0', // mm the printing moves down on the sticker (roll only)
   label_show_brand: '1', // the business name on top of the sticker
+  label_brand: '', // that name (empty: the first word of the business name)
+  label_show_logo: '1', // the logo above it
   label_show_price: '1',
   label_show_name: '1',
   dispatch_paper: 'a4',

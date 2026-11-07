@@ -387,6 +387,7 @@ function renderShell() {
       <a class="brand" href="#/${homeFor()}"><span class="logo">V</span><span class="brand-text"><b>${esc(App.settings.business_name)}</b><small>${esc(place)}</small></span></a>
       <nav class="tabnav" id="nav">${navHtml()}</nav>
       <div class="appbar-right">
+        <button class="icon-btn appbar-refresh" id="refreshBtn" type="button" title="Refresh: save, get the newest version of Velanzo and reload" aria-label="Refresh">⟳</button>
         <button class="sync-pill" id="syncPill" type="button"></button>
         <details class="user-menu" id="userMenu"><summary><span class="avatar">${esc((u.name || '?').slice(0, 1).toUpperCase())}</span><span class="uname">${esc(u.name)}</span></summary>
           <div class="more-list right">
@@ -415,6 +416,7 @@ function renderShell() {
     App.user = null; location.hash = ''; Setup.showLogin();
   });
   $('#syncPill').addEventListener('click', () => go('device'));
+  $('#refreshBtn').addEventListener('click', refreshApp);
   const ga = $('#getAppBtn');
   if (ga) ga.addEventListener('click', (e) => { e.preventDefault(); closeMenus(); AppInstall.open(); });
   // menus close when something is picked or when clicking elsewhere
@@ -465,6 +467,24 @@ async function remoteChanged(tables) {
   bar.innerHTML = '<span class="grow">New changes arrived from another computer.</span><button class="btn sm primary">Show them</button>';
   bar.querySelector('button').addEventListener('click', () => router());
   main.prepend(bar);
+}
+
+// The refresh button: sends what is waiting, fetches the newest version of Velanzo (also for the installed app) and reloads.
+// What is on the screen is kept: bills being made, held bills and drafts are saved on this computer.
+async function refreshApp() {
+  const b = $('#refreshBtn');
+  if (b) { b.disabled = true; b.classList.add('spin'); }
+  try { await Promise.race([Cloud.syncNow(), new Promise((r) => { setTimeout(r, 5000); })]); } catch { /* offline: reload anyway */ }
+  try {
+    const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+    if (reg) {
+      await reg.update();
+      // a new version: wait until it is ready (it takes over by itself), at most 15 seconds
+      const next = reg.installing || reg.waiting;
+      if (next) await new Promise((r) => { const t = setTimeout(r, 15000); next.addEventListener('statechange', () => { if (next.state === 'activated') { clearTimeout(t); r(); } }); if (next.state === 'activated') { clearTimeout(t); r(); } });
+    }
+  } catch { /* no internet: the version on this computer stays */ }
+  location.reload();
 }
 
 // The small status at the top: is everything saved to the cloud?
@@ -656,7 +676,7 @@ const ProductCache = {
     if (!words.length) return [];
     const out = [];
     for (const p of this.list) {
-      if (!p._hay) p._hay = `${p.name} ${p.barcode} ${p.category || ''} ${p.color || ''}`.toLowerCase();
+      if (!p._hay) p._hay = `${p.name} ${p.barcode} ${p.article_no || ''} ${p.category || ''} ${p.color || ''}`.toLowerCase();
       const size = String(p.size || '').toLowerCase();
       if (words.every((w) => w === size || p._hay.includes(w))) { out.push(p); if (out.length >= limit) break; }
     }
@@ -737,7 +757,7 @@ function attachPicker(input, { onPick, location = () => '', showStock = true, sh
 
 // ---------- Starting up ----------
 // Printer settings belong to the computer (a shop and a warehouse use different printers and paper), the rest to the business.
-const PRINT_KEYS = ['default_location', 'bill_width', 'bill_mm', 'bill_left', 'auto_print_bill', 'label_mode', 'label_width', 'label_height', 'label_columns', 'label_across', 'label_gap', 'label_top', 'label_show_price', 'label_show_name', 'label_show_brand', 'dispatch_paper'];
+const PRINT_KEYS = ['default_location', 'bill_width', 'bill_mm', 'bill_left', 'auto_print_bill', 'label_mode', 'label_width', 'label_height', 'label_columns', 'label_across', 'label_gap', 'label_top', 'label_show_price', 'label_show_name', 'label_show_brand', 'label_brand', 'label_show_logo', 'dispatch_paper'];
 // The place chosen in Settings → Shop configuration for this computer, when it is one of `list`; otherwise `fallback`.
 function defLoc(list, fallback) {
   const id = Number(App.settings.default_location);

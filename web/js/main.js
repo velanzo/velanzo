@@ -16,7 +16,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   // A new version arrived while this window is open: every computer should run the same one.
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (!hadOne || document.getElementById('newVersion')) return;
-    if (document.querySelector('.pin-pad')) { location.reload(); return; } // (nobody is working yet: use it right away)
+    if (document.querySelector('.pin-pad') || document.querySelector('#refreshBtn.spin')) { location.reload(); return; } // (nobody is working yet: use it right away)
     const bar = document.createElement('div');
     bar.id = 'newVersion';
     bar.className = 'toast ok new-version';

@@ -577,6 +577,17 @@ await scenario('32. While the owner restores a backup, other computers keep what
   await A.sync(); await B.sync();
 });
 
+await scenario('33. An article number reaches every computer, and a shop may change it', async () => {
+  const [p] = await A.call('POST', '/api/products', { name: 'Jacket', article_no: 'W22GGT-01', cost_price: 1, sale_price: 2, variants: [{}] });
+  await A.sync(); await B.sync(); await SHOP.sync();
+  ok((await B.sql('SELECT article_no FROM products WHERE id = ?', [p.id]))[0].article_no === 'W22GGT-01', 'the other owner computer has it');
+  ok((await SHOP.sql('SELECT article_no FROM products WHERE id = ?', [p.id]))[0].article_no === 'W22GGT-01', 'the shop computer has it');
+  await SHOP.call('PUT', '/api/products/' + p.id, { article_no: 'W22GGT-02' });
+  const r = await SHOP.sync();
+  ok(r.refused === 0 && (await db.query('select article_no from products where id = $1', [p.id])).rows[0].article_no === 'W22GGT-02', 'a shop with "add items" changes it in the cloud');
+  ok((await A.call('GET', '/api/products', null, { q: 'GGT-0' })).some((x) => x.id === p.id), 'searching by article number finds the item');
+});
+
 await sameEverywhere(A, B, '\nFinally: the two owner computers hold exactly the same data');
 for (const d of [A, B, SHOP]) await d.stop();
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed:\n - ${failures.join('\n - ')}` : `\nAll ${passed} multi-computer checks passed.`);
