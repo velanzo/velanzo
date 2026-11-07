@@ -188,22 +188,22 @@ function labelLookCss(scope = '') {
   const top = S.label_mode === 'a4' ? 0 : Math.max(0, Math.min(15, Number(S.label_top) || 0));
   const x = scope ? scope + ' ' : '';
   return `
-  ${x}.label { width: ${w}mm; height: ${h}mm; padding: 0.8mm 1.5mm; overflow: hidden; display: flex; flex-direction: column; justify-content: center; gap: 0.25mm;
+  ${x}.label { width: ${w}mm; height: ${h}mm; padding: 2mm 1.5mm 0.8mm; overflow: hidden; display: flex; flex-direction: column; justify-content: safe center; gap: 0.2mm;
     font-family: Arial, Helvetica, sans-serif; color: #000; background: #fff; box-sizing: border-box; text-align: left; }
   ${x}.label > div { flex-shrink: 0;${top ? ` position: relative; top: ${top}mm;` : ''} }
-  ${x}.lb-brand { text-align: center; font-size: ${small ? 6.5 : 8}pt; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; line-height: 1.05;
+  ${x}.lb-brand { text-align: center; font-size: ${small ? 6 : 7}pt; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; line-height: 1.05;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  ${x}.label > .lb-logo { display: flex; justify-content: center; flex: 1 1 auto; min-height: 0; max-height: ${(h * 0.19).toFixed(1)}mm; }
+  ${x}.label > .lb-logo { display: flex; justify-content: center; flex: 1 1 auto; min-height: 0; max-height: ${(h * 0.16).toFixed(1)}mm; }
   ${x}.lb-logo img { height: 100%; width: auto; }
   ${x}.label > .bcw { width: calc(100% + 2mm); margin: 0 -1mm; flex: none; height: ${Math.max(6.2, h * 0.22).toFixed(1)}mm; display: flex; justify-content: center; }
   /* (at least 6 mm tall: short enough to look neat, tall enough for any scanner; the logo gives way first) */
   ${x}.bcw svg { width: 100%; height: 100%; }
   ${x}.lb-row { display: flex; justify-content: space-between; align-items: baseline; gap: 1mm; white-space: nowrap; line-height: 1.1; }
-  ${x}.lb-code { font-family: 'Courier New', Courier, monospace; font-weight: 700; font-size: ${small ? 6.5 : 7.5}pt; letter-spacing: 0; }
-  ${x}.lb-price { font-size: ${small ? 8.5 : 11}pt; font-weight: 700; }
-  ${x}.lb-name { font-family: 'Courier New', Courier, monospace; font-weight: 700; font-size: ${small ? 6 : 6.8}pt; line-height: 1.1;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
-  ${x}.lb-var { font-family: 'Courier New', Courier, monospace; font-weight: 700; font-size: ${small ? 6.5 : 7.5}pt; }
+  ${x}.lb-code { font-family: 'Courier New', Courier, monospace; font-weight: 700; font-size: ${small ? 6 : 7}pt; letter-spacing: 0; }
+  ${x}.lb-price { font-size: ${small ? 8 : 10}pt; font-weight: 700; }
+  ${x}.lb-name { font-family: 'Courier New', Courier, monospace; font-weight: 700; font-size: ${small ? 5.5 : 6.2}pt; line-height: 1.1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  ${x}.lb-var { font-family: 'Courier New', Courier, monospace; font-weight: 700; font-size: ${small ? 6 : 7}pt; }
   ${x}.lb-row > span { min-width: 0; overflow: hidden; text-overflow: clip; }
   ${x}.lb-row > .lb-price { flex-shrink: 0; }`;
 }
