@@ -31,11 +31,28 @@ try {
     set('.modal-wrap [name=name]', ${JSON.stringify(name)}); set('.modal-wrap [name=sale_price]', '1500'); click('#allKids'); await sleep(300);`);
   const rows = await run(`return [...document.querySelectorAll('.modal-wrap tr[data-key]')].map((r) => r.dataset.key.split('|')[0]);`);
   ok(rows.join() === '1-2Y,2-3Y,3-4Y,4-5Y,5-6Y,6-7Y,7-8Y,8-9Y,9-10Y', '"All kids sizes" adds 1-2Y to 9-10Y: ' + rows.join(', '));
-  ok(await run(`return document.querySelector('.modal-wrap tr[data-key] [data-f=sale_price]').placeholder === '1500';`), 'each size shows the price above unless one is typed');
-  await run(`for (const r of document.querySelectorAll('.modal-wrap tr[data-key]')) if (['5-6Y', '6-7Y', '7-8Y', '8-9Y', '9-10Y'].includes(r.dataset.key.split('|')[0])) set(r.querySelector('[data-f=sale_price]'), '1900');
+  ok(await run(`return !document.querySelector('.modal-wrap tr[data-key] [data-f=sale_price]') && document.querySelector('#saleBox').style.display !== 'none' && !document.querySelector('.modal-wrap [name=sizes]').value.includes('XS');`),
+    'same price for all sizes (the start): one sale price, no price per size; no size chosen by itself');
+  await run(`click('[data-pm=each]'); await sleep(200);`);
+  ok(await run(`return document.querySelector('#saleBox').style.display === 'none' && document.querySelectorAll('.modal-wrap tr[data-key] [data-f=sale_price]').length === 9;`), '"A different price for each size": a price box on every size, none above');
+  await run(`click('.modal-wrap #apSave'); await sleep(800);`);
+  ok(await run(`return /Type the sale price of/.test(document.body.innerText) && !!document.querySelector('.modal-wrap #apSave');`), 'it will not save while a size has no price');
+  // the cost is not known for this stock
+  await run(`const ck = document.querySelector('.modal-wrap [name=cost_known]'); ck.checked = false; ck.dispatchEvent(new Event('change', { bubbles: true })); await sleep(100);`);
+  ok(await run(`return document.querySelector('.modal-wrap [name=cost_price]').style.display === 'none';`), '"I know the cost price" off: the cost box goes away');
+  await run(`for (const r of document.querySelectorAll('.modal-wrap tr[data-key]')) set(r.querySelector('[data-f=sale_price]'), ['5-6Y', '6-7Y', '7-8Y', '8-9Y', '9-10Y'].includes(r.dataset.key.split('|')[0]) ? '1900' : '1500');
     click('.modal-wrap #apSave'); await sleep(1500); if (document.querySelector('#wGo')) { click('#wGo'); await sleep(1200); } if (document.querySelector('#cOk')) { click('#cOk'); await sleep(800); }`);
   const made = await run(`return (await GET('/api/products', { q: ${JSON.stringify(name)}, all: 1 })).map((p) => p.size + '=' + p.sale_price).sort().join();`);
   ok(made === '1-2Y=1500,2-3Y=1500,3-4Y=1500,4-5Y=1500,5-6Y=1900,6-7Y=1900,7-8Y=1900,8-9Y=1900,9-10Y=1900', 'one item, two prices: ' + made);
+  ok(await run(`return (await GET('/api/products', { q: ${JSON.stringify(name)}, all: 1 })).every((p) => p.cost_price === null);`), 'the cost is left empty (unknown), not 0');
+
+  // edit an item: its stock can be changed right there
+  const one = await run(`return (await GET('/api/products', { q: ${JSON.stringify(name)}, all: 1 }))[0].id;`);
+  await run(`location.hash = '#/products/${one}'; await until(() => document.querySelector('#editBtn')); click('#editBtn');
+    await until(() => document.querySelector('.modal-wrap [data-stock]'));
+    set('.modal-wrap [data-stock="${demo.warehouse_location}"]', '7'); click('#epSave'); await sleep(1500); if (document.querySelector('#wGo')) { click('#wGo'); await sleep(1500); }`);
+  const qty = await run(`return (await GET('/api/products/${one}')).stock.find((s) => s.location_id === ${demo.warehouse_location}).qty;`);
+  ok(qty === 7, 'editing the item sets its stock at the warehouse to 7 (noted in the stock history)');
 
   // change the price of 1-2Y to 4-5Y at once
   await run(`location.hash = '#/stock'; await sleep(300); location.hash = '#/products'; await until(() => document.querySelector('#q')); set('#q', ${JSON.stringify(name)}); await sleep(1200);

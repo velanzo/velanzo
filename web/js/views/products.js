@@ -23,16 +23,21 @@ async function openAddProduct({ forPurchase = false, onCreated } = {}) {
         <label class="field full">Item name *<input class="input" name="name" placeholder="e.g. Lawn Kurta Embroidered" autofocus></label>
         <label class="field">Category<input class="input" name="category" list="dlCat" placeholder="e.g. Kurta, Shirt, Jeans"></label>
         <label class="field">Article number<input class="input mono" name="article_no" placeholder="e.g. W22GGTOWJT-01" autocomplete="off"><span class="hint">Printed on the label. The same for all sizes and colours.</span></label>
-        <div class="form-grid" style="gap:14px">
-          <label class="field">Cost price<input class="input num" name="cost_price" inputmode="decimal" placeholder="0"></label>
-          <label class="field">Sale price<input class="input num" name="sale_price" inputmode="decimal" placeholder="0"></label>
+        <div class="full price-choice">
+          <div class="seg" id="priceMode"><button type="button" data-pm="one" class="on">Same price for all sizes</button><button type="button" data-pm="each">A different price for each size</button></div>
+        </div>
+        <label class="field" id="saleBox">Sale price<input class="input num" name="sale_price" inputmode="decimal" placeholder="0"></label>
+        <div class="field" id="costBox">
+          <label class="check" style="margin:0 0 6px"><input type="checkbox" name="cost_known" checked> I know the cost price <span class="hint">(it counts in stock value and profit)</span></label>
+          <input class="input num" name="cost_price" inputmode="decimal" placeholder="0">
+          <span class="hint" id="costOff" style="display:none">Cost unknown: this stock is left out of stock value at cost and of profit, until a purchase gives it a cost.</span>
         </div>
         <label class="field full">Sizes <span class="hint">— click to add, or type them separated by commas. Leave empty if there are no sizes.</span>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0">${QUICK_SIZES.map((s) => `<button type="button" class="btn sm" data-size="${esc(s)}">${esc(s)}</button>`).join('')}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 6px;align-items:center"><span class="muted small">Kids:</span>${KIDS_SIZES.map((s) => `<button type="button" class="btn sm" data-size="${esc(s)}">${esc(s)}</button>`).join('')}<button type="button" class="btn sm primary" id="allKids">All kids sizes</button></div>
-          <input class="input" name="sizes" placeholder="e.g. S, M, L, XL   or   28, 30, 32, 34"></label>
+          <input class="input" name="sizes" placeholder="e.g. S, M, L, XL   or   28, 30, 32, 34" autocomplete="off"></label>
         <label class="field full">Colours <span class="hint">— separated by commas. Leave empty if there is only one colour.</span>
-          <input class="input" name="colors" list="dlColor" placeholder="e.g. Black, Navy Blue, Maroon"></label>
+          <input class="input" name="colors" list="dlColor" placeholder="e.g. Black, Navy Blue, Maroon" autocomplete="off"></label>
       </div>
       <datalist id="dlCat">${meta.categories.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
       <datalist id="dlColor">${meta.colors.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
@@ -40,6 +45,14 @@ async function openAddProduct({ forPurchase = false, onCreated } = {}) {
     footer: `<button class="btn" data-close>Cancel</button><button class="btn primary" id="apSave">Save item${forPurchase ? ' & add to purchase' : ''}</button>`,
   });
   const keep = new Map(); // remembers typed barcode / qty per variant while sizes change
+  let priceMode = 'one';
+  const showPriceMode = () => {
+    m.$$('#priceMode button').forEach((b) => b.classList.toggle('on', b.dataset.pm === priceMode));
+    m.$('#saleBox').style.display = priceMode === 'one' ? '' : 'none';
+    renderVariants();
+  };
+  m.$('#priceMode').addEventListener('click', (e) => { const b = e.target.closest('[data-pm]'); if (b) { priceMode = b.dataset.pm; showPriceMode(); } });
+  m.$('[name=cost_known]').addEventListener('change', (e) => { m.$('[name=cost_price]').style.display = e.target.checked ? '' : 'none'; m.$('#costOff').style.display = e.target.checked ? 'none' : ''; });
   const f = () => formValues(m.el);
   function variants() {
     const sizes = splitList(f().sizes), colors = splitList(f().colors);
@@ -50,11 +63,11 @@ async function openAddProduct({ forPurchase = false, onCreated } = {}) {
   function renderVariants() {
     const vs = variants();
     m.$('#varBox').innerHTML = `<div class="muted small" style="margin-bottom:6px">This will create <b>${vs.length}</b> item${vs.length > 1 ? 's' : ''}, each with its own barcode:</div>
-      <div class="table-wrap" style="max-height:300px;overflow-y:auto;border:1px solid var(--line);border-radius:8px"><table class="tbl"><thead><tr><th>Item</th><th>Barcode <span class="muted" style="text-transform:none">(leave empty = make one)</span></th><th class="r">Sale price <span class="muted" style="text-transform:none">(empty = ${esc(f().sale_price || 'the one above')})</span></th>
+      <div class="table-wrap" style="max-height:300px;overflow-y:auto;border:1px solid var(--line);border-radius:8px"><table class="tbl"><thead><tr><th>Item</th><th>Barcode <span class="muted" style="text-transform:none">(leave empty = make one)</span></th>${priceMode === 'each' ? '<th class="r">Sale price *</th>' : ''}
       ${forPurchase ? '' : `<th class="r">Opening stock</th>`}</tr></thead><tbody>
       ${vs.map((v) => { const k = keep.get(v.key) || {}; return `<tr data-key="${esc(v.key)}"><td><b>${esc(f().name || 'Item')}</b> <span class="muted">${esc([v.size, v.color].filter(Boolean).join(' / '))}</span></td>
         <td><input class="input sm" data-f="barcode" value="${esc(k.barcode || '')}" placeholder="auto"></td>
-        <td class="r"><input class="input sm num" style="width:90px" data-f="sale_price" value="${esc(k.sale_price || '')}" placeholder="${esc(f().sale_price || '0')}" inputmode="decimal"></td>
+        ${priceMode === 'each' ? `<td class="r"><input class="input sm num" style="width:90px" data-f="sale_price" value="${esc(k.sale_price || '')}" placeholder="0" inputmode="decimal"></td>` : ''}
         ${forPurchase ? '' : `<td class="r"><input class="input sm num" style="width:90px" data-f="opening_qty" value="${esc(k.opening_qty || '')}" placeholder="0" inputmode="numeric"></td>`}</tr>`; }).join('')}
       </tbody></table></div>
       ${forPurchase ? '' : `<label class="field" style="margin-top:12px;max-width:300px">Opening stock is at<select class="input" name="opening_location_id">${options(locs, defLoc(locs, locs.find((l) => l.type === 'warehouse')?.id))}</select>
@@ -78,9 +91,15 @@ async function openAddProduct({ forPurchase = false, onCreated } = {}) {
   save.addEventListener('click', () => busy(save, async () => {
     const v = f();
     if (!v.name) throw new Error('Enter the item name');
+    const costKnown = !!m.$('[name=cost_known]').checked;
+    const vs = variants().map((x) => ({ size: x.size, color: x.color, ...(keep.get(x.key) || {}) }));
+    if (priceMode === 'each') {
+      const missing = vs.filter((x) => !(Number(x.sale_price) > 0));
+      if (missing.length) throw new Error(`Type the sale price of ${missing.map((x) => [x.size, x.color].filter(Boolean).join(' ') || 'the item').join(', ')}`);
+    } else vs.forEach((x) => { delete x.sale_price; });
     const body = {
-      name: v.name, category: v.category, article_no: v.article_no, cost_price: v.cost_price, sale_price: v.sale_price, opening_location_id: v.opening_location_id,
-      variants: variants().map((x) => ({ size: x.size, color: x.color, ...(keep.get(x.key) || {}) })),
+      name: v.name, category: v.category, article_no: v.article_no, cost_known: costKnown, cost_price: costKnown ? v.cost_price : '',
+      sale_price: priceMode === 'one' ? v.sale_price : vs[0]?.sale_price, opening_location_id: v.opening_location_id, variants: vs,
     };
     if (!(await looksRight('product', body))) return;
     const created = await POST('/api/products', body);
@@ -94,6 +113,9 @@ async function openAddProduct({ forPurchase = false, onCreated } = {}) {
 
 async function openEditProduct(p, onSaved) {
   const meta = await loadMeta();
+  // the stock at each place this person may correct
+  const mayCorrect = can('correct_stock');
+  const stock = mayCorrect ? (await GET('/api/products/' + p.id)).stock.filter((s) => isAdmin() || s.location_id === App.user.location_id) : [];
   const m = modal({
     title: 'Edit item',
     body: `<div class="form-grid">
@@ -103,19 +125,30 @@ async function openEditProduct(p, onSaved) {
       <label class="field">Category<input class="input" name="category" list="dlCat2" value="${esc(p.category || '')}"></label>
       <label class="field">Article number<input class="input mono" name="article_no" value="${esc(p.article_no || '')}" autocomplete="off"></label>
       <label class="field">Barcode<input class="input mono" name="barcode" value="${esc(p.barcode)}"><span class="hint">Change only if the printed labels are wrong.</span></label>
-      <label class="field">Cost price<input class="input num" name="cost_price" value="${esc(p.cost_price ?? '')}"></label>
+      <div class="field"><label class="check" style="margin:0 0 6px"><input type="checkbox" name="cost_known" ${p.cost_price != null ? 'checked' : ''}> I know the cost price</label>
+        <input class="input num" name="cost_price" value="${esc(p.cost_price ?? '')}" ${p.cost_price != null ? '' : 'style="display:none"'}></div>
       <label class="field">Sale price<input class="input num" name="sale_price" value="${esc(p.sale_price)}"></label>
       <label class="check full"><input type="checkbox" name="active" ${p.active ? 'checked' : ''}> Item is in use (untick to hide old items from lists)</label>
       </div>
+      ${stock.length ? `<h3 style="margin:18px 0 6px">Stock</h3><p class="muted small" style="margin:0 0 8px">Type the real count to change it. The change is noted in the stock history.</p>
+        <div class="form-grid">${stock.map((s) => `<label class="field">${esc(s.name)}<input class="input num" data-stock="${s.location_id}" value="${s.qty}" inputmode="numeric"></label>`).join('')}</div>` : ''}
       <datalist id="dlCat2">${meta.categories.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
       <datalist id="dlColor2">${meta.colors.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>`,
     footer: `<button class="btn" data-close>Cancel</button><button class="btn primary" id="epSave">Save</button>`,
   });
+  m.$('[name=cost_known]').addEventListener('change', (e) => { m.$('[name=cost_price]').style.display = e.target.checked ? '' : 'none'; });
   const save = m.$('#epSave');
   save.addEventListener('click', () => busy(save, async () => {
     const body = formValues(m.el);
+    for (const k of Object.keys(body)) if (k.startsWith('stock')) delete body[k];
+    body.cost_known = !!m.$('[name=cost_known]').checked;
     if (!(await looksRight('product', { ...body, id: p.id }))) return;
     const out = await PUT('/api/products/' + p.id, body);
+    for (const inp of m.$$('[data-stock]')) {
+      const s = stock.find((x) => x.location_id === Number(inp.dataset.stock));
+      const n = parseInt(inp.value, 10);
+      if (s && Number.isFinite(n) && n !== s.qty) await POST('/api/stock/adjust', { product_id: p.id, location_id: s.location_id, mode: 'set', qty: n, reason: 'Changed on the item' });
+    }
     ProductCache.invalidate();
     productMeta = null;
     toast('Item saved');

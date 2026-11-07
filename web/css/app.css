@@ -506,7 +506,11 @@ h3 > svg { width: 20px; height: 20px; vertical-align: -4px; margin-right: 4px; c
 /* ---------- Responsive ---------- */
 @media (max-width: 1150px) {
   .pos { grid-template-columns: 1fr 320px; }
-  .tabnav > a span:not(.badge) { display: none; }
+}
+/* the menu, the status and the person's name must never overlap: first the name goes, then the menu shows icons only */
+@media (max-width: 1440px) { .appbar-right .uname { display: none; } }
+@media (max-width: 1300px) {
+  .tabnav > a span:not(.badge), .more > summary span { display: none; }
   .tabnav > a.active span:not(.badge) { display: inline; }
 }
 @media (max-width: 900px) {
@@ -620,3 +624,5 @@ h3 > svg { width: 20px; height: 20px; vertical-align: -4px; margin-right: 4px; c
 .appbar-refresh:hover { background: rgba(255,255,255,.26); }
 .appbar-refresh.spin { animation: vzspin 0.9s linear infinite; }
 @keyframes vzspin { to { transform: rotate(360deg); } }
+
+.price-choice .seg button { padding: 8px 14px; }

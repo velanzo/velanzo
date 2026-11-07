@@ -102,7 +102,8 @@ route('POST', '/api/products', ['add_items', 'buy'], ({ body, user }) => tx(() =
   const name = need(str(body.name, 120), 'Item name');
   const category = str(body.category, 60);
   const article = str(body.article_no, 40) || null;
-  const cost = canSeeCost(user) ? toMoney(body.cost_price) : 0;
+  // cost unknown: it stays empty, so this stock is left out of stock value at cost and of profit (a purchase gives it a cost later)
+  const cost = body.cost_known === false ? null : canSeeCost(user) ? toMoney(body.cost_price) : 0;
   const price = toMoney(body.sale_price);
   const variants = Array.isArray(body.variants) && body.variants.length ? body.variants : [{}];
   if (variants.length > 300) fail(400, 'Too many sizes × colours at once (max 300)');
@@ -136,7 +137,7 @@ route('PUT', '/api/products/:id', 'add_items', ({ params, body, user }) => {
     size: str(body.size ?? p.size, 30),
     color: str(body.color ?? p.color, 40),
     barcode: need(str(body.barcode ?? p.barcode, 60), 'Barcode'),
-    cost: canSeeCost(user) ? toMoney(body.cost_price ?? p.cost_price) : p.cost_price,
+    cost: !canSeeCost(user) ? p.cost_price : body.cost_known === false ? null : body.cost_price === undefined && body.cost_known === undefined ? p.cost_price : toMoney(body.cost_price ?? p.cost_price),
     price: toMoney(body.sale_price ?? p.sale_price),
     active: body.active === undefined ? p.active : (body.active ? 1 : 0),
   };

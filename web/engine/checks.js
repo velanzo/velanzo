@@ -132,13 +132,15 @@ const CHECKS = {
     const out = [];
     const seeCost = canSeeCost(user);
     const old = body.id ? product(body.id) : null;
-    const sale = toMoney(body.sale_price ?? old?.sale_price);
+    // (a price per size: the lowest one counts here)
+    const sizes = Array.isArray(body.variants) ? body.variants.map((v) => v.sale_price).filter((x) => x !== undefined && x !== '') : [];
+    const sale = sizes.length ? Math.min(...sizes.map((x) => toMoney(x))) : toMoney(body.sale_price ?? old?.sale_price);
     const cost = seeCost ? toMoney(body.cost_price ?? old?.cost_price) : (old?.cost_price || 0);
     const name = str(body.name ?? old?.name, 120) || 'This item';
     const it = { name, size: '', color: '' };
     if (!(sale > 0)) out.push(`The selling price of “${name}” is ${money(0)}. Bills would sell it for nothing.`);
     else if (cost > 0 && sale < cost) out.push(seeCost ? `Selling price ${money(sale)} is below the cost ${money(cost)}.` : 'The selling price is below the cost price.');
-    if (seeCost && !old && !(cost > 0)) out.push('The cost price is empty, so profit reports will be wrong for this item.');
+    if (seeCost && !old && !(cost > 0) && body.cost_known !== false) out.push('The cost price is empty, so profit reports will be wrong for this item. (If you do not know it, untick "I know the cost price".)');
     if (old && old.sale_price > 0 && sale > 0 && pct(sale, old.sale_price) >= 50) out.push(`The selling price changes from ${money(old.sale_price)} to ${money(sale)}.`);
     if (!old) {
       const variants = Array.isArray(body.variants) && body.variants.length ? body.variants : [{}];
