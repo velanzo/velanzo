@@ -139,6 +139,7 @@ View('hardware', {
             <label class="field">Stickers across the roll<select class="input" name="label_across">${options([['1', '1 sticker'], ['2', '2 stickers side by side'], ['3', '3 stickers side by side'], ['4', '4 stickers side by side']], S.label_across || '1')}</select></label>
             <label class="field">Gap between side-by-side stickers (mm)<input class="input num" name="label_gap" value="${esc(S.label_gap ?? '2')}" inputmode="decimal"></label>
             <label class="field">Top offset (mm)<input class="input num" name="label_top" value="${esc(S.label_top ?? '0')}" inputmode="decimal"><span class="hint">Moves the printing down. Printing too high or cut at the top? Try 4.</span></label>
+            <label class="check"><input type="checkbox" name="label_show_brand" ${S.label_show_brand !== '0' ? 'checked' : ''}> Show business name</label>
             <label class="check"><input type="checkbox" name="label_show_name" ${S.label_show_name !== '0' ? 'checked' : ''}> Show item name</label>
             <label class="check"><input type="checkbox" name="label_show_price" ${S.label_show_price !== '0' ? 'checked' : ''}> Show price</label>
             <div class="full" id="lprev"></div>
@@ -227,7 +228,7 @@ View('hardware', {
     });
 
     // ---- printer settings (kept on this computer) ----
-    const lvals = () => { const v = formValues($('#fl', el)); v.label_show_name = v.label_show_name ? '1' : '0'; v.label_show_price = v.label_show_price ? '1' : '0'; return v; };
+    const lvals = () => { const v = formValues($('#fl', el)); v.label_show_name = v.label_show_name ? '1' : '0'; v.label_show_price = v.label_show_price ? '1' : '0'; v.label_show_brand = v.label_show_brand ? '1' : '0'; return v; };
     const withForm = (vals, fn) => { const old = App.settings; App.settings = { ...old, ...vals }; try { fn(); } finally { App.settings = old; } };
     const preview = () => withForm(lvals(), () => { $('#lprev', el).innerHTML = labelPreviewHtml(sample); });
     preview();

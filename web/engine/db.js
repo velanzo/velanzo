@@ -308,6 +308,7 @@ export const DEFAULT_SETTINGS = {
   label_across: '2', // stickers side by side on a roll
   label_gap: '2', // mm between those stickers
   label_top: '0', // mm the printing moves down on the sticker (roll only)
+  label_show_brand: '1', // the business name on top of the sticker
   label_show_price: '1',
   label_show_name: '1',
   dispatch_paper: 'a4',
