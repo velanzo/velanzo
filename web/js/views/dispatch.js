@@ -43,6 +43,49 @@ View('dispatch', {
   },
 });
 
+// Stock / Items: the ticked items go into a new dispatch order with all their pieces at the chosen place, to check and send.
+async function moveSelected(ids) {
+  const active = App.locations.filter((l) => l.active);
+  if (active.length < 2) return toast('Add a second place first (Settings → Shops & warehouse)', 'warn', 5000);
+  const fromList = isAdmin() ? active : active.filter((l) => l.id === App.user.location_id);
+  if (!fromList.length) return toast('You have no place to send from', 'error');
+  const m = modal({
+    title: `Move stock of ${ids.length} item${ids.length > 1 ? 's' : ''}`,
+    body: `<div class="form-grid"><label class="field">From<select class="input" id="mvFrom" ${fromList.length < 2 ? 'disabled' : ''}>${options(fromList, defLoc(fromList, (warehouses()[0] || fromList[0]).id))}</select></label>
+      <label class="field">To<select class="input" id="mvTo"></select></label></div>
+      <p class="muted small" style="margin:12px 0 0">All their pieces at the first place go into a new dispatch order. Change the quantities there if you want, then press <b>Send dispatch</b>.</p>`,
+    footer: `<button class="btn" data-close>Cancel</button><button class="btn primary" id="mvOk">${icon('truck')} Next</button>`,
+  });
+  const paintTo = () => {
+    const f = Number(m.$('#mvFrom').value);
+    const others = active.filter((l) => l.id !== f);
+    m.$('#mvTo').innerHTML = options(others, (others.find((l) => l.type !== locById(f)?.type) || others[0]).id);
+  };
+  paintTo();
+  m.$('#mvFrom').addEventListener('change', paintTo);
+  const ok = m.$('#mvOk');
+  ok.addEventListener('click', () => busy(ok, async () => {
+    const from = Number(m.$('#mvFrom').value), to = Number(m.$('#mvTo').value);
+    await ProductCache.load(from, true);
+    const lines = [];
+    let none = 0;
+    for (const id of ids) {
+      const p = ProductCache.list.find((x) => x.id === id);
+      if (!p || !(p.loc_qty > 0)) { none++; continue; }
+      lines.push({ product_id: p.id, name: p.name, size: p.size, color: p.color, barcode: p.barcode, price: p.sale_price, stock: p.loc_qty, qty: p.loc_qty });
+    }
+    if (!lines.length) return toast(`None of these items has stock at ${locName(from)}.`, 'warn', 5000);
+    const key = `vz_dispatch_${App.user.id}`;
+    let old = null;
+    try { old = JSON.parse(localStorage.getItem(key) || 'null'); } catch { /* none */ }
+    if (old?.lines?.length && !(await confirmBox(`You were still filling in a dispatch order (${old.lines.length} items). Replace it with these items?`, { ok: 'Replace it' }))) return;
+    try { localStorage.setItem(key, JSON.stringify({ from, to, notes: '', lines })); } catch { /* full */ }
+    m.close();
+    if (none) toast(`${none} item${none > 1 ? 's have' : ' has'} no stock at ${locName(from)}, left out.`, 'warn', 6000);
+    go('dispatch/new');
+  }));
+}
+
 View('dispatch/new', {
   title: 'New dispatch order',
   nav: 'dispatch',

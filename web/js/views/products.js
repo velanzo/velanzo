@@ -274,6 +274,7 @@ View('products', {
         <label class="check"><input type="checkbox" id="hid"> Show hidden items</label>
         <button class="btn" id="lblBtn" disabled>${icon('printer')} Labels for selected</button>
         ${can('add_items') ? '<button class="btn" id="priceBtn" disabled>Change price</button>' : ''}
+        ${isSender() && App.locations.filter((l) => l.active).length > 1 ? `<button class="btn" id="mvBtn" disabled>${icon('truck')} Move stock</button>` : ''}
       </div>
       <div class="card flush" id="list"><div class="loading">Loading…</div></div>`;
     let rows = [];
@@ -281,8 +282,8 @@ View('products', {
     async function load() {
       rows = await GET('/api/products', { q: st.q, category: st.category, active: st.hidden ? 'all' : '' });
       if (!el.isConnected) return;
-      $('#list', el).innerHTML = rows.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th style="width:34px"><input type="checkbox" id="selAll"></th><th>Item</th><th>Size</th><th>Colour</th><th>Category</th><th>Barcode</th><th class="r">Cost</th><th class="r">Price</th><th class="r">Stock (all)</th></tr></thead><tbody>
-        ${rows.map((p) => `<tr class="click" data-id="${p.id}"><td><input type="checkbox" data-sel="${p.id}" ${selected.has(p.id) ? 'checked' : ''}></td>
+      $('#list', el).innerHTML = rows.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th class="sel"><input type="checkbox" id="selAll"></th><th>Item</th><th>Size</th><th>Colour</th><th>Category</th><th>Barcode</th><th class="r">Cost</th><th class="r">Price</th><th class="r">Stock (all)</th></tr></thead><tbody>
+        ${rows.map((p) => `<tr class="click" data-id="${p.id}"><td class="sel"><input type="checkbox" data-sel="${p.id}" ${selected.has(p.id) ? 'checked' : ''}></td>
           <td><b>${esc(p.name)}</b>${p.active ? '' : ' <span class="pill">hidden</span>'}</td><td>${esc(p.size || '')}</td><td>${esc(p.color || '')}</td><td>${esc(p.category || '')}</td>
           <td class="mono">${esc(p.barcode)}</td><td class="r">${money(p.cost_price)}</td><td class="r">${money(p.sale_price)}</td><td class="r ${qtyClass(p.stock_total)}">${p.stock_total}</td></tr>`).join('')}
         </tbody></table></div>${rows.length >= 1000 ? '<div class="empty small">Showing the first 1000 items — type in the search box to find others.</div>' : ''}`
@@ -295,6 +296,8 @@ View('products', {
       b.innerHTML = `${icon('printer')} Labels for selected${selected.size ? ` (${selected.size})` : ''}`;
       const pb = $('#priceBtn', el);
       if (pb) { pb.disabled = !selected.size; pb.textContent = `Change price${selected.size ? ` (${selected.size})` : ''}`; }
+      const mb = $('#mvBtn', el);
+      if (mb) { mb.disabled = !selected.size; mb.innerHTML = `${icon('truck')} Move stock${selected.size ? ` (${selected.size})` : ''}`; }
     }
     let t;
     $('#q', el).addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => { st.q = e.target.value.trim(); load(); }, 250); });
@@ -311,7 +314,11 @@ View('products', {
       ProductCache.invalidate(); selected.clear(); load();
     });
     $('#hid', el).addEventListener('change', (e) => { st.hidden = e.target.checked; load(); });
+    $('#mvBtn', el)?.addEventListener('click', () => moveSelected([...selected]));
     $('#list', el).addEventListener('click', (e) => {
+      // a click anywhere in the tick box's cell ticks it (not the item behind it)
+      const cell = e.target.closest('.sel');
+      if (cell && e.target.tagName !== 'INPUT') { cell.querySelector('input').click(); return; }
       if (e.target.id === 'selAll') { rows.forEach((p) => (e.target.checked ? selected.add(p.id) : selected.delete(p.id))); $$('[data-sel]', el).forEach((c) => { c.checked = e.target.checked; }); return updateSel(); }
       if (e.target.dataset.sel) { const id = +e.target.dataset.sel; e.target.checked ? selected.add(id) : selected.delete(id); return updateSel(); }
       const r = e.target.closest('[data-id]');

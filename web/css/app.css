@@ -634,3 +634,7 @@ h3 > svg { width: 20px; height: 20px; vertical-align: -4px; margin-right: 4px; c
 .lbl-design .slider input[type=range] { width: 100%; }
 .lbl-design #lprev { position: sticky; top: 80px; }
 @media (max-width: 900px) { .lbl-design { grid-template-columns: 1fr; } .lbl-design #lprev { position: static; } }
+
+/* tick boxes in lists: the whole cell ticks, so a near miss does not open the item */
+.tbl th.sel, .tbl td.sel { width: 52px; padding-left: 14px; padding-right: 14px; cursor: pointer; }
+.tbl td.sel input, .tbl th.sel input { width: 18px; height: 18px; cursor: pointer; vertical-align: middle; }

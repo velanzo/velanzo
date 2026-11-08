@@ -136,7 +136,7 @@ route('DELETE', '/api/locations/:id', 'owner', ({ params }) => {
   const id = toInt(params.id);
   const loc = get('SELECT * FROM locations WHERE id = ?', id) || fail(404, 'Place not found');
   const used = (sql, ...a) => get(sql, ...a).n > 0;
-  if (loc.type === 'warehouse' && !get("SELECT COUNT(*) AS n FROM locations WHERE type = 'warehouse' AND id <> ?", id).n) fail(400, 'There must always be a warehouse');
+  if (!get('SELECT COUNT(*) AS n FROM locations WHERE id <> ?', id).n) fail(400, 'This is the only place. Add another shop or warehouse first.');
   if (used('SELECT COUNT(*) AS n FROM users WHERE location_id = ?', id)) fail(400, `People still work at ${loc.name}. Delete them or move them to another place first.`);
   if (used('SELECT COUNT(*) AS n FROM devices WHERE location_id = ? AND active = 1', id)) fail(400, `A computer is still set up at ${loc.name}. Remove it first (Settings → Users → Remove computer).`);
   if (used('SELECT COUNT(*) AS n FROM stock WHERE location_id = ? AND qty <> 0', id)) fail(400, `${loc.name} still has stock. Send it somewhere else first.`);

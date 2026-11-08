@@ -34,8 +34,9 @@ const hideCost = (user, rows) => {
 export const label = (p) => p.name + ([p.size, p.color].filter(Boolean).length ? ` (${[p.size, p.color].filter(Boolean).join(', ')})` : '');
 
 export function defaultWarehouseId() {
-  const w = get("SELECT id FROM locations WHERE type = 'warehouse' AND active = 1 ORDER BY id LIMIT 1");
-  return w ? w.id : fail(400, 'Add a warehouse first (Settings → Shops & Warehouse)');
+  // (no warehouse: the first open shop)
+  const w = get("SELECT id FROM locations WHERE active = 1 ORDER BY type = 'warehouse' DESC, id LIMIT 1");
+  return w ? w.id : fail(400, 'Add a shop or warehouse first (Settings → Shops & warehouse)');
 }
 function location(id) {
   return get('SELECT * FROM locations WHERE id = ?', id) || fail(400, 'Unknown shop/warehouse');
