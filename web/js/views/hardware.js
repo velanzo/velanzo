@@ -137,15 +137,20 @@ View('hardware', {
             <label class="field">Sticker width (mm)<input class="input num" name="label_width" value="${esc(S.label_width)}" inputmode="numeric"></label>
             <label class="field">Sticker height (mm)<input class="input num" name="label_height" value="${esc(S.label_height)}" inputmode="numeric"></label>
             <label class="field">Stickers across the roll<select class="input" name="label_across">${options([['1', '1 sticker'], ['2', '2 stickers side by side'], ['3', '3 stickers side by side'], ['4', '4 stickers side by side']], S.label_across || '1')}</select></label>
-            <label class="field">Gap between side-by-side stickers (mm)<input class="input num" name="label_gap" value="${esc(S.label_gap ?? '2')}" inputmode="decimal"></label>
-            <label class="field">Top offset (mm)<input class="input num" name="label_top" value="${esc(S.label_top ?? '0')}" inputmode="decimal"><span class="hint">Moves the printing down. Printing too high or cut at the top? Try 4.</span></label>
+            <label class="field">Gap between side-by-side stickers (mm)<input class="input num" name="label_gap" value="${esc(S.label_gap ?? '2')}" inputmode="decimal"><span class="hint">Measure it on the roll. The right sticker cut on its right side? Make it smaller.</span></label>
             <label class="field">Name on top of the label<input class="input" name="label_brand" value="${esc(S.label_brand || '')}" placeholder="${esc(String(App.settings.business_name || '').trim().split(/\s+/)[0] || '')}" maxlength="20"><span class="hint">Empty = the first word of the business name.</span></label>
             <label class="check"><input type="checkbox" name="label_show_logo" ${S.label_show_logo !== '0' ? 'checked' : ''}> Show logo</label>
             <label class="check"><input type="checkbox" name="label_show_brand" ${S.label_show_brand !== '0' ? 'checked' : ''}> Show business name</label>
-            <label class="field">Name on the label<input class="input" name="label_brand" value="${esc(S.label_brand || '')}" placeholder="${esc(labelBrand())}" maxlength="30"></label>
             <label class="check"><input type="checkbox" name="label_show_name" ${S.label_show_name !== '0' ? 'checked' : ''}> Show item name</label>
             <label class="check"><input type="checkbox" name="label_show_price" ${S.label_show_price !== '0' ? 'checked' : ''}> Show price</label>
-            <div class="full" id="lprev"></div>
+            <label class="check"><input type="checkbox" name="label_show_code" ${S.label_show_code !== '0' ? 'checked' : ''}> Show article number</label>
+            <label class="check"><input type="checkbox" name="label_show_var" ${S.label_show_var !== '0' ? 'checked' : ''}> Show colour and size</label>
+            <div class="full lbl-design"><div><h4 style="margin:6px 0 2px">Design the sticker</h4>
+              <p class="muted small" style="margin:0 0 8px">Drag the sliders; the sticker on the right changes as you go. Print a test label, then press Save.</p>
+              ${(() => { const L = labelLook(); return LABEL_LOOK.map(([k, words, lo, hi, step, unit]) => `<label class="field slider" data-auto="${S[k] === undefined || S[k] === '' ? 1 : 0}">${esc(words)} <output class="mono">${L[k]} ${unit}</output>
+                <input type="range" name="${k}" min="${lo}" max="${hi}" step="${step}" value="${L[k]}" data-unit="${unit}"></label>`).join(''); })()}
+              <button type="button" class="btn sm" id="lookStd">Back to the standard look</button></div>
+              <div><div class="muted small" style="margin-bottom:6px">How one sticker will look</div><div id="lprev"></div></div></div>
             <div class="full" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary">Save for this computer</button>
               <button type="button" class="btn" id="testLbl">${icon('printer')} Print test label</button></div></form>
           <div class="hint" style="margin-top:8px">Common sizes: 38×28, 50×25, 38×25, 40×30 mm. Measure one sticker, not the roll.</div>
@@ -231,11 +236,31 @@ View('hardware', {
     });
 
     // ---- printer settings (kept on this computer) ----
-    const lvals = () => { const v = formValues($('#fl', el)); v.label_show_name = v.label_show_name ? '1' : '0'; v.label_show_price = v.label_show_price ? '1' : '0'; v.label_show_brand = v.label_show_brand ? '1' : '0'; v.label_show_logo = v.label_show_logo ? '1' : '0'; return v; };
-    const withForm = (vals, fn) => { const old = App.settings; App.settings = { ...old, ...vals }; try { fn(); } finally { App.settings = old; } };
-    const preview = () => withForm(lvals(), () => { $('#lprev', el).innerHTML = labelPreviewHtml(sample); });
+    const withForm = (vals, fn) => { const old = App.settings; App.settings = { ...old, ...vals }; try { return fn(); } finally { App.settings = old; } };
+    const LOOK_KEYS = LABEL_LOOK.map((x) => x[0]);
+    const lvals = () => {
+      const v = formValues($('#fl', el));
+      for (const k of ['label_show_name', 'label_show_price', 'label_show_brand', 'label_show_logo', 'label_show_code', 'label_show_var']) v[k] = v[k] ? '1' : '0';
+      // a slider left on the standard value saves as "standard", so it follows a new sticker size
+      const std = withForm({ ...v, ...Object.fromEntries(LOOK_KEYS.map((k) => [k, ''])) }, labelLook).std;
+      for (const k of LOOK_KEYS) if (Number(v[k]) === std[k]) v[k] = '';
+      return v;
+    };
+    // sliders not moved yet follow the standard look of the sticker size
+    const sliders = () => $$('#fl .slider', el);
+    const showVal = (lab) => { const r = lab.querySelector('input'); lab.querySelector('output').textContent = r.value + ' ' + r.dataset.unit; };
+    const followStd = () => {
+      const std = withForm({ ...formValues($('#fl', el)), ...Object.fromEntries(LOOK_KEYS.map((k) => [k, ''])) }, labelLook).std;
+      for (const lab of sliders()) if (lab.dataset.auto === '1') { lab.querySelector('input').value = std[lab.querySelector('input').name]; showVal(lab); }
+    };
+    const preview = () => withForm(lvals(), () => { $('#lprev', el).innerHTML = labelPreviewHtml(sample, 2.4); });
     preview();
-    $('#fl', el).addEventListener('input', preview);
+    $('#fl', el).addEventListener('input', (e) => {
+      const lab = e.target.closest('.slider');
+      if (lab) { lab.dataset.auto = '0'; showVal(lab); } else followStd();
+      preview();
+    });
+    $('#lookStd', el).addEventListener('click', () => { for (const lab of sliders()) lab.dataset.auto = '1'; followStd(); preview(); });
     const saveForm = (form, vals) => form.addEventListener('submit', (e) => {
       e.preventDefault();
       busy(e.target.querySelector('button.primary'), async () => { await savePrintSettings(vals()); toast('Saved on this computer'); });

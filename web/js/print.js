@@ -151,22 +151,53 @@ const LABEL_LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASAAAACvAQAAAA
 // The name on the labels: the one set on the Hardware page, or the first word of the business name (Velanzo Clothing → VELANZO).
 const labelBrand = () => String(App.settings.label_brand || String(App.settings.business_name || '').trim().split(/\s+/)[0] || '').toUpperCase();
 
+// The sticker design of this computer (Hardware → Barcode label printer → Design the sticker). An empty setting = the standard look.
+const LABEL_LOOK = [
+  // key, words, min, max, step, unit
+  ['label_x', 'Move left / right', -6, 6, 0.25, 'mm'],
+  ['label_top', 'Move up / down', -6, 10, 0.25, 'mm'],
+  ['label_pad', 'Space at the sides', 0, 5, 0.25, 'mm'],
+  ['label_bc_w', 'Barcode width', 40, 100, 1, '%'],
+  ['label_bc_h', 'Barcode height', 4, 20, 0.2, 'mm'],
+  ['label_logo', 'Logo size', 5, 35, 1, '%'],
+  ['label_fs_brand', 'Business name text', 4, 14, 0.2, 'pt'],
+  ['label_fs_price', 'Price text', 5, 18, 0.2, 'pt'],
+  ['label_fs_text', 'Code, name, colour and size text', 4, 12, 0.2, 'pt'],
+];
+function labelLook() {
+  const S = App.settings;
+  const w = Math.max(20, Number(S.label_width) || 50);
+  const h = Math.max(12, Number(S.label_height) || 25);
+  const small = h < 22;
+  const roll = S.label_mode !== 'a4';
+  const std = { label_x: 0, label_top: 0, label_pad: 1.5, label_bc_w: 100, label_bc_h: +Math.max(6.2, h * 0.22).toFixed(1), label_logo: 16,
+    label_fs_brand: small ? 6 : 7, label_fs_price: small ? 8 : 10, label_fs_text: small ? 6 : 7 };
+  const out = { w, h, small, std };
+  for (const [k, , lo, hi] of LABEL_LOOK) {
+    const v = Number(S[k]);
+    out[k] = S[k] === undefined || S[k] === null || S[k] === '' || !Number.isFinite(v) ? std[k] : Math.max(lo, Math.min(hi, v));
+  }
+  if (!roll) { out.label_x = 0; out.label_top = 0; }
+  return out;
+}
+
 // One sticker, laid out like a shop's own price tag: the business on top, a wide barcode, the code and the price
 // in one row, the item's name in capitals, then its colour (left) and size (right).
 function labelHtml(p) {
   const S = App.settings;
-  const w = Math.max(20, Number(S.label_width) || 50);
-  // as long as the sticker allows (0.5 mm margins, small quiet zones: the sticker around it is white), in whole printer dots
-  const m = Barcode.fit(p.barcode, w - 1, 4);
+  const L = labelLook();
+  // as long as the design allows (full width = the sticker less 0.5 mm each side; small quiet zones: the sticker around it is white), in whole printer dots
+  const m = Barcode.fit(p.barcode, (L.w - 1) * L.label_bc_w / 100, 4);
   const bc = m ? Barcode.svg(p.barcode, { height: 40, moduleMm: m, quiet: 4 }) : Barcode.svg(p.barcode, { height: 40, quiet: 4 });
   const showPrice = S.label_show_price !== '0';
+  const showCode = S.label_show_code !== '0';
   return `<div class="label">
     ${S.label_show_logo !== '0' ? `<div class="lb-logo"><img src="${LABEL_LOGO}" alt=""></div>` : ''}
     ${S.label_show_brand !== '0' ? `<div class="lb-brand">${esc(labelBrand())}</div>` : ''}
     <div class="bcw">${bc}</div>
-    <div class="lb-row"><span class="lb-code">${esc(p.article_no || p.barcode)}</span>${showPrice ? `<span class="lb-price">${esc(S.currency)} ${num(p.sale_price).replace(/,/g, '')}</span>` : ''}</div>
+    ${showCode || showPrice ? `<div class="lb-row"><span class="lb-code">${showCode ? esc(p.article_no || p.barcode) : ''}</span>${showPrice ? `<span class="lb-price">${esc(S.currency)} ${num(p.sale_price).replace(/,/g, '')}</span>` : ''}</div>` : ''}
     ${S.label_show_name !== '0' ? `<div class="lb-name">${esc(String(p.name || '').toUpperCase())}</div>` : ''}
-    ${p.color || p.size ? `<div class="lb-row lb-var"><span>${esc(p.color || '')}</span><span>${esc(p.size || '')}</span></div>` : ''}
+    ${S.label_show_var !== '0' && (p.color || p.size) ? `<div class="lb-row lb-var"><span>${esc(p.color || '')}</span><span>${esc(p.size || '')}</span></div>` : ''}
   </div>`;
 }
 
@@ -181,29 +212,28 @@ function labelRow() {
 
 // The look of a sticker; `scope` puts it under a class (for the preview on the screen).
 function labelLookCss(scope = '') {
-  const S = App.settings;
-  const w = Math.max(20, Number(S.label_width) || 50);
-  const h = Math.max(12, Number(S.label_height) || 25);
-  const small = h < 22;
-  const top = S.label_mode === 'a4' ? 0 : Math.max(0, Math.min(15, Number(S.label_top) || 0));
+  const L = labelLook();
+  const { w, h } = L;
+  const top = L.label_top, left = L.label_x, pad = L.label_pad;
+  const t = L.label_fs_text;
   const x = scope ? scope + ' ' : '';
   return `
-  ${x}.label { width: ${w}mm; height: ${h}mm; padding: 2mm 1.5mm 0.8mm; overflow: hidden; display: flex; flex-direction: column; justify-content: safe center; gap: 0.2mm;
+  ${x}.label { width: ${w}mm; height: ${h}mm; padding: 2mm ${pad}mm 0.8mm; overflow: hidden; display: flex; flex-direction: column; justify-content: safe center; gap: 0.2mm;
     font-family: Arial, Helvetica, sans-serif; color: #000; background: #fff; box-sizing: border-box; text-align: left; }
-  ${x}.label > div { flex-shrink: 0;${top ? ` position: relative; top: ${top}mm;` : ''} }
-  ${x}.lb-brand { text-align: center; font-size: ${small ? 6 : 7}pt; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; line-height: 1.05;
+  ${x}.label > div { flex-shrink: 0;${top || left ? ` position: relative; top: ${top}mm; left: ${left}mm;` : ''} }
+  ${x}.lb-brand { text-align: center; font-size: ${L.label_fs_brand}pt; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; line-height: 1.05;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  ${x}.label > .lb-logo { display: flex; justify-content: center; flex: 1 1 auto; min-height: 0; max-height: ${(h * 0.16).toFixed(1)}mm; }
+  ${x}.label > .lb-logo { display: flex; justify-content: center; flex: 1 1 auto; min-height: 0; max-height: ${(h * L.label_logo / 100).toFixed(1)}mm; }
   ${x}.lb-logo img { height: 100%; width: auto; }
-  ${x}.label > .bcw { width: calc(100% + 2mm); margin: 0 -1mm; flex: none; height: ${Math.max(6.2, h * 0.22).toFixed(1)}mm; display: flex; justify-content: center; }
+  ${x}.label > .bcw { width: ${((w - 1) * L.label_bc_w / 100).toFixed(2)}mm; align-self: center; flex: none; height: ${L.label_bc_h}mm; display: flex; justify-content: center; }
   /* (at least 6 mm tall: short enough to look neat, tall enough for any scanner; the logo gives way first) */
   ${x}.bcw svg { width: 100%; height: 100%; }
   ${x}.lb-row { display: flex; justify-content: space-between; align-items: baseline; gap: 1mm; white-space: nowrap; line-height: 1.1; }
-  ${x}.lb-code { font-family: 'Courier New', Courier, monospace; font-weight: 700; font-size: ${small ? 6 : 7}pt; letter-spacing: 0; }
-  ${x}.lb-price { font-size: ${small ? 8 : 10}pt; font-weight: 700; }
-  ${x}.lb-name { font-family: 'Courier New', Courier, monospace; font-weight: 700; font-size: ${small ? 5.5 : 6.2}pt; line-height: 1.1;
+  ${x}.lb-code { font-family: 'Courier New', Courier, monospace; font-weight: 700; font-size: ${t}pt; letter-spacing: 0; }
+  ${x}.lb-price { font-size: ${L.label_fs_price}pt; font-weight: 700; }
+  ${x}.lb-name { font-family: 'Courier New', Courier, monospace; font-weight: 700; font-size: ${(t * 0.9).toFixed(2)}pt; line-height: 1.1;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  ${x}.lb-var { font-family: 'Courier New', Courier, monospace; font-weight: 700; font-size: ${small ? 6 : 7}pt; }
+  ${x}.lb-var { font-family: 'Courier New', Courier, monospace; font-weight: 700; font-size: ${t}pt; }
   ${x}.lb-row > span { min-width: 0; overflow: hidden; text-overflow: clip; }
   ${x}.lb-row > .lb-price { flex-shrink: 0; }`;
 }
@@ -253,8 +283,8 @@ function printLabels(items) {
   else printDoc(body, labelCss(), 'Barcode labels', 'label', { width: row.width * 1000, height: (Number(S.label_height) || 25) * 1000 });
 }
 
-function labelPreviewHtml(p) {
-  return `<style>${labelLookCss('.label-zoom')}</style><div class="label-zoom" style="zoom:1.6">${labelHtml(p)}</div>`;
+function labelPreviewHtml(p, zoom = 1.6) {
+  return `<style>${labelLookCss('.label-zoom')}</style><div class="label-zoom" style="zoom:${zoom}">${labelHtml(p)}</div>`;
 }
 
 // ---------- Dispatch note ----------

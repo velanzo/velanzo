@@ -626,3 +626,11 @@ h3 > svg { width: 20px; height: 20px; vertical-align: -4px; margin-right: 4px; c
 @keyframes vzspin { to { transform: rotate(360deg); } }
 
 .price-choice .seg button { padding: 8px 14px; }
+
+/* Hardware → Design the sticker */
+.lbl-design { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: start; border-top: 1px solid var(--line, #e5e7eb); padding-top: 10px; }
+.lbl-design .slider { margin-bottom: 8px; }
+.lbl-design .slider output { float: right; font-size: 12px; }
+.lbl-design .slider input[type=range] { width: 100%; }
+.lbl-design #lprev { position: sticky; top: 80px; }
+@media (max-width: 900px) { .lbl-design { grid-template-columns: 1fr; } .lbl-design #lprev { position: static; } }
