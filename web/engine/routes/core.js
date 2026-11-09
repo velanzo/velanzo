@@ -140,7 +140,7 @@ route('DELETE', '/api/locations/:id', 'owner', ({ params }) => {
   if (used('SELECT COUNT(*) AS n FROM users WHERE location_id = ?', id)) fail(400, `People still work at ${loc.name}. Delete them or move them to another place first.`);
   if (used('SELECT COUNT(*) AS n FROM devices WHERE location_id = ? AND active = 1', id)) fail(400, `A computer is still set up at ${loc.name}. Remove it first (Settings → Users → Remove computer).`);
   if (used('SELECT COUNT(*) AS n FROM stock WHERE location_id = ? AND qty <> 0', id)) fail(400, `${loc.name} still has stock. Send it somewhere else first.`);
-  const history = ['movements', 'purchases', 'sales', 'expenses'].some((t) => used(`SELECT COUNT(*) AS n FROM ${t} WHERE location_id = ?`, id))
+  const history = ['movements', 'purchases', 'sales', 'customer_payments', 'expenses'].some((t) => used(`SELECT COUNT(*) AS n FROM ${t} WHERE location_id = ?`, id))
     || used('SELECT COUNT(*) AS n FROM dispatches WHERE from_location_id = ? OR to_location_id = ?', id, id);
   if (history) fail(400, `${loc.name} has bills, stock or purchases in its history, so it cannot be deleted. Untick "Open" to close it; its history is kept.`);
   tx(() => {
@@ -204,7 +204,7 @@ route('DELETE', '/api/users/:id', 'owner', ({ params, user }) => {
   const u = get('SELECT * FROM users WHERE id = ?', id) || fail(404, 'Person not found');
   if (id === user.id) fail(400, 'You cannot delete yourself');
   if (u.role === 'admin' && activeOwners(id) === 0) fail(400, 'There must always be at least one owner');
-  const history = ['movements', 'purchases', 'supplier_payments', 'sales', 'expenses', 'vouchers'].some((t) => get(`SELECT COUNT(*) AS n FROM ${t} WHERE user_id = ?`, id).n > 0);
+  const history = ['movements', 'purchases', 'supplier_payments', 'sales', 'customer_payments', 'expenses', 'vouchers'].some((t) => get(`SELECT COUNT(*) AS n FROM ${t} WHERE user_id = ?`, id).n > 0);
   if (history) fail(400, `${u.name} has bills or records in their name, so they cannot be deleted. Untick "Can sign in" instead; their history is kept.`);
   tx(() => {
     run('UPDATE devices SET last_user_id = NULL WHERE last_user_id = ?', id);

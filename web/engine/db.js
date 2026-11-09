@@ -40,9 +40,11 @@ export const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 // ---------- Schema ----------
 // Tables shared with the cloud (and in backups), in parent → child order.
-export const SYNC_TABLES = ['settings', 'locations', 'users', 'suppliers', 'products', 'movements', 'purchases', 'purchase_items',
-  'supplier_payments', 'dispatches', 'dispatch_items', 'sales', 'sale_items', 'expenses', 'vouchers'];
-export const BACKUP_TABLES = [...SYNC_TABLES.slice(0, 5), 'stock', ...SYNC_TABLES.slice(5)];
+export const SYNC_TABLES = ['settings', 'locations', 'users', 'suppliers', 'customers', 'products', 'movements', 'purchases', 'purchase_items',
+  'supplier_payments', 'dispatches', 'dispatch_items', 'sales', 'sale_items', 'customer_payments', 'expenses', 'vouchers'];
+// (tables added after the first version get their outbox triggers in their own migration)
+const LATER_TABLES = ['vouchers', 'customers', 'customer_payments'];
+export const BACKUP_TABLES = [...SYNC_TABLES.slice(0, 6), 'stock', ...SYNC_TABLES.slice(6)];
 export const BACKUP_VERSION = 3;
 // Several computers on the same records (see the last migration):
 // - these documents have a status and lines that belong together: a change made on old information is refused by the cloud;
@@ -232,7 +234,7 @@ const MIGRATIONS = [
   INSERT INTO sync_ctx VALUES (0, 'start');
   -- Changes the cloud refused (shown to the owner)
   CREATE TABLE sync_errors (id INTEGER PRIMARY KEY AUTOINCREMENT, grp TEXT, message TEXT, rows TEXT, created_at TEXT);
-  ${SYNC_TABLES.filter((t) => t !== 'vouchers').map(outboxTriggers).join('\n')}
+  ${SYNC_TABLES.filter((t) => !LATER_TABLES.includes(t)).map(outboxTriggers).join('\n')}
   `,
   // Purchase orders: ordered today, counted into stock when the goods arrive.
   `
@@ -276,6 +278,32 @@ const MIGRATIONS = [
   `
   ALTER TABLE products ADD COLUMN article_no TEXT;
   ${baseTrigger('products', mergeBase(MERGE_COLS.products))}
+  `,
+  // Customers and money they still owe: a bill can be confirmed with part (or none) of it paid. What is paid later is a
+  // customer payment against that bill; a bill's open balance = total − paid at the counter − its customer payments.
+  `
+  CREATE TABLE customers (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    phone TEXT, address TEXT, notes TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE customer_payments (
+    id INTEGER PRIMARY KEY,
+    customer_id INTEGER NOT NULL,
+    sale_id INTEGER,
+    location_id INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    amount REAL NOT NULL,
+    method TEXT, note TEXT,
+    user_id INTEGER,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_cpay_sale ON customer_payments(sale_id);
+  CREATE INDEX idx_cpay_customer ON customer_payments(customer_id);
+  ALTER TABLE sales ADD COLUMN customer_id INTEGER;
+  ${outboxTriggers('customers')}
+  ${outboxTriggers('customer_payments')}
   `,
 ];
 export const SCHEMA_VERSION = MIGRATIONS.length;

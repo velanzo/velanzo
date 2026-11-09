@@ -348,6 +348,7 @@ const NAV = [
   { href: 'dispatch', label: 'Receive stock', icon: 'inbox', show: () => can('receive') && !can('send'), badge: 'incoming' },
   { href: 'pos', label: 'Sale order', icon: 'cart', show: () => can('sell') },
   { href: 'sales', label: 'Bills', icon: 'file', show: () => can('sell') || isAdmin() },
+  { href: 'customers', label: 'Customers', icon: 'users', show: () => can('sell') || isAdmin() },
   { href: 'vouchers', label: 'Vouchers', icon: 'tag', show: () => isAdmin() },
   { href: 'labels', label: 'Barcodes', icon: 'printer', show: () => can('add_items') || can('buy') },
   { href: 'products', label: 'Items', icon: 'tag', show: () => can('add_items') || can('buy') },
@@ -441,7 +442,7 @@ async function refreshBadges() {
 // Pages that only show something: when another computer changes the data, these redraw by themselves...
 const LIVE_VIEWS = ['home', 'device', 'purchases/:id', 'dispatch/:id'];
 // ...and these too, unless the person is using a search, filter or tick box there: then they offer to.
-const OFFER_VIEWS = ['dashboard', 'purchases', 'dispatch', 'sales', 'stock', 'products', 'products/:id', 'suppliers', 'suppliers/:id', 'expenses', 'reports', 'activity', 'vouchers',
+const OFFER_VIEWS = ['dashboard', 'purchases', 'dispatch', 'sales', 'stock', 'products', 'products/:id', 'suppliers', 'suppliers/:id', 'expenses', 'reports', 'activity', 'vouchers', 'customers', 'customers/:id',
   'settings/locations', 'settings/users'];
 // Is the person in the middle of something on this page (typing, a search or filter, ticked items)?
 function pageInUse() {
@@ -455,7 +456,9 @@ function pageInUse() {
 async function remoteChanged(tables) {
   if (!App.user) return;
   // a sale screen left open all day uses the new prices (the items on a bill being made stay as they are)
-  if (tables.some((t) => t === 'products' || t === 'stock') && ProductCache.list.length) ProductCache.load(ProductCache.loc, true).catch(() => {});
+  if (tables.some((t) => t === 'products' || t === 'stock') && ProductCache.list.length) {
+    ProductCache.load(ProductCache.loc, true).then(() => document.dispatchEvent(new Event('vz:stock'))).catch(() => {});
+  }
   // new shops, settings or switches count from now on, not from the next time Velanzo opens
   if (tables.some((t) => ['settings', 'locations', 'users'].includes(t))) {
     try {

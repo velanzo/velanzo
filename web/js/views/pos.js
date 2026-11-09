@@ -58,6 +58,7 @@ View('pos', {
           <input class="input" id="cname" placeholder="Customer name" value="${esc(S.cname)}">
           <input class="input" id="cphone" placeholder="Phone number" value="${esc(S.cphone)}"></div>
         <button class="btn primary huge" id="doneBtn">${icon('check')} ${App.settings.auto_print_bill === '1' ? 'Done — print bill' : 'Done'}</button>
+        ${can('sell') ? '<button class="btn block" id="laterBtn" style="margin-top:8px">👤 Confirm — customer pays later</button>' : ''}
         <div class="muted small c">Keys: F2 scan · ${canReturn ? 'F4 return · ' : ''}F9 done</div>
       </aside>
     </div>`;
@@ -90,6 +91,7 @@ View('pos', {
       $$('#discType button', el).forEach((b) => b.classList.toggle('on', b.dataset.t === S.discType));
       $$('#methods button', el).forEach((b) => b.classList.toggle('on', b.dataset.m === S.method));
       $('#cashBox', el).classList.toggle('hidden', S.method !== 'cash' || t.total <= 0);
+      $('#laterBtn', el)?.classList.toggle('hidden', t.total <= 0);
       const row = $('#changeRow', el);
       if (t.change === null) { $('#sChange', el).textContent = '—'; row.classList.remove('short'); $('#chgLabel', el).textContent = 'Change'; }
       else if (t.change < 0) { $('#sChange', el).textContent = money(-t.change); row.classList.add('short'); $('#chgLabel', el).textContent = 'Still to pay'; }
@@ -111,7 +113,7 @@ View('pos', {
           const left = l.stock - (l.ret ? -l.qty : l.qty);
           return `<div class="cart-row${l.ret ? ' ret-line' : ''}${i === flashIndex ? ' flash' : ''}">
             <div class="grow"><div class="iname">${esc(l.name)}${l.ret ? ' <span class="pill red">Back</span>' : ''}</div>
-              <div class="muted small">${esc(variantText(l) || '')}${variantText(l) ? ' · ' : ''}${canEditPrice ? `<input class="input sm num price-in" data-price="${i}" value="${l.price}" inputmode="decimal">` : money(l.price)}${canDiscount && !l.ret ? ` · <span class="muted">disc</span> <input class="input sm num disc-line" data-disc="${i}" value="${esc(l.disc || '')}" placeholder="Discount" title="Discount on each piece: an amount like 100, or a percent like 10%" autocomplete="off">` : ''}${!l.ret && left < 0 ? ' · <span class="neg">only ' + Math.max(0, l.stock) + ' here</span>' : ''}</div></div>
+              <div class="muted small">${esc(variantText(l) || '')}${variantText(l) ? ' · ' : ''}${canEditPrice ? `<input class="input sm num price-in" data-price="${i}" value="${l.price}" inputmode="decimal">` : money(l.price)}${canDiscount && !l.ret ? ` · <span class="muted">disc</span> <input class="input sm num disc-line" data-disc="${i}" value="${esc(l.disc || '')}" placeholder="Discount" title="Discount on each piece: an amount like 100, or a percent like 10%" autocomplete="off">` : ''}${l.ret ? '' : left < 0 ? ' · <span class="neg">only ' + Math.max(0, l.stock) + ' here</span>' : ' · <span class="muted">' + l.stock + ' in stock</span>'}</div></div>
             <div class="qty"><button data-dec="${i}" tabindex="-1" aria-label="One less">−</button><input data-qty="${i}" value="${l.qty}" inputmode="numeric"><button data-inc="${i}" tabindex="-1" aria-label="One more">+</button></div>
             <div class="amt${amt < 0 ? ' neg' : ''}">${off ? `<s class="muted small">${num(l.qty * l.price)}</s><br>` : ''}${num(amt)}</div>
             <button class="icon-btn" data-rm="${i}" title="Remove" tabindex="-1">✕</button></div>`;
@@ -266,23 +268,25 @@ View('pos', {
     }
 
     let completing = false;
-    async function complete() {
+    // credit: { customer, paid, method } — the bill is confirmed now and the customer pays the rest later
+    async function complete(credit = null) {
       if (completing || document.querySelector('.modal-wrap')) return;
       if (!S.items.length) { toast('The bill is empty — scan an item first', 'error'); return focusScan(); }
       const t = totals();
       if (S.voucher && t.voucherNote) { toast(`The voucher can't be used: ${t.voucherNote}`, 'error', 6000); return; }
-      if (t.cashGiven !== null && t.total > 0 && t.cashGiven < t.total) { toast(`Cash received is less than the total (${money(t.total)})`, 'error'); return $('#paid', el).focus(); }
+      if (!credit && t.cashGiven !== null && t.total > 0 && t.cashGiven < t.total) { toast(`Cash received is less than the total (${money(t.total)})`, 'error'); return $('#paid', el).focus(); }
       completing = true;
-      const btn = $('#doneBtn', el);
+      const btn = $(credit ? '#laterBtn' : '#doneBtn', el);
       const body = {
         location_id: locId,
         items: S.items.map((l) => ({ product_id: l.id, qty: l.ret ? -l.qty : l.qty, price: l.price, disc: l.ret ? '' : l.disc || '' })),
         discount: t.disc,
         voucher: S.voucher ? S.voucher.code : '',
-        payment_method: S.method,
-        paid: t.cashGiven ?? '',
+        payment_method: credit ? credit.method : S.method,
+        paid: credit ? credit.paid : t.cashGiven ?? '',
         customer_name: S.cname,
         customer_phone: S.cphone,
+        ...(credit ? { credit: true, customer_id: credit.customer.id } : {}),
       };
       if (!(await looksRight('sale', body))) { completing = false; return focusScan(); }
       const sale = await busy(btn, () => POST('/api/sales', body));
@@ -298,7 +302,8 @@ View('pos', {
         body: `<div class="done-big"><div class="tick">✓</div>
           <div class="amt">${sale.total < 0 ? 'Refund ' : ''}${money(Math.abs(sale.total))}</div>
           <div class="muted">${METHOD_NAMES[sale.payment_method]} · ${sale.items.length} line${sale.items.length > 1 ? 's' : ''}</div>
-          ${sale.change_due ? `<div class="chg" style="margin-top:10px">Give change: ${money(sale.change_due)}</div>` : ''}</div>`,
+          ${sale.change_due ? `<div class="chg" style="margin-top:10px">Give change: ${money(sale.change_due)}</div>` : ''}
+          ${sale.open > 0 ? `<div class="chg neg" style="margin-top:10px">${esc(sale.customer?.name || 'The customer')} still owes ${money(sale.open)}</div>` : ''}</div>`,
         footer: `<button class="btn" id="mPrint">${icon('printer')} ${App.settings.auto_print_bill === '1' ? 'Print again' : 'Print bill'}</button><button class="btn primary" id="mNew" autofocus>New sale (Enter)</button>`,
         onClose: focusScan,
       });
@@ -307,7 +312,38 @@ View('pos', {
       m.el.dataset.scanClose = '1'; // the next customer's first scan closes this and goes on the new bill
       m.$('#mNew').focus();
     }
-    $('#doneBtn', el).addEventListener('click', complete);
+    // Confirm now, paid (partly) later: choose the customer, say what was paid now. Stock goes out and the sale counts today.
+    async function payLater() {
+      if (completing || document.querySelector('.modal-wrap')) return;
+      if (!S.items.length) { toast('The bill is empty — scan an item first', 'error'); return focusScan(); }
+      const t = totals();
+      if (t.total <= 0) return toast('Paying later is for a bill with something to pay', 'error');
+      const customer = await pickCustomer();
+      if (!customer) return focusScan();
+      const m = modal({
+        title: 'Confirm — pays later',
+        body: `<p style="margin-top:0">Bill for <b>${esc(customer.name)}</b>: <b>${money(t.total)}</b>.<br>
+          <span class="muted small">The pieces leave stock now and the sale counts today. What is not paid now stays owed by ${esc(customer.name)}.</span></p>
+          <div class="form-grid">
+            <label class="field">Paid now<input class="input num big" id="lPaid" inputmode="decimal" value="0" autofocus></label>
+            <label class="field">Paid by<select class="input" id="lMethod">${options([['cash', 'Cash'], ['card', 'Card'], ['online', 'Online']], S.method)}</select></label></div>
+          <div class="sum-row" style="margin-top:10px"><span>Still owed</span><b class="neg" id="lOwed">${money(t.total)}</b></div>`,
+        footer: '<button class="btn" data-close>Cancel</button><button class="btn primary" id="lOk">Confirm bill</button>',
+        onClose: focusScan,
+      });
+      const paidNow = () => Math.max(0, Number(m.$('#lPaid').value) || 0);
+      m.$('#lPaid').addEventListener('input', () => { m.$('#lOwed').textContent = money(Math.max(0, t.total - paidNow())); });
+      const confirmIt = () => {
+        if (paidNow() > t.total) return toast(`More than the bill (${money(t.total)}): use Done for a bill paid in full`, 'error');
+        const credit = { customer, paid: paidNow(), method: m.$('#lMethod').value };
+        m.close();
+        complete(credit);
+      };
+      m.$('#lOk').addEventListener('click', confirmIt);
+      m.$('#lPaid').addEventListener('keydown', (e) => { if (e.key === 'Enter') confirmIt(); });
+    }
+    $('#doneBtn', el).addEventListener('click', () => complete());
+    $('#laterBtn', el)?.addEventListener('click', payLater);
 
     const onKey = (e) => {
       if (document.querySelector('.modal-wrap')) return;
@@ -323,5 +359,14 @@ View('pos', {
     try { await ProductCache.load(locId, true); } catch (e) { toast(e.message, 'error'); }
     for (const l of S.items) { const p = ProductCache.list.find((x) => x.id === l.id); if (p) l.stock = p.loc_qty; }
     renderCart();
+    // stock that arrives from another computer (a purchase, a parcel) shows on the bill at once
+    const onStock = () => {
+      if (ProductCache.loc !== locId) return;
+      for (const l of S.items) { const p = ProductCache.list.find((x) => x.id === l.id); if (p) l.stock = p.loc_qty; }
+      if (document.activeElement?.matches?.('[data-qty], .price-in, .disc-line')) return; // (not while a number is being typed)
+      renderCart();
+    };
+    document.addEventListener('vz:stock', onStock);
+    onCleanup(() => document.removeEventListener('vz:stock', onStock));
   },
 });

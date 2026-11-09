@@ -22,11 +22,17 @@ async function showBill(id, onChange) {
         ${s.voucher_code ? `<tr><td colspan="4" class="r">Voucher ${esc(s.voucher_code)}</td><td class="r">− ${money(s.voucher)}</td>${showProfit ? '<td></td>' : ''}</tr>` : ''}
         <tr><td colspan="4" class="r">${s.total < 0 ? 'Refund' : 'Total'}</td><td class="r">${money(Math.abs(s.total))}</td>${showProfit ? '<td></td>' : ''}</tr>
         ${s.change_due ? `<tr><td colspan="4" class="r muted">Cash received ${money(s.paid)} · change</td><td class="r">${money(s.change_due)}</td>${showProfit ? '<td></td>' : ''}</tr>` : ''}
-      </tfoot></table></div>`,
+        ${s.customer_id && s.total > 0 ? `<tr><td colspan="4" class="r">Paid at the counter</td><td class="r">${money(s.paid - s.change_due)}</td>${showProfit ? '<td></td>' : ''}</tr>
+          ${s.payments.map((p) => `<tr><td colspan="4" class="r muted">Paid ${esc(fmtDate(p.date))} (${esc(METHOD_NAMES[p.method] || p.method || '')}${p.user_name ? ', ' + esc(p.user_name) : ''})</td><td class="r">${money(p.amount)}</td>${showProfit ? '<td></td>' : ''}</tr>`).join('')}
+          <tr><td colspan="4" class="r"><b>Still owed</b></td><td class="r"><b class="${s.open > 0 ? 'neg' : ''}">${money(s.open)}</b></td>${showProfit ? '<td></td>' : ''}</tr>` : ''}
+      </tfoot></table></div>
+      ${s.customer ? `<p style="margin:12px 0 0">Customer: <a href="#/customers/${s.customer.id}" data-close>${esc(s.customer.name)}</a> ${esc(s.customer.phone || '')}</p>` : ''}`,
     footer: `${(isAdmin() || can('void_bills')) && s.status === 'done' ? '<button class="btn danger left" id="bVoid">Cancel this bill</button>' : ''}${isAdmin() && s.status === 'done' ? '<button class="btn" id="bReset">↺ Reset to draft</button>' : ''}
-      <button class="btn" data-close>Close</button><button class="btn primary" id="bPrint">${icon('printer')} Print bill</button>`,
+      <button class="btn" data-close>Close</button>${s.open > 0 && s.customer && (isAdmin() || can('sell')) ? '<button class="btn" id="bPay">Payment received</button>' : ''}<button class="btn primary" id="bPrint">${icon('printer')} Print bill</button>`,
   });
   m.$('#bPrint').addEventListener('click', () => printBill(s));
+  const bp = m.$('#bPay');
+  if (bp) bp.addEventListener('click', () => { m.close(); receivePayment(s.customer, { sale: s, owed: s.open, done: () => { onChange && onChange(); showBill(id, onChange); } }); });
   const rs = m.$('#bReset');
   if (rs) rs.addEventListener('click', async () => {
     if (!(await confirmBox(`Reset bill ${s.bill_no} to draft?\n\nThe bill is cancelled and its pieces go back into stock. It opens in the sale screen as a held bill so you can change it and finish it again (it gets a new bill number).`, { title: 'Reset bill to draft', ok: 'Reset to draft' }))) return;
@@ -86,11 +92,12 @@ View('sales', {
         <div class="card stat"><div class="label">Cash</div><div class="value">${money(byMethod('cash'))}</div></div>
         <div class="card stat"><div class="label">Card</div><div class="value">${money(byMethod('card'))}</div></div>
         <div class="card stat"><div class="label">Online</div><div class="value">${money(byMethod('online'))}</div></div>
-        <div class="card stat"><div class="label">Discounts given</div><div class="value">${money(sum('discount'))}</div></div>`;
+        <div class="card stat"><div class="label">Discounts given</div><div class="value">${money(sum('discount'))}</div></div>
+        ${sum('open') ? `<div class="card stat"><div class="label">Still owed on these bills</div><div class="value neg">${money(sum('open'))}</div><div class="sub"><a href="#/customers">See customers</a></div></div>` : ''}`;
       $('#list', el).innerHTML = rows.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>Bill no.</th><th>Date & time</th>${isAdmin() ? '<th>Shop</th>' : ''}<th>Customer</th><th class="r">Pieces</th><th>Payment</th><th>Cashier</th><th class="r">Total</th></tr></thead><tbody>
         ${rows.map((r) => `<tr class="click${r.status === 'void' ? ' void' : ''}" data-id="${r.id}"><td><b>${esc(r.bill_no)}</b></td><td>${esc(fmtDT(r.created_at))}</td>${isAdmin() ? `<td>${esc(r.location_name)}</td>` : ''}
           <td>${esc(r.customer_name || '')} <span class="muted">${esc(r.customer_phone || '')}</span></td><td class="r">${r.items_qty}</td><td>${esc(METHOD_NAMES[r.payment_method])}</td><td>${esc(r.user_name || '')}</td>
-          <td class="r nowrap"><b class="${r.total < 0 ? 'neg' : ''}">${money(r.total)}</b>${r.status === 'void' ? ' <span class="pill red">cancelled</span>' : ''}</td></tr>`).join('')}
+          <td class="r nowrap"><b class="${r.total < 0 ? 'neg' : ''}">${money(r.total)}</b>${r.status === 'void' ? ' <span class="pill red">cancelled</span>' : ''}${r.open > 0 ? ` <span class="pill red">owes ${money(r.open)}</span>` : ''}</td></tr>`).join('')}
         </tbody></table></div>` : '<div class="empty">No bills for this period.</div>';
     }
 

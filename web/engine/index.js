@@ -8,6 +8,7 @@ import * as Practice from './practice.js';
 import { clearLockout } from './routes/core.js';
 import './routes/inventory.js';
 import './routes/sales.js';
+import './routes/customers.js';
 import './routes/data.js';
 import './routes/activity.js';
 import './routes/reports.js';

@@ -105,7 +105,7 @@ export function clearPlan({ what = [], from = '', to = '', everything = false } 
   const dropChildren = (table, col, ids) => { if (ids.size) drop(table, (r) => ids.has(r[col])); };
 
   if (everything) {
-    for (const tb of ['sale_items', 'sales', 'purchase_items', 'purchases', 'supplier_payments', 'dispatch_items', 'dispatches', 'expenses', 'movements', 'stock', 'products', 'suppliers']) {
+    for (const tb of ['customer_payments', 'customers', 'sale_items', 'sales', 'purchase_items', 'purchases', 'supplier_payments', 'dispatch_items', 'dispatches', 'expenses', 'movements', 'stock', 'products', 'suppliers']) {
       removed[tb] = t[tb].length; t[tb] = [];
     }
     return { removed, data, everything: true };
@@ -115,7 +115,11 @@ export function clearPlan({ what = [], from = '', to = '', everything = false } 
   if (to && !isDate(to)) fail(400, 'The end date is not a valid date');
   if (!what.length) fail(400, 'Choose what to clear');
 
-  if (what.includes('sales')) dropChildren('sale_items', 'sale_id', drop('sales', (r) => inRange(r.created_at)));
+  if (what.includes('sales')) {
+    const gone = drop('sales', (r) => inRange(r.created_at));
+    dropChildren('sale_items', 'sale_id', gone);
+    dropChildren('customer_payments', 'sale_id', gone); // (payments for those bills go with them)
+  }
   if (what.includes('purchases')) {
     dropChildren('purchase_items', 'purchase_id', drop('purchases', (r) => inRange(r.date)));
     drop('supplier_payments', (r) => inRange(r.date));

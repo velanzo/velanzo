@@ -85,6 +85,28 @@ export function createCloud() {
     onProgress: (p) => { if (Cloud.onProgress) Cloud.onProgress(p); },
   });
 
+  // No internet: one warning box, then work goes on (everything is kept here and sent when the internet is back).
+  let offlineBox = null;
+  function wentOffline() {
+    st.online = false;
+    if (offlineBox || !App.user || App.device.mode !== 'cloud') return;
+    offlineBox = modal({
+      title: 'No internet',
+      body: `<div class="alert" style="margin:0"><b>This computer is not connected to the internet.</b></div>
+        <p>You can keep working: bills, purchases and stock changes are saved on this computer and are sent online by themselves as soon as the internet is back.</p>
+        <p class="muted small" style="margin-bottom:0">Until then, other computers do not see what is done here, and this computer does not see theirs.</p>`,
+      footer: '<button class="btn primary" data-close autofocus>Continue working</button>',
+    });
+  }
+  function cameBack() {
+    const was = st.online;
+    st.online = true;
+    if (!offlineBox) return;
+    offlineBox.close();
+    offlineBox = null;
+    if (!was) toast('The internet is back. Your changes are being saved online.', 'ok', 5000);
+  }
+
   async function syncNow() {
     if (!enabled || App.device.mode !== 'cloud') return null;
     lastRun = Date.now();
@@ -92,7 +114,7 @@ export function createCloud() {
     paint();
     try {
       const out = await syncer.syncOnce();
-      st.online = true;
+      cameBack();
       st.lastSync = localNow();
       st.problem = null;
       if (out && out.reset) toast('This device downloaded everything again.');
@@ -101,7 +123,7 @@ export function createCloud() {
       return out;
     } catch (e) {
       const err = e instanceof CloudError ? e : asError(e);
-      if (err.kind === 'offline') st.online = false;
+      if (err.kind === 'offline') wentOffline();
       // (it keeps trying: as soon as the sign-in works again, this goes away by itself)
       else if (err.kind === 'removed') st.problem = { short: 'Device removed', text: 'This computer was removed from Velanzo. Click "Connect again" to sign in. Your work on this computer is kept.', reconnect: true };
       else if (err.kind === 'device' || err.kind === 'auth') st.problem = { short: 'Not connected', text: NOT_SIGNED_IN, reconnect: true };
@@ -138,8 +160,8 @@ export function createCloud() {
       syncNow();
       let ticks = 0;
       timer = setInterval(() => { ticks++; if (!document.hidden || ticks % 12 === 0) syncNow(); }, 5000);
-      window.addEventListener('online', () => { st.online = true; syncNow(); });
-      window.addEventListener('offline', () => { st.online = false; paint(); });
+      window.addEventListener('online', () => { syncNow(); }); // (the warning goes away once the cloud really answers)
+      window.addEventListener('offline', () => { wentOffline(); paint(); });
       document.addEventListener('visibilitychange', () => { if (!document.hidden) syncNow(); });
       window.addEventListener('focus', () => { if (Date.now() - lastRun > 5000) syncNow(); });
     },

@@ -45,6 +45,7 @@ try {
     await Cloud.syncNow(); await refreshBadges(); return s.bill_no;`);
   ok(!!bill, `bill ${bill} made without internet`);
   ok(await run(`return document.querySelector('#syncPill').textContent;`) === 'No internet · 1 waiting', 'top bar says: No internet · 1 waiting');
+  ok(await run(`return document.querySelector('.modal-wrap h3')?.textContent === 'No internet' && document.querySelectorAll('.modal-wrap').length === 1;`), 'a "No internet" box warns once, and the bill was still made');
 
   // reopen Velanzo while still offline (the files come from this computer)
   await p.reload(BASE + '/#/sales', 4500);
@@ -56,6 +57,7 @@ try {
   await offline(false);
   await run(`await Cloud.syncNow(); await refreshBadges();`);
   ok(await run(`return document.querySelector('#syncPill').textContent;`) === 'All saved online', 'internet back: All saved online');
+  ok(await run(`return !document.querySelector('.modal-wrap');`), 'internet back: the warning box closes by itself');
   const res = await (await fetch(`${BASE}/cloud/rest/v1/rpc/pull`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + await token() },
     body: JSON.stringify({ p_device: 2, p_user: null, p_since: 0, p_limit: 100000 }) })).json();
   ok(res.rows.some((r) => r.t === 'sales' && r.r.bill_no === bill), `the cloud has bill ${bill}`);

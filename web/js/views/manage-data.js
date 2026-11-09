@@ -35,6 +35,7 @@ const CLEAR_KINDS = [
 const REMOVED_WORDS = {
   sales: 'bills', sale_items: 'bill lines', purchases: 'purchases', purchase_items: 'purchase lines', supplier_payments: 'supplier payments',
   dispatches: 'parcels', dispatch_items: 'parcel lines', expenses: 'expenses', movements: 'stock history lines', stock: 'stock counts', products: 'items', suppliers: 'suppliers',
+  customers: 'customers', customer_payments: 'customer payments',
 };
 
 async function manageData(el, cloud) {

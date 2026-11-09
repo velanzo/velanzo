@@ -5,6 +5,7 @@ import { route, toInt, isDate, needPerm, can } from '../util.js';
 import { salesMetrics, expensesTotal } from './sales.js';
 import { label } from './inventory.js';
 import { unusual } from '../checks.js';
+import { OPEN_SQL } from './customers.js';
 
 const { all, get, today, round2 } = D;
 
@@ -238,4 +239,50 @@ route('GET', '/api/reports/unusual', 'reports', ({ query, user }) => {
   const { from, to, loc } = scope(query, user);
   const items = unusual({ from, to, location_id: loc });
   return { from, to, location_id: loc, items, high: items.filter((i) => i.level === 'high').length };
+});
+
+// ---------- Day sheet: the simple daily report ----------
+// Every bill, every expense, the money that came in and went out, and what customers still owe.
+// Cash in = what was paid at the counter (less change) + customer payments for old bills.
+// Cash out = expenses + what was paid to suppliers (at the purchase, and later).
+route('GET', '/api/reports/day', 'reports', ({ query, user }) => {
+  const { from, to, loc } = scope({ from: query.from || today(), to: query.to || today(), location_id: query.location_id }, user);
+  const p = [from + ' 00:00:00', to + ' 23:59:59'];
+  const sales = all(
+    `SELECT s.id, s.bill_no, s.created_at, s.status, s.customer_name, s.total, s.payment_method, s.items_qty, l.name AS location_name, u.name AS user_name,
+       CASE WHEN s.status = 'done' THEN s.paid - s.change_due ELSE 0 END AS paid_now,
+       CASE WHEN s.status = 'done' THEN ${OPEN_SQL} ELSE 0 END AS open
+     FROM sales s JOIN locations l ON l.id = s.location_id LEFT JOIN users u ON u.id = s.user_id
+     WHERE s.created_at BETWEEN ? AND ?${locSql('s.location_id', loc)} ORDER BY s.created_at, s.id`, ...p);
+  const expenses = all(
+    `SELECT e.id, e.date, e.category, e.amount, e.note, l.name AS location_name FROM expenses e LEFT JOIN locations l ON l.id = e.location_id
+     WHERE e.date BETWEEN ? AND ?${locSql('e.location_id', loc)} ORDER BY e.date, e.id`, from, to);
+  const payments = all(
+    `SELECT cp.id, cp.date, cp.amount, cp.method, c.name AS customer_name, s.bill_no FROM customer_payments cp
+     LEFT JOIN customers c ON c.id = cp.customer_id LEFT JOIN sales s ON s.id = cp.sale_id
+     WHERE cp.date BETWEEN ? AND ?${locSql('cp.location_id', loc)} ORDER BY cp.created_at, cp.id`, from, to);
+  // (supplier payments belong to the business, not a shop: counted for the whole business, and for a place that buys)
+  const supplierOut = !loc || can(user, 'buy')
+    ? round2(get(`SELECT COALESCE(SUM(paid), 0) AS n FROM purchases WHERE status = 'done' AND date BETWEEN ? AND ?${locSql('location_id', loc)}`, from, to).n
+      + (loc ? 0 : get('SELECT COALESCE(SUM(amount), 0) AS n FROM supplier_payments WHERE date BETWEEN ? AND ?', from, to).n))
+    : 0;
+  const done = sales.filter((s) => s.status === 'done');
+  const sum = (list, k) => round2(list.reduce((a, x) => a + (x[k] || 0), 0));
+  const cash = {
+    sales_in: sum(done, 'paid_now'),
+    payments_in: sum(payments, 'amount'),
+    expenses_out: sum(expenses, 'amount'),
+    suppliers_out: supplierOut,
+  };
+  cash.in = round2(cash.sales_in + cash.payments_in);
+  cash.out = round2(cash.expenses_out + cash.suppliers_out);
+  cash.net = round2(cash.in - cash.out);
+  const balances = all(
+    `SELECT c.id, c.name, c.phone, COUNT(*) AS bills, ROUND(SUM(b.open), 2) AS owed, MIN(b.created_at) AS oldest
+     FROM (SELECT s.customer_id, s.created_at, ${OPEN_SQL} AS open FROM sales s WHERE s.status = 'done' AND s.customer_id IS NOT NULL${locSql('s.location_id', loc)}) b
+     JOIN customers c ON c.id = b.customer_id WHERE b.open > 0 GROUP BY c.id ORDER BY owed DESC`);
+  return {
+    from, to, location_id: loc, sales, expenses, payments, balances, cash,
+    totals: { bills: done.length, sold: sum(done, 'total'), owed_today: sum(done, 'open'), owed_all: sum(balances, 'owed') },
+  };
 });

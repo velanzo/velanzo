@@ -115,6 +115,7 @@ function billHtml(s) {
     <div class="row total"><span>${s.total < 0 ? 'REFUND' : 'TOTAL'}</span><span>${esc(S.currency)} ${num(Math.abs(s.total))}</span></div>
     ${s.total > 0 ? `<div class="row"><span>Paid (${esc(METHOD_NAMES[s.payment_method] || s.payment_method)})</span><span>${num(s.paid)}</span></div>` : ''}
     ${s.change_due ? `<div class="row b"><span>Change</span><span>${num(s.change_due)}</span></div>` : ''}
+    ${s.open > 0 ? `<div class="row total"><span>BALANCE DUE</span><span>${esc(S.currency)} ${num(s.open)}</span></div>${s.customer ? `<div>Customer: ${esc(s.customer.name)} ${esc(s.customer.phone || '')}</div>` : ''}` : ''}
     <div class="hr"></div>
     <div class="c foot">${esc(S.bill_footer)}</div>
     <div class="c bc">${receiptBarcode(s.bill_no)}</div>`;

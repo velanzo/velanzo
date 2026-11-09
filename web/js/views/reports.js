@@ -3,6 +3,7 @@
 // The dates and the place chosen stay the same when switching between the tabs.
 
 const REPORT_TABS = [
+  ['day', 'Day sheet', 'file'],
   ['overview', 'Overview', 'chart'],
   ['trends', 'Trends', 'activity'],
   ['stock', 'Stock & money', 'box'],
@@ -30,10 +31,10 @@ function reportsView(tab) {
     nav: 'reports',
     allow: canReports,
     async render({ el }) {
-      if (!RS.from) { RS.from = rangePresets().month[1]; RS.to = todayStr(); }
+      if (!RS.from) { RS.from = tab === 'day' ? todayStr() : rangePresets().month[1]; RS.to = todayStr(); }
       const tabs = REPORT_TABS.filter(([k]) => k !== 'suppliers' || can('buy'));
       const usesDates = tab !== 'stock';
-      setActions(`<button class="btn" id="prBtn">${icon('printer')} Print</button>${isAdmin() && tab === 'overview' ? `<button class="btn" id="xlBtn">${icon('download')} Excel (bill lines)</button>` : ''}`);
+      setActions(`<button class="btn" id="prBtn">${icon('download')} Export PDF</button>${isAdmin() && tab === 'overview' ? `<button class="btn" id="xlBtn">${icon('download')} Excel (bill lines)</button>` : ''}`);
       el.innerHTML = `<div class="tabs report-tabs no-print">${tabs.map(([k, label, ic]) => `<a href="#/reports/${k}" class="${k === tab ? 'active' : ''}">${icon(ic)}${label}${k === 'check' ? ' <span class="badge hidden" id="chkBadge"></span>' : ''}</a>`).join('')}</div>
         <div class="toolbar no-print">${usesDates ? rangeBarHtml(RS, { long: true }) : '<span class="muted">Stock as it is right now</span>'}
           ${isAdmin() ? `<select class="input" id="fLoc">${options(App.locations, RS.loc, { blank: 'Whole business' })}</select>` : ''}</div>
@@ -53,7 +54,7 @@ function reportsView(tab) {
       if (usesDates) bindRangeBar(el, RS, load);
       const fLoc = $('#fLoc', el);
       if (fLoc) fLoc.addEventListener('change', () => { RS.loc = fLoc.value; load(); });
-      $('#prBtn').addEventListener('click', () => window.print());
+      $('#prBtn').addEventListener('click', () => { if (tab === 'day') return exportDayPdf(); toast('In the print window choose Destination: Save as PDF', 'ok', 5000); window.print(); });
       if ($('#xlBtn')) $('#xlBtn').addEventListener('click', () => download(`/api/export/sale_items${qs({ from: RS.from, to: RS.to })}`));
       box.addEventListener('click', (e) => {
         const r = e.target.closest('[data-link]');
@@ -65,12 +66,78 @@ function reportsView(tab) {
     },
   };
 }
-View('reports', reportsView('overview'));
+View('reports', reportsView('day'));
 for (const [k] of REPORT_TABS) View('reports/' + k, reportsView(k));
 
 const placeText = (q) => (q.location_id ? locName(q.location_id) : 'Whole business');
 
+// ---------- Day sheet: one simple page for the day (or dates chosen) ----------
+let DAY_LAST = null; // what is on the screen, for Export PDF
+const dayRange = (r) => (r.from === r.to ? fmtDate(r.from) : `${fmtDate(r.from)} – ${fmtDate(r.to)}`);
+function dayTable(title, head, rows, empty, foot = '') {
+  return `<div class="card flush day-sec"><div class="card-head pad"><h3>${title}</h3></div>${rows.length
+    ? `<div class="table-wrap"><table class="tbl"><thead><tr>${head}</tr></thead><tbody>${rows.join('')}</tbody>${foot ? `<tfoot>${foot}</tfoot>` : ''}</table></div>`
+    : `<div class="empty">${empty}</div>`}</div>`;
+}
+function dayHtml(r) {
+  const c = r.cash;
+  const done = r.sales.filter((s) => s.status === 'done');
+  const owner = isAdmin();
+  return `
+    <div class="card flush day-sec"><div class="card-head pad"><h3>Cash in and cash out</h3></div><div class="table-wrap"><table class="tbl">
+      <thead><tr><th>Cash in</th><th class="r">Amount</th><th>Cash out</th><th class="r">Amount</th></tr></thead>
+      <tbody><tr><td>Sales paid at the counter</td><td class="r">${money(c.sales_in)}</td><td>Expenses</td><td class="r">${money(c.expenses_out)}</td></tr>
+        <tr><td>Customers paying old bills</td><td class="r">${money(c.payments_in)}</td><td>Paid to suppliers</td><td class="r">${money(c.suppliers_out)}</td></tr></tbody>
+      <tfoot><tr><td>Total in</td><td class="r">${money(c.in)}</td><td>Total out</td><td class="r">${money(c.out)}</td></tr>
+        <tr><td colspan="3"><b>Cash left (in − out)</b></td><td class="r"><b class="${c.net < 0 ? 'neg' : ''}">${money(c.net)}</b></td></tr></tfoot></table></div></div>
+    ${dayTable(`Sales — ${done.length} bill${done.length === 1 ? '' : 's'}, ${money(r.totals.sold)}`,
+      `<th>Bill no.</th><th>Time</th>${owner ? '<th>Shop</th>' : ''}<th>Customer</th><th>Payment</th><th class="r">Total</th><th class="r">Paid</th><th class="r">Still owed</th>`,
+      r.sales.map((s) => `<tr class="click${s.status === 'void' ? ' void' : ''}" data-link="bill:${s.id}"><td><b>${esc(s.bill_no)}</b>${s.status === 'void' ? ' <span class="pill red">cancelled</span>' : ''}</td>
+        <td>${esc(r.from === r.to ? fmtTime(s.created_at) : fmtDT(s.created_at))}</td>${owner ? `<td>${esc(s.location_name)}</td>` : ''}<td>${esc(s.customer_name || '')}</td><td>${esc(METHOD_NAMES[s.payment_method] || '')}</td>
+        <td class="r">${money(s.total)}</td><td class="r">${s.status === 'done' ? money(s.paid_now) : ''}</td><td class="r">${s.open > 0 ? `<b class="neg">${money(s.open)}</b>` : ''}</td></tr>`),
+      'No bills.',
+      `<tr><td colspan="${owner ? 5 : 4}">Total</td><td class="r">${money(r.totals.sold)}</td><td class="r">${money(c.sales_in)}</td><td class="r">${money(r.totals.owed_today)}</td></tr>`)}
+    ${dayTable(`Expenses — ${money(c.expenses_out)}`, `<th>Date</th>${owner ? '<th>Place</th>' : ''}<th>What for</th><th>Note</th><th class="r">Amount</th>`,
+      r.expenses.map((e) => `<tr><td>${esc(fmtDate(e.date))}</td>${owner ? `<td>${esc(e.location_name || '')}</td>` : ''}<td>${esc(e.category)}</td><td>${esc(e.note || '')}</td><td class="r">${money(e.amount)}</td></tr>`),
+      'No expenses.')}
+    ${r.payments.length ? dayTable(`Customers paying old bills — ${money(c.payments_in)}`, '<th>Date</th><th>Customer</th><th>For bill</th><th>Paid by</th><th class="r">Amount</th>',
+      r.payments.map((p) => `<tr><td>${esc(fmtDate(p.date))}</td><td>${esc(p.customer_name || '')}</td><td>${esc(p.bill_no || '')}</td><td>${esc(METHOD_NAMES[p.method] || p.method || '')}</td><td class="r">${money(p.amount)}</td></tr>`),
+      '') : ''}
+    ${dayTable(`Open balances — customers owe ${money(r.totals.owed_all)}`, '<th>Customer</th><th>Phone</th><th class="r">Open bills</th><th>Oldest</th><th class="r">Still owes</th>',
+      r.balances.map((b) => `<tr class="click" data-link="customers/${b.id}"><td><b>${esc(b.name)}</b></td><td>${esc(b.phone || '')}</td><td class="r">${b.bills}</td><td>${esc(fmtDate(b.oldest))}</td><td class="r"><b class="neg">${money(b.owed)}</b></td></tr>`),
+      'Nobody owes anything.')}`;
+}
+// Export PDF: a clean A4 page in the print window, where "Save as PDF" makes the file.
+function exportDayPdf() {
+  if (!DAY_LAST) return toast('Wait until the day sheet has loaded', 'error');
+  const r = DAY_LAST;
+  toast('In the print window choose Destination: Save as PDF', 'ok', 6000);
+  printDoc(`<div class="ph"><div><div class="biz">${esc(App.settings.business_name)}</div><div>Day sheet · ${esc(dayRange(r))}</div></div>
+      <div class="r">${esc(r.location_id ? locName(r.location_id) : 'Whole business')}<br><span class="muted">Made ${esc(fmtDT(nowStr()))}</span></div></div>${dayHtml(r)}`,
+  `@page { size: A4; margin: 12mm; }
+   body { font: 11px/1.4 Arial, Helvetica, sans-serif; color: #000; margin: 0; }
+   .ph { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 10px; }
+   .biz { font-size: 18px; font-weight: 700; } .r { text-align: right; } .muted { color: #555; } .neg { color: #b3232a; }
+   .card-head h3 { font-size: 13px; margin: 12px 0 4px; } .empty { color: #555; padding: 4px 0; }
+   table { width: 100%; border-collapse: collapse; } th, td { border-bottom: 1px solid #ccc; padding: 3px 4px; text-align: left; }
+   th.r, td.r { text-align: right; } th { background: #f0f0f0; } tfoot td { font-weight: 700; border-top: 1px solid #000; }
+   .pill { font-size: 9px; border: 1px solid #b3232a; color: #b3232a; border-radius: 6px; padding: 0 4px; } .void td { color: #777; }
+   .day-sec { break-inside: avoid; }`, 'Day sheet', 'a4', 'A4');
+}
+
 const REPORT_RENDER = {
+  async day(box, q) {
+    const r = await GET('/api/reports/day', q);
+    DAY_LAST = r;
+    const c = r.cash;
+    box.innerHTML = `<div class="stats">
+        <div class="card stat"><div class="label">Sales</div><div class="value">${money(r.totals.sold)}</div><div class="sub">${r.totals.bills} bill${r.totals.bills === 1 ? '' : 's'} · ${esc(dayRange(r))}</div></div>
+        <div class="card stat"><div class="label">Cash in</div><div class="value">${money(c.in)}</div></div>
+        <div class="card stat"><div class="label">Cash out</div><div class="value">${money(c.out)}</div></div>
+        <div class="card stat"><div class="label">Cash left</div><div class="value ${c.net < 0 ? 'neg' : ''}">${money(c.net)}</div></div>
+        <div class="card stat"><div class="label">Customers owe</div><div class="value ${r.totals.owed_all ? 'neg' : ''}">${money(r.totals.owed_all)}</div><div class="sub">all open bills</div></div>
+      </div>${dayHtml(r)}`;
+  },
   // ---------- Overview: the profit sum for the dates ----------
   async overview(box, q) {
     const r = await GET('/api/reports', q);

@@ -66,7 +66,7 @@ const pill = (cls, text) => `<span class="pill ${cls}">${text}</span>`;
 View('hardware', {
   title: 'Printers & scanner',
   nav: 'settings',
-  async render({ el }) {
+  async render({ el, query }) {
     const S = App.settings;
     const st = HwState.get();
     const prints = PrintLog.all();
@@ -305,6 +305,8 @@ View('hardware', {
         }).join('')}`;
     });
     bindCopy(el);
+    // opened from the Barcodes page: go straight to the sticker size and design
+    if (query.sec === 'label') $('#secLabel', el)?.scrollIntoView({ block: 'start' });
   },
 });
 

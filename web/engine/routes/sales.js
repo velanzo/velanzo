@@ -3,6 +3,7 @@ import * as D from '../db.js';
 import { route, fail, toInt, toMoney, str, isDate, userLocation, can, canSeeCost, needPerm, lineDiscount } from '../util.js';
 import { label } from './inventory.js';
 import { tryVoucher } from './vouchers.js';
+import { OPEN_SQL } from './customers.js';
 
 const { all, get, run, tx, now, today, pad, round2 } = D;
 
@@ -17,6 +18,10 @@ function saleDetail(id) {
   s.items = all(
     `SELECT i.*, p.name, p.size, p.color, p.barcode FROM sale_items i JOIN products p ON p.id = i.product_id
      WHERE i.sale_id = ? ORDER BY i.id`, id);
+  // money brought later against this bill, and what is still owed
+  s.payments = all('SELECT cp.*, u.name AS user_name FROM customer_payments cp LEFT JOIN users u ON u.id = cp.user_id WHERE cp.sale_id = ? ORDER BY cp.created_at', id);
+  s.open = s.status === 'done' ? get(`SELECT ${OPEN_SQL} AS n FROM sales s WHERE s.id = ?`, id).n : 0;
+  if (s.customer_id) s.customer = get('SELECT id, name, phone FROM customers WHERE id = ?', s.customer_id) || null;
   return s;
 }
 const hideSaleCost = (user, s) => { if (!canSeeCost(user)) for (const i of s.items) delete i.cost; return s; };
@@ -33,8 +38,9 @@ route('GET', '/api/sales', 'any', ({ query, user }) => {
     if (isDate(query.to)) { where.push('s.created_at <= ?'); params.push(query.to + ' 23:59:59'); }
   }
   if (query.status) { where.push('s.status = ?'); params.push(query.status); }
+  if (query.open === '1') where.push(`s.status = 'done' AND ${OPEN_SQL} > 0`);
   return all(
-    `SELECT s.*, l.name AS location_name, u.name AS user_name
+    `SELECT s.*, l.name AS location_name, u.name AS user_name, CASE WHEN s.status = 'done' THEN ${OPEN_SQL} ELSE 0 END AS open
      FROM sales s JOIN locations l ON l.id = s.location_id LEFT JOIN users u ON u.id = s.user_id
      WHERE ${where.join(' AND ')} ORDER BY s.id DESC LIMIT 2000`, ...params);
 });
@@ -81,8 +87,15 @@ route('POST', '/api/sales', 'sell', ({ body, user }) => tx(() => {
   }
   const total = round2(subtotal - discount - voucher);
   const method = METHODS.includes(body.payment_method) ? body.payment_method : 'cash';
+  // the customer this bill belongs to (needed when it is not paid in full now)
+  const customer = toInt(body.customer_id) ? get('SELECT * FROM customers WHERE id = ?', toInt(body.customer_id)) || fail(400, 'Unknown customer') : null;
   let paid = total, change = 0;
-  if (method === 'cash' && total > 0 && body.paid !== undefined && body.paid !== '' && body.paid !== null) {
+  if (body.credit) {
+    // confirmed now, the rest is paid later: the sale and its profit count today, the rest is owed
+    if (!customer) fail(400, 'Choose the customer who will pay later');
+    if (total <= 0) fail(400, 'Only a bill with something to pay can be paid later');
+    paid = round2(Math.min(Math.max(0, toMoney(body.paid)), total));
+  } else if (method === 'cash' && total > 0 && body.paid !== undefined && body.paid !== '' && body.paid !== null) {
     paid = toMoney(body.paid);
     if (paid < total) fail(400, 'Cash received is less than the bill total');
     change = round2(paid - total);
@@ -90,10 +103,10 @@ route('POST', '/api/sales', 'sell', ({ body, user }) => tx(() => {
   const billNo = D.deviceNo(`${loc.code}-`, 'bill');
   const id = D.newId();
   run(
-    `INSERT INTO sales(id, bill_no, location_id, customer_name, customer_phone, subtotal, discount, voucher_code, voucher, total, paid, change_due, payment_method, items_qty, user_id, created_at)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    id, billNo, loc.id, str(body.customer_name, 80), str(body.customer_phone, 40), subtotal, discount, voucherCode, voucher, total, paid, change, method,
-    lines.reduce((a, l) => a + l.qty, 0), user.id, now());
+    `INSERT INTO sales(id, bill_no, location_id, customer_id, customer_name, customer_phone, subtotal, discount, voucher_code, voucher, total, paid, change_due, payment_method, items_qty, user_id, created_at)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    id, billNo, loc.id, customer ? customer.id : null, str(body.customer_name, 80) || (customer ? customer.name : ''), str(body.customer_phone, 40) || (customer ? customer.phone : ''),
+    subtotal, discount, voucherCode, voucher, total, paid, change, method, lines.reduce((a, l) => a + l.qty, 0), user.id, now());
   for (const l of lines) {
     run('INSERT INTO sale_items(id, sale_id, product_id, qty, price, list_price, cost) VALUES(?, ?, ?, ?, ?, ?, ?)', D.newId(), id, l.p.id, l.qty, l.price, l.list, l.p.cost_price);
     D.moveStock(l.p.id, loc.id, -l.qty, l.qty > 0 ? 'sale' : 'return', 'sale', id, user.id, null);
