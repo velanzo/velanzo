@@ -440,8 +440,16 @@ async function refreshBadges() {
 
 // Pages that only show something: when another computer changes the data, these redraw by themselves...
 const LIVE_VIEWS = ['home', 'device', 'purchases/:id', 'dispatch/:id'];
-// ...and these offer to, because they may hold a search or filter the person is using.
-const OFFER_VIEWS = ['dashboard', 'purchases', 'dispatch', 'sales', 'stock', 'products', 'products/:id', 'suppliers', 'suppliers/:id', 'expenses', 'reports', 'activity', 'vouchers'];
+// ...and these too, unless the person is using a search, filter or tick box there: then they offer to.
+const OFFER_VIEWS = ['dashboard', 'purchases', 'dispatch', 'sales', 'stock', 'products', 'products/:id', 'suppliers', 'suppliers/:id', 'expenses', 'reports', 'activity', 'vouchers',
+  'settings/locations', 'settings/users'];
+// Is the person in the middle of something on this page (typing, a search or filter, ticked items)?
+function pageInUse() {
+  const view = $('#view');
+  if (!view) return false;
+  return [...view.querySelectorAll('input, select, textarea')].some((e) => (e.type === 'checkbox' ? e.checked !== e.defaultChecked
+    : e.tagName === 'SELECT' ? e.selectedIndex !== Math.max(0, [...e.options].findIndex((o) => o.defaultSelected)) : e.value !== e.defaultValue));
+}
 
 // Something arrived from another computer (see Cloud.syncNow).
 async function remoteChanged(tables) {
@@ -457,8 +465,10 @@ async function remoteChanged(tables) {
     } catch { return; } // (nobody is logged in any more: the login screen is showing)
   }
   if (!App.view || document.querySelector('.modal-wrap')) return;
-  if (LIVE_VIEWS.includes(App.view.pattern)) { router(); return; }
-  if (!OFFER_VIEWS.includes(App.view.pattern) || $('#freshBar')) return;
+  if (LIVE_VIEWS.includes(App.view.pattern)) { router({ quiet: true }); return; }
+  if (!OFFER_VIEWS.includes(App.view.pattern) && !OFFER_VIEWS.includes(App.view.path)) return;
+  if (!pageInUse()) { router({ quiet: true }); return; }
+  if ($('#freshBar')) return;
   const main = $('.main');
   if (!main) return;
   const bar = document.createElement('div');
@@ -519,7 +529,8 @@ function onCleanup(fn) { App.cleanups.push(fn); }
 function setActions(html) { const el = $('#pageActions'); if (el) el.innerHTML = html; return el; }
 function setTitle(t) { const el = $('#pageTitle'); if (el) el.textContent = t; document.title = `${t} · ${App.settings.business_name || 'Velanzo'}`; }
 
-async function router() {
+// quiet: redraw the same page in place (changes from another computer): no "Loading…", the page stays where it was scrolled
+async function router({ quiet = false } = {}) {
   if (!App.user) return;
   const raw = location.hash.replace(/^#\/?/, '');
   const [path, query] = raw.split('?');
@@ -543,14 +554,16 @@ async function router() {
   const el = document.createElement('div');
   el.id = 'view';
   el.className = 'view ' + (found.cls || '');
-  el.innerHTML = '<div class="loading">Loading…</div>';
+  const y = window.scrollY;
+  el.innerHTML = quiet ? old.innerHTML : '<div class="loading">Loading…</div>';
   old.replaceWith(el);
-  window.scrollTo(0, 0);
+  if (!quiet) window.scrollTo(0, 0);
   try {
     await found.render({ el, params, query: Object.fromEntries(new URLSearchParams(query || '')) });
   } catch (e) {
     if (el.isConnected) el.innerHTML = `<div class="card empty error">${esc(e.message)}</div>`;
   }
+  if (quiet) window.scrollTo(0, y);
   refreshBadges();
 }
 

@@ -131,12 +131,13 @@ export function createCloud() {
       if (!active || !navigator.onLine) return;
       await Promise.race([syncNow(), new Promise((r) => { setTimeout(r, 3000); })]);
     },
-    // Keep syncing while the app is open: every 20 seconds, and as soon as the internet comes back.
+    // Keep syncing while the app is open: every 5 seconds while it is on the screen (every minute when hidden), and as soon as the internet comes back.
     start() {
       if (!enabled || active || App.device.mode !== 'cloud') return;
       active = true;
       syncNow();
-      timer = setInterval(syncNow, 20000);
+      let ticks = 0;
+      timer = setInterval(() => { ticks++; if (!document.hidden || ticks % 12 === 0) syncNow(); }, 5000);
       window.addEventListener('online', () => { st.online = true; syncNow(); });
       window.addEventListener('offline', () => { st.online = false; paint(); });
       document.addEventListener('visibilitychange', () => { if (!document.hidden) syncNow(); });

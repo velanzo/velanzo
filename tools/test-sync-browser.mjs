@@ -47,6 +47,10 @@ try {
   ok(await run(`return !!document.querySelector('#freshBar') && document.querySelector('#q').value === 'kurta';`), 'on Stock: a bar offers the changes, the search stays');
   await run(`click('#freshBar button'); await sleep(900);`);
   ok(await run(`return !document.querySelector('#freshBar');`), 'pressing it shows them');
+  await run(`await go('#/stock'); await until(() => document.querySelector('#list table')); window.__el = document.querySelector('#view'); await remoteChanged(['products']); await sleep(900);`);
+  ok(await run(`return document.querySelector('#view') !== window.__el && !document.querySelector('#freshBar');`), 'on Stock with no search: it redraws by itself');
+  await run(`await go('#/settings/locations'); await until(() => document.querySelector('.place-grid')); window.__el = document.querySelector('#view'); await remoteChanged(['locations']); await sleep(900);`);
+  ok(await run(`return document.querySelector('#view') !== window.__el;`), 'on Shops & warehouse: a removed or new place shows by itself');
   await run(`await go('#/purchases/${ids.id}'); await until(() => document.querySelector('.flow')); window.__el = document.querySelector('#view'); await remoteChanged(['purchases']); await sleep(600);`);
   ok(await run(`return document.querySelector('#view') !== window.__el && !document.querySelector('#freshBar');`), 'on an order: it redraws by itself');
   await run(`await go('#/purchases/new'); await until(() => document.querySelector('#scan')); window.__el = document.querySelector('#view'); await remoteChanged(['products']); await sleep(300);`);
