@@ -6,6 +6,7 @@ import * as S from './session.js';
 import * as Sync from './sync.js';
 import * as Practice from './practice.js';
 import { clearLockout } from './routes/core.js';
+import { exportData } from './routes/data.js';
 import './routes/inventory.js';
 import './routes/sales.js';
 import './routes/customers.js';
@@ -15,7 +16,9 @@ import './routes/reports.js';
 import './routes/vouchers.js';
 import './checks.js';
 
-export function init(adapter) { D.init(adapter); }
+// demo: this is the separate demo book (Demo mode), never the real data.
+let demo = false;
+export function init(adapter) { demo = !!adapter.demo; D.init(adapter); }
 
 export async function handle({ method = 'GET', path, query = {}, body = {} }) {
   const m = match(method, path);
@@ -52,7 +55,22 @@ export const system = {
     bound_user: Number(D.get("SELECT value FROM device WHERE key = 'bound_user'")?.value) || null,
     sync: Sync.state(),
     practice: Practice.isActive(),
+    demo,
   }),
+  // Demo mode: an empty business of its own on this computer, to try things without touching the real data.
+  // The first time it is made (a shop, a warehouse and a demo owner); after that the demo owner just goes in, no passcode.
+  // The daily backup file of this computer (any computer, also while the passcode screen is up), named after its place.
+  backupData: () => {
+    const dev = D.deviceInfo();
+    const place = dev.location_id ? D.get('SELECT name FROM locations WHERE id = ?', dev.location_id)?.name : 'owner';
+    return { place: place || 'velanzo', json: JSON.stringify(exportData()) };
+  },
+  demoEnter: async () => {
+    if (!demo) throw new Error('Not in demo mode');
+    if (!D.deviceInfo().id) await Sync.setupLocal({ business_name: 'Demo shop', owner_name: 'Demo owner', ...(await S.makePin('0000')) });
+    const u = D.get("SELECT id FROM users WHERE role = 'admin' AND active = 1 ORDER BY id LIMIT 1");
+    S.setCurrent(u.id);
+  },
   setupLocal: async ({ business_name, owner_name, pin }) => Sync.setupLocal({ business_name, owner_name, ...(await S.makePin(pin)) }),
   setupCloud: (args) => Sync.setupCloud(args),
   startBusiness: async ({ business_name, owner_name, pin, email }) => Sync.startBusiness({ business_name, owner_name, email, ...(await S.makePin(pin)) }),

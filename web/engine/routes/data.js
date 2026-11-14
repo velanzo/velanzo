@@ -13,7 +13,9 @@ const file = (name, type, content) => ({ __file: { name, type, content } });
 export function exportData() {
   const tables = {};
   for (const t of D.BACKUP_TABLES) tables[t] = all(`SELECT * FROM ${t}`);
-  return { app: 'velanzo', schema_version: D.BACKUP_VERSION, exported_at: now(), tables };
+  const dev = D.deviceInfo();
+  const place = dev.location_id ? get('SELECT name FROM locations WHERE id = ?', dev.location_id)?.name || '' : '';
+  return { app: 'velanzo', schema_version: D.BACKUP_VERSION, exported_at: now(), made_on: { device: dev.label || '', place: place || 'Owner (all shops)', only_place: !!dev.location_id }, tables };
 }
 
 route('GET', '/api/backup/export', 'owner', () =>

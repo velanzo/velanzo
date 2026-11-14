@@ -6,18 +6,22 @@ import * as E from './engine/index.js';
 let ready;
 let queue = Promise.resolve();
 
-async function open() {
+// opts.demo: open the separate demo book (Demo mode) instead of the real one; opts.fresh: empty that demo book first.
+async function open(opts = {}) {
   const sqlite3 = await sqlite3InitModule({ print: () => {}, printErr: (...a) => console.warn(...a) });
   let db, persistent = true;
+  const file = opts.demo ? '/velanzo-demo.db' : '/velanzo.db';
   try {
     const pool = await sqlite3.installOpfsSAHPoolVfs({ name: 'velanzo' });
-    db = new pool.OpfsSAHPoolDb('/velanzo.db');
+    if (opts.demo && opts.fresh) pool.unlink(file);
+    db = new pool.OpfsSAHPoolDb(file);
   } catch (e) {
     // Another tab already has the database open, or this browser cannot store data.
     const busy = /access handle|NoModificationAllowed|locked|in use/i.test(String(e && (e.name + e.message)));
     throw new Error(busy ? 'BUSY' : 'NO_STORAGE: ' + (e && e.message));
   }
   E.init({
+    demo: !!opts.demo,
     exec: (sql) => db.exec(sql),
     all: (sql, p) => db.selectObjects(sql, p.length ? p : undefined),
     get: (sql, p) => db.selectObject(sql, p.length ? p : undefined),
@@ -31,7 +35,7 @@ self.onmessage = (ev) => {
   // One request at a time, in order (a PIN check takes a moment; nothing may slip in between).
   queue = queue.then(async () => {
     try {
-      if (!ready) ready = open();
+      if (!ready) ready = open(kind === 'open' ? args?.[0] : undefined);
       const info = await ready;
       let out;
       if (kind === 'open') out = info;

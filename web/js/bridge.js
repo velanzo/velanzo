@@ -26,7 +26,7 @@ const Engine = (() => {
     });
   }
   return {
-    open: () => send('open'),
+    open: (opts) => send('open', null, [opts || {}]),
     api: (req) => send('api', null, [req]),
     system: (name, ...args) => send('system', name, args),
   };

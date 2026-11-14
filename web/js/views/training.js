@@ -374,7 +374,7 @@ const Guides = [
     show: () => isAdmin(),
     outro: 'Remember: a person can only do what <b>both</b> their shop and their own switches allow. Everything saved here is saved for real, so no changes were made in this tour.',
     steps: [
-      { title: 'Open Settings', text: 'Click <b>Settings</b>.', target: navTarget('settings'), done: () => /^settings/.test(path()), skipIf: () => /^settings/.test(path()) },
+      { title: 'Open Settings', text: 'Click the <b>gear</b> beside your name.', target: '#gearBtn', done: () => /^settings/.test(path()), skipIf: () => /^settings/.test(path()) },
       { route: /^settings/, title: 'Shops & warehouse', target: '.tabs a[href="#/settings/locations"]', done: () => path() === 'settings/locations', skipIf: () => path() === 'settings/locations',
         text: 'Click <b>Shops &amp; warehouse</b>.' },
       { route: 'settings/locations', title: 'Each place has a card', target: '.place-card', side: 'bottom', done: (h) => h.has('.modal-wrap'),

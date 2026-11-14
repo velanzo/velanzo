@@ -17,8 +17,10 @@ const Setup = (() => {
   async function start() {
     const link = Cloud.enabled ? Cloud.takeLink() : null;
     if (link) return showLink(link);
+    const demo = Demo.on();
     try {
-      await Engine.open();
+      const fresh = Demo.takeFresh(); // (a left-over "start again" never waits for a later demo)
+      await Engine.open({ demo, fresh: demo && fresh });
     } catch (e) {
       if (/BUSY/.test(e.message)) return showError('Velanzo is already open in another tab or window on this device. Close the other one, then try again.', 'Already open');
       return showError('This browser cannot keep Velanzo\'s data. Please use Google Chrome or Microsoft Edge (not a private window).', 'Can\'t store data');
@@ -27,6 +29,13 @@ const Setup = (() => {
     try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch { /* not supported */ }
     const info = await Engine.system('info');
     App.device = info.device;
+    App.demo = !!info.demo;
+    // Demo mode: straight in, as the demo owner (nothing to sign in to, nothing is sent online).
+    if (App.demo) {
+      await Engine.system('demoEnter');
+      return boot();
+    }
+    Backup.daily();
     if (!info.device.id) return emailConfirmed ? showOwner('signin') : showWelcome();
     Cloud.start();
     // The computer stays signed in, but the passcode is asked every time Velanzo opens.

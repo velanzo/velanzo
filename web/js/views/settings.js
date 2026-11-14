@@ -4,8 +4,11 @@
 
 const SETTINGS_TABS = [
   ['business', 'Business'], ['printing', 'Bills & labels'], ['locations', 'Shops & warehouse'], ['shopconfig', 'Shop configuration'], ['users', 'Users'],
-  ['backup', 'Backup & data'], ['hardware', 'Hardware', '#/hardware'], ['queue', 'Print queue', '#/hardware/queue'],
+  ['backup', 'Backup & data'], ['sync', 'Sync'], ['hardware', 'Hardware', '#/hardware'], ['queue', 'Print queue', '#/hardware/queue'],
 ];
+// Staff (the gear beside their name): only what belongs to their own computer.
+const STAFF_SETTINGS_TABS = [['sync', 'Sync'], ['backup', 'Backup'], ['hardware', 'Printers & scanner', '#/hardware'], ['account', 'My passcode', '#/account']];
+const settingsTabs = () => (isAdmin() ? SETTINGS_TABS : STAFF_SETTINGS_TABS);
 
 async function saveSettings(values, btn) {
   return busy(btn, async () => {
@@ -14,15 +17,15 @@ async function saveSettings(values, btn) {
   });
 }
 
-View('settings', { title: 'Settings', allow: isAdmin, render: () => go('settings/business') });
+View('settings', { title: 'Settings', render: () => go(isAdmin() ? 'settings/business' : 'settings/sync') });
 
 View('settings/:tab', {
   title: 'Settings',
   nav: 'settings',
-  allow: isAdmin,
   async render({ el, params }) {
-    const tab = SETTINGS_TABS.some(([k, , href]) => !href && k === params.tab) ? params.tab : 'business';
-    el.innerHTML = `<div class="tabs">${SETTINGS_TABS.map(([k, t, href]) => `<a href="${href || '#/settings/' + k}" class="${k === tab ? 'active' : ''}">${t}</a>`).join('')}</div><div id="tab"></div>`;
+    const tabs = settingsTabs();
+    const tab = tabs.some(([k, , href]) => !href && k === params.tab) ? params.tab : tabs[0][0];
+    el.innerHTML = `<div class="tabs">${tabs.map(([k, t, href]) => `<a href="${href || '#/settings/' + k}" class="${k === tab ? 'active' : ''}">${t}</a>`).join('')}</div><div id="tab"></div>`;
     await SETTINGS_RENDER[tab]($('#tab', el));
   },
 });
@@ -239,7 +242,38 @@ const SETTINGS_RENDER = {
     });
   },
 
+  // Sync: Velanzo does it by itself (when it opens and every few seconds); this button does it right away.
+  async sync(el) {
+    const cloud = Cloud.enabled && App.device.mode === 'cloud';
+    if (App.demo || !cloud) {
+      el.innerHTML = `<div class="card" style="max-width:720px"><h3>${icon('cloud')} Sync</h3><p class="muted" style="margin:0">${App.demo
+        ? 'Demo mode is on: nothing is synced. Leave Demo mode (More → Leave Demo mode) to sync again.'
+        : 'This computer is not connected to the cloud, so there is nothing to sync. Everything is kept on this computer.'}</p></div>`;
+      return;
+    }
+    const s = await GET('/api/sync/status');
+    const cs = Cloud.status();
+    el.innerHTML = `<div class="card" style="max-width:720px"><h3>${icon('cloud')} Sync with the other computers</h3>
+      <p class="muted" style="margin-top:0">Velanzo syncs by itself: every time it opens, and every few seconds while it is open. Click <b>Sync now</b> to do it right away.</p>
+      <dl class="kv"><dt>Status</dt><dd>${cs.problem ? `<span class="pill red">${esc(cs.problem.short)}</span> ${esc(cs.problem.text)}` : !cs.online ? '<span class="pill warn">No internet</span>' : cs.syncing ? '<span class="pill">Syncing…</span>' : '<span class="pill ok">Connected</span>'}</dd>
+        <dt>Waiting to send</dt><dd>${s.waiting ? `<b>${s.waiting}</b> change${s.waiting > 1 ? 's' : ''}` : 'Nothing, all sent'}</dd>
+        <dt>Last synced</dt><dd>${s.last_sync_at ? esc(fmtDT(s.last_sync_at)) : 'Not yet'}</dd></dl>
+      <button class="btn primary" id="syncNowBtn">${icon('cloud')} Sync now</button></div>`;
+    const b = $('#syncNowBtn', el);
+    b.addEventListener('click', () => busy(b, async () => {
+      if (!navigator.onLine) throw new Error('No internet. Everything is kept on this computer and syncs when the internet is back.');
+      await Cloud.syncNow();
+      const p = Cloud.status().problem;
+      if (p) throw new Error(p.text);
+      toast('Synced. This computer is up to date.', 'ok');
+      SETTINGS_RENDER.sync(el);
+    }));
+  },
+
   async backup(el) {
+    // Everyone: the daily backup of this computer into a folder, and "Back up now".
+    const daily = document.createElement('div');
+    if (!isAdmin()) { el.innerHTML = ''; el.appendChild(daily); return dailyBackupCard(daily); }
     const st = { from: '', to: '' };
     let last = null;
     try { last = localStorage.getItem('vz_last_backup'); } catch { /* ignore */ }
@@ -250,7 +284,8 @@ const SETTINGS_RENDER = {
     ];
     const cloud = Cloud.enabled && App.device.mode === 'cloud';
     el.innerHTML = `
-      <div class="grid-2" style="margin-top:0">
+      <div id="dailyCard"></div>
+      <div class="grid-2">
         <div class="card"><h3>Full backup</h3>
           <p class="muted" style="margin-top:0">One file with <b>all</b> your data. Keep copies on Google Drive or a USB stick. The same file can be loaded into a new version of the software.</p>
           <p class="small">${last ? `Last backup from this device: <b>${esc(fmtDT(last))}</b>` : '<span class="neg">No backup downloaded on this device yet.</span>'}</p>
@@ -295,7 +330,8 @@ const SETTINGS_RENDER = {
       if (data.app !== 'velanzo') return toast('This file is not a Velanzo backup', 'error');
       const t = data.tables || {};
       const n = (k) => (t[k] || []).length;
-      const ok = await confirmBox(`Restore the backup from ${data.exported_at}?\n\nIt has ${n('products')} items, ${n('sales')} bills, ${n('purchases')} purchases and ${n('users')} people.\n\nALL current data${cloud ? ' on every device' : ''} will be replaced.`, { title: 'Restore backup', ok: 'Replace all data', danger: true });
+      const from = data.made_on ? `\nMade on: ${data.made_on.place}${data.made_on.only_place ? ' (this computer only had the data of its own place)' : ''}.\n` : '';
+      const ok = await confirmBox(`Restore the backup from ${data.exported_at}?\n${from}\nIt has ${n('products')} items, ${n('sales')} bills, ${n('purchases')} purchases and ${n('users')} people.\n\nALL current data${cloud ? ' on every device' : ''} will be replaced.`, { title: 'Restore backup', ok: 'Replace all data', danger: true });
       if (!ok) return;
       await busy(rb, async () => {
         await replaceEverywhere(data);
@@ -303,9 +339,39 @@ const SETTINGS_RENDER = {
         location.reload();
       });
     });
+    dailyBackupCard($('#dailyCard', el));
     manageData(el, cloud).catch((e) => { const b = $('#mdBody', el); if (b) b.textContent = e.message; });
   },
 };
+
+// The daily backup into a folder (each computer has its own), plus "Back up now".
+async function dailyBackupCard(box) {
+  if (!box) return;
+  const h = Backup.supported ? await Backup.folder() : null;
+  const last = Backup.lastAt();
+  box.innerHTML = `<div class="card" style="max-width:${isAdmin() ? 'none' : '720px'};margin-top:0"><h3>${icon('download')} Daily backup of this computer</h3>
+    ${App.demo ? '<p class="muted" style="margin:0">Demo mode is on: no backups are made of the demo.</p>' : `
+    ${Backup.supported ? `<p class="muted" style="margin-top:0">Every day, the first time Velanzo opens, a full backup file is saved by itself into a folder on this computer. The last 30 days are kept.</p>
+      <dl class="kv"><dt>Folder</dt><dd>${h ? `<b>${esc(h.name)}</b>` : '<span class="pill warn">Not chosen yet</span> <span class="muted small">Choose a folder to start the daily backup.</span>'}</dd>
+        <dt>Last backup</dt><dd>${last ? `${esc(fmtDT(last))} <span class="muted small">${esc(Backup.lastFile() || '')}</span>` : 'Not yet'}</dd></dl>`
+      : `<p class="muted" style="margin-top:0">On this device, a backup file is downloaded when you click <b>Back up now</b>. (Saving by itself every day works on a computer with Google Chrome or Microsoft Edge.)</p>
+      <dl class="kv"><dt>Last backup</dt><dd>${last ? esc(fmtDT(last)) : 'Not yet'}</dd></dl>`}
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn primary" id="bkNow">${icon('download')} Back up now</button>
+      ${Backup.supported ? `<button class="btn" id="bkFolder">${h ? 'Change folder' : 'Choose backup folder'}</button>` : ''}
+    </div>`}</div>`;
+  const nowB = $('#bkNow', box), fb = $('#bkFolder', box);
+  if (nowB) nowB.addEventListener('click', () => busy(nowB, async () => {
+    const r = await Backup.now();
+    toast(r.folder ? `Backup saved in "${r.folder}": ${r.name}` : `Backup downloaded: ${r.name}`, 'ok', 6000);
+    dailyBackupCard(box);
+  }));
+  if (fb) fb.addEventListener('click', async () => {
+    try { await Backup.chooseFolder(); } catch (e) { if (e.name !== 'AbortError') toast(e.message, 'error'); return; }
+    try { const r = await Backup.now(); toast(`Folder chosen. First backup saved: ${r.name}`, 'ok', 6000); } catch (e) { toast(e.message, 'error'); }
+    dailyBackupCard(box);
+  });
+}
 
 View('account', {
   title: 'My passcode',

@@ -14,8 +14,9 @@ View('dashboard', {
     const [d, live, chk] = await Promise.all([GET('/api/dashboard'), GET('/api/live'), GET('/api/reports/unusual', { from: todayStr().slice(0, 8) + '01', to: todayStr() }).catch(() => ({ high: 0, items: [] }))]);
     setActions(`<a class="btn" href="#/reports">${icon('chart')} Reports</a>`);
     let lastBackup = null;
-    try { lastBackup = localStorage.getItem('vz_last_backup'); } catch { /* ignore */ }
-    const backupOld = !lastBackup || (Date.now() - new Date(lastBackup.replace(' ', 'T'))) > 7 * 864e5;
+    // (a downloaded backup or the daily one into the folder, whichever is newer)
+    try { lastBackup = [localStorage.getItem('vz_last_backup'), localStorage.getItem('vz_auto_backup_at')].filter(Boolean).sort().pop() || null; } catch { /* ignore */ }
+    const backupOld = !App.demo && (!lastBackup || (Date.now() - new Date(lastBackup.replace(' ', 'T'))) > 7 * 864e5);
     el.innerHTML = `
       ${backupOld ? `<div class="alert flex">${icon('download')}<div class="grow">${lastBackup ? 'Your last backup from this device is more than a week old.' : 'Keep a copy of your data: download a backup now and then.'}</div><a class="btn sm" href="#/settings/backup">Back up now</a></div>` : ''}
       ${chk.high ? `<a class="alert danger flex attn" href="#/reports/check"><span class="attn-n">${chk.high}</span><div class="grow"><b>${chk.high === 1 ? '1 thing needs' : chk.high + ' things need'} your attention this month</b><div class="small">${esc([...new Set(chk.items.filter((i) => i.level === 'high').map((i) => i.kind))].slice(0, 4).join(' · '))}</div></div><span class="btn sm">See them</span></a>` : ''}

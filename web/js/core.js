@@ -334,6 +334,8 @@ const ICONS = {
   help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
   cloud: '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
   check: '<polyline points="20 6 9 17 4 12"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  play: '<circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>',
   arrow: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
 };
 const icon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`;
@@ -357,7 +359,6 @@ const NAV = [
   { href: 'suppliers', label: 'Suppliers', icon: 'users', show: () => can('buy') },
   { href: 'reports', label: 'Reports', icon: 'chart', show: () => isAdmin() || (can('reports') && can('see_cost')) },
   { href: 'activity', label: 'Activity', icon: 'activity', show: () => isAdmin() },
-  { href: 'settings', label: 'Settings', icon: 'sliders', show: () => isAdmin() },
   { href: 'training', label: 'Training', icon: 'help', show: () => true },
 ];
 // When there are many, these stay on the bar and the rest go under "More".
@@ -375,8 +376,10 @@ function navHtml() {
   const more = visible.filter((n) => !wide.includes(n));
   const link = (n, cls = '') => `<a href="#/${n.href}" data-nav="${n.href}"${cls ? ` class="${cls}"` : ''}>${icon(n.icon)}<span>${esc(n.label)}</span>${n.badge ? `<span class="badge hidden" data-badge="${n.badge}"></span>` : ''}</a>`;
   const inMore = [...extra.map((n) => link(n, 'narrow-only')), ...more.map((n) => link(n))];
-  return main.map((n) => link(n)).join('') + extra.map((n) => link(n, 'wide-only')).join('') + (inMore.length ? `<details class="more" id="moreMenu"><summary>${icon('menu')}<span>More</span></summary>
-    <div class="more-list">${inMore.join('')}</div></details>` : '');
+  // Demo mode is turned on and off here (always the last line of More).
+  inMore.push(`<a href="#" data-demo="1" class="demo-toggle">${icon('play')}<span>${App.demo ? 'Leave Demo mode' : 'Demo mode (try things safely)'}</span></a>`);
+  return main.map((n) => link(n)).join('') + extra.map((n) => link(n, 'wide-only')).join('') + `<details class="more" id="moreMenu"><summary>${icon('menu')}<span>More</span></summary>
+    <div class="more-list">${inMore.join('')}</div></details>`;
 }
 
 function renderShell() {
@@ -390,11 +393,12 @@ function renderShell() {
       <div class="appbar-right">
         <button class="icon-btn appbar-refresh" id="refreshBtn" type="button" title="Refresh: save, get the newest version of Velanzo and reload" aria-label="Refresh">⟳</button>
         <button class="sync-pill" id="syncPill" type="button"></button>
+        <a class="appbar-gear" id="gearBtn" href="#/settings" data-nav="settings" title="Settings" aria-label="Settings">${icon('gear')}</a>
         <details class="user-menu" id="userMenu"><summary><span class="avatar">${esc((u.name || '?').slice(0, 1).toUpperCase())}</span><span class="uname">${esc(u.name)}</span></summary>
           <div class="more-list right">
-            <a href="#" id="switchBtn">${icon('lock')}<span>Lock (type the passcode again)</span></a>
+            ${App.demo ? `<a href="#" id="leaveDemoBtn">${icon('play')}<span>Leave Demo mode</span></a>` : `<a href="#" id="switchBtn">${icon('lock')}<span>Lock (type the passcode again)</span></a>
             ${App.device.mode === 'cloud' ? `<a href="#" id="signOutBtn">${icon('device')}<span>Sign out / switch account</span></a>` : ''}
-            <a href="#/account">${icon('lock')}<span>My passcode</span></a>
+            <a href="#/account">${icon('lock')}<span>My passcode</span></a>`}
             <a href="#/hardware">${icon('printer')}<span>Printers &amp; scanner</span></a>
             <a href="#/device">${icon('device')}<span>This device</span></a>
             ${AppInstall.installed() ? '' : `<a href="#" id="getAppBtn">${icon('download')}<span>Get the app (PC, Android, iPhone)</span></a>`}
@@ -403,7 +407,7 @@ function renderShell() {
             <a href="#/device">${icon('device')}<span>Version ${esc(APP_VERSION)}</span></a>
           </div></details>
       </div>
-    </div></header>
+    </div>${App.demo ? Demo.stripHtml() : ''}</header>
     <main class="main">
       <div class="page-head"><h1 id="pageTitle"></h1><div class="actions" id="pageActions"></div></div>
       <div class="view" id="view"></div>
@@ -411,7 +415,16 @@ function renderShell() {
   </div>`;
   const so = $('#signOutBtn');
   if (so) so.addEventListener('click', (e) => { e.preventDefault(); closeMenus(); Setup.signOut(true); });
-  $('#switchBtn').addEventListener('click', async (e) => {
+  if (App.demo) Demo.bindStrip($('#shell'));
+  $('#leaveDemoBtn')?.addEventListener('click', (e) => { e.preventDefault(); closeMenus(); Demo.leave(); });
+  // (the More menu is drawn again when switches change, so this listens on the bar itself)
+  $('#nav').addEventListener('click', (e) => {
+    const d = e.target.closest('[data-demo]');
+    if (!d) return;
+    e.preventDefault(); closeMenus();
+    if (App.demo) Demo.leave(); else Demo.ask();
+  });
+  $('#switchBtn')?.addEventListener('click', async (e) => {
     e.preventDefault();
     try { await POST('/api/logout'); } catch { /* ignore */ }
     App.user = null; location.hash = ''; Setup.showLogin();
@@ -506,7 +519,8 @@ function paintSync() {
   if (!pill) return;
   const s = Cloud.status(), b = App.badges || {};
   let cls = '', text = '', title = '';
-  if (App.practice) { cls = 'warn'; text = 'Practice mode'; title = 'You are practising. Nothing is saved or sent anywhere.'; }
+  if (App.demo) { cls = 'warn'; text = 'Demo mode'; title = 'A separate, empty Velanzo to try things. Nothing here is sent online.'; }
+  else if (App.practice) { cls = 'warn'; text = 'Practice mode'; title = 'You are practising. Nothing is saved or sent anywhere.'; }
   else if (!Cloud.enabled || App.device.mode !== 'cloud') { cls = 'local'; text = 'On this device'; title = 'Not connected to the cloud. Data is kept on this device only.'; }
   else if (s.problem) { cls = 'bad'; text = s.problem.short; title = s.problem.text; }
   else if (b.errors) { cls = 'bad'; text = `${b.errors} not saved`; title = 'Some changes were refused by the cloud. Tap to see them.'; }
@@ -549,7 +563,7 @@ async function router({ quiet = false } = {}) {
   $('#freshBar')?.remove();
   App.view = { pattern: found.pattern, nav: found.nav, path };
   const nav = found.nav || path.split('/')[0];
-  $$('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.nav === nav));
+  $$('#nav a, #gearBtn').forEach((a) => a.classList.toggle('active', a.dataset.nav === nav));
   setTitle(typeof found.title === 'function' ? found.title(params) : found.title);
   setActions('');
   // fresh element each time so a slow, older page can never draw over a newer one
@@ -815,6 +829,8 @@ async function boot() {
   await Practice.refresh();
   renderShell();
   router();
+  // Just opened or unlocked: send what waited and get everyone else's changes now (it also keeps going every few seconds).
+  if (!App.demo) Cloud.syncNow();
   // Every half minute: refresh the menu counters and the "saved online" status.
   if (!App.heartbeat) App.heartbeat = setInterval(() => { if (App.user) refreshBadges(); }, 30000);
 }
