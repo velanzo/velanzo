@@ -1,4 +1,4 @@
-// Sale order: "Amount actually received" (round off) and the order date (a sale entered for an earlier day).
+// Sale order: cash bills rounded to the nearest 10 (round off) and the order date (a sale entered for an earlier day).
 // Run: node --disable-warning=ExperimentalWarning tools/test-sale-extras.mjs
 import assert from 'node:assert/strict';
 import * as E from '../web/engine/index.js';
@@ -22,16 +22,16 @@ const S1 = me.locations.find((l) => l.type === 'shop').id;
 const [p] = await call('POST', '/api/products', { name: 'Shirt', sale_price: 999, cost_price: 500, variants: [{ size: 'M' }] });
 D.moveStock(p.id, S1, 10, 'opening', null, null, me.user.id, 'start');
 
-// ---- amount actually received ----
-let s = await call('POST', '/api/sales', { location_id: S1, items: [{ product_id: p.id, qty: 1 }], final_amount: 1000 });
-ok(s.total === 1000 && s.round_off === 1 && s.subtotal === 999, 'bill of 999 paid as 1,000: total 1,000, round off +1');
-s = await call('POST', '/api/sales', { location_id: S1, items: [{ product_id: p.id, qty: 2 }], final_amount: 1990, paid: 2000 });
-ok(s.total === 1990 && s.round_off === -8 && s.change_due === 10, 'bill of 1,998 taken as 1,990: round off −8, change from 2,000 is 10');
-s = await call('POST', '/api/sales', { location_id: S1, items: [{ product_id: p.id, qty: 1 }] });
-ok(s.total === 999 && s.round_off === 0, 'no amount given: the total as it is');
+// ---- cash bills are rounded to the nearest 10 by themselves ----
+let s = await call('POST', '/api/sales', { location_id: S1, items: [{ product_id: p.id, qty: 1 }] });
+ok(s.total === 1000 && s.round_off === 1 && s.subtotal === 999, 'cash bill of 999: total 1,000, round off +1');
+s = await call('POST', '/api/sales', { location_id: S1, items: [{ product_id: p.id, qty: 2 }], discount: 4, paid: 2000 });
+ok(s.total === 1990 && s.round_off === -4 && s.change_due === 10, 'cash bill of 1,994: total 1,990, round off −4, change from 2,000 is 10');
+s = await call('POST', '/api/sales', { location_id: S1, items: [{ product_id: p.id, qty: 1 }], payment_method: 'card' });
+ok(s.total === 999 && s.round_off === 0, 'a card bill is not rounded');
 const net = D.get("SELECT SUM(total) AS n FROM sales WHERE status = 'done'").n;
 ok(net === 1000 + 1990 + 999, 'sales totals include the round off');
-await refused(call('POST', '/api/sales', { location_id: S1, items: [{ product_id: p.id, qty: 1 }], final_amount: 'abc' }), /not a valid amount/, 'a wrong amount is refused');
+await refused(call('POST', '/api/sales', { location_id: S1, items: [{ product_id: p.id, qty: 1 }], paid: 995 }), /less than the bill total/, 'cash under the rounded total is refused');
 
 // ---- order date ----
 s = await call('POST', '/api/sales', { location_id: S1, items: [{ product_id: p.id, qty: 1 }], date: '2026-11-10' });

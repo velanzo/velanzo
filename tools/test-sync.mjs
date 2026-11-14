@@ -509,8 +509,8 @@ const cloudBill = (await db.query('select voucher_code, voucher, total from sale
 ok(cloudBill.voucher_code === v1.code && cloudBill.voucher === 300 && cloudBill.total === 1700, 'the cloud has the voucher on the bill');
 await owner.sync();
 const ob = await owner.call('POST', '/api/sales', { location_id: S1, items: [{ product_id: km.id, qty: 2, disc: '10%' }, { product_id: kl.id, qty: 1, disc: '150' }], discount: 200, voucher: vp[0].code });
-// (2 x 1800) + 1850 = 5450; bill discount 200 -> 5250; voucher 10% = 525; total 4725
-ok(ob.items[0].price === 1800 && ob.items[0].list_price === 2000 && ob.items[1].price === 1850 && ob.subtotal === 5450 && ob.voucher === 525 && ob.total === 4725, 'item discounts, bill discount and voucher add up: ' + ob.total);
+// (2 x 1800) + 1850 = 5450; bill discount 200 -> 5250; voucher 10% = 525; total 4725, rounded to 4730 for cash
+ok(ob.items[0].price === 1800 && ob.items[0].list_price === 2000 && ob.items[1].price === 1850 && ob.subtotal === 5450 && ob.voucher === 525 && ob.total === 4730 && ob.round_off === 5, 'item discounts, bill discount and voucher add up (4,725, cash rounded to 4,730): ' + ob.total);
 await owner.sync(); await shop.sync();
 ok((await shop.sql('SELECT list_price FROM sale_items WHERE sale_id = ? ORDER BY id', [ob.id]))[0]?.list_price === 2000, 'item discounts reach the shop computer, with the price before the discount');
 const rep2 = await owner.call('GET', '/api/reports', null, { from: '2020-01-01', to: '2099-12-31' });

@@ -20,6 +20,7 @@ async function showBill(id, onChange) {
         <tr><td colspan="4" class="r">Subtotal</td><td class="r">${money(s.subtotal)}</td>${showProfit ? '<td></td>' : ''}</tr>
         ${s.discount ? `<tr><td colspan="4" class="r">Discount</td><td class="r">− ${money(s.discount)}</td>${showProfit ? '<td></td>' : ''}</tr>` : ''}
         ${s.voucher_code ? `<tr><td colspan="4" class="r">Voucher ${esc(s.voucher_code)}</td><td class="r">− ${money(s.voucher)}</td>${showProfit ? '<td></td>' : ''}</tr>` : ''}
+        ${s.round_off ? `<tr><td colspan="4" class="r">Round off (cash)</td><td class="r">${s.round_off > 0 ? '+' : '−'} ${money(Math.abs(s.round_off))}</td>${showProfit ? '<td></td>' : ''}</tr>` : ''}
         <tr><td colspan="4" class="r">${s.total < 0 ? 'Refund' : 'Total'}</td><td class="r">${money(Math.abs(s.total))}</td>${showProfit ? '<td></td>' : ''}</tr>
         ${s.change_due ? `<tr><td colspan="4" class="r muted">Cash received ${money(s.paid)} · change</td><td class="r">${money(s.change_due)}</td>${showProfit ? '<td></td>' : ''}</tr>` : ''}
         ${s.customer_id && s.total > 0 ? `<tr><td colspan="4" class="r">Paid at the counter</td><td class="r">${money(s.paid - s.change_due)}</td>${showProfit ? '<td></td>' : ''}</tr>

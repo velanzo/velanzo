@@ -134,6 +134,8 @@ function discOff(text, price) {
   return round2(Math.min(t.endsWith('%') ? price * Math.min(n, 100) / 100 : n, Math.max(price, 0)));
 }
 // The sums of a sale screen bill: item discounts, then the bill discount, then the voucher.
+// A cash bill is rounded to the nearest 10 (1,599 → 1,600; 1,594 → 1,590). Refunds and empty bills stay as they are.
+const cashRound = (total) => (total > 0 ? Math.round(total / 10) * 10 : total);
 function billMath(S) {
   const unit = (l) => (l.ret ? l.price : round2(l.price - discOff(l.disc, l.price)));
   const sub = round2(S.items.reduce((a, l) => a + (l.ret ? -l.qty : l.qty) * unit(l), 0));

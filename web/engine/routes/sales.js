@@ -86,17 +86,6 @@ route('POST', '/api/sales', 'sell', ({ body, user }) => tx(() => {
     voucher = r.amount; voucherCode = r.code;
   }
   let total = round2(subtotal - discount - voucher);
-  // "Amount actually received": what the customer really paid for the bill (e.g. 1,000 for a bill of 999, no change
-  // given back). The difference is kept as a round off: more is extra money, less counts like a discount.
-  let roundOff = 0;
-  if (body.final_amount !== undefined && body.final_amount !== null && body.final_amount !== '') {
-    const fin = toMoney(body.final_amount, NaN);
-    if (!Number.isFinite(fin) || fin < 0) fail(400, 'The amount actually received is not a valid amount');
-    if (total <= 0) fail(400, 'The amount actually received is only for a bill with something to pay');
-    roundOff = round2(fin - total);
-    if (roundOff < 0) needPerm(user, 'discount', 'Giving discounts');
-    total = fin;
-  }
   // Order date: a sale made some days ago can be entered now and counts on that day (never a future day).
   const day = today();
   let when = now();
@@ -106,6 +95,14 @@ route('POST', '/api/sales', 'sell', ({ body, user }) => tx(() => {
     when = `${body.date} ${when.slice(11)}`;
   }
   const method = METHODS.includes(body.payment_method) ? body.payment_method : 'cash';
+  // A bill paid in cash is rounded to the nearest 10 (1,599 → 1,600): nobody hands back 1 rupee.
+  // The difference is kept as the bill's round off (shown on the bill, not on the printed receipt).
+  let roundOff = 0;
+  if (method === 'cash' && !body.credit && total > 0) {
+    const r = Math.round(total / 10) * 10;
+    roundOff = round2(r - total);
+    total = r;
+  }
   // the customer this bill belongs to (needed when it is not paid in full now)
   const customer = toInt(body.customer_id) ? get('SELECT * FROM customers WHERE id = ?', toInt(body.customer_id)) || fail(400, 'Unknown customer') : null;
   let paid = total, change = 0;
