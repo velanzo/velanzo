@@ -87,7 +87,7 @@ View('expenses', {
       $$('[data-preset]', el).forEach((b) => { const [, f, t] = rangePresets()[b.dataset.preset]; b.classList.toggle('on', st.from === f && st.to === t); });
       $('[data-range=from]', el).value = st.from; $('[data-range=to]', el).value = st.to;
       $('#list', el).innerHTML = rows.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>Date</th><th>For</th><th>Type</th><th>Details</th><th>Added by</th><th class="r">Amount</th>${isAdmin() ? '<th></th>' : ''}</tr></thead><tbody>
-        ${rows.map((r) => `<tr><td>${esc(fmtDate(r.date))}</td><td>${esc(r.location_name || 'Business')}</td><td>${esc(r.category)}</td><td>${esc(r.note || '')}</td><td>${esc(r.user_name || '')}</td><td class="r">${money(r.amount)}</td>
+        ${rows.map((r) => `<tr data-id="${r.id}"><td>${esc(fmtDate(r.date))}</td><td>${esc(r.location_name || 'Business')}</td><td>${esc(r.category)}</td><td>${esc(r.note || '')}</td><td>${esc(r.user_name || '')}</td><td class="r">${money(r.amount)}</td>
           ${isAdmin() ? `<td class="c"><button class="icon-btn" data-del="${r.id}" title="Delete">✕</button></td>` : ''}</tr>`).join('')}
         </tbody><tfoot><tr><td colspan="5">Total</td><td class="r">${money(rows.reduce((a, r) => a + r.amount, 0))}</td>${isAdmin() ? '<td></td>' : ''}</tr></tfoot></table></div>`
         : '<div class="empty">No expenses in this period.</div>';

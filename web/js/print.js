@@ -112,6 +112,7 @@ function billHtml(s) {
     <div class="row"><span>Subtotal</span><span>${num(s.subtotal)}</span></div>
     ${s.discount ? `<div class="row"><span>Discount</span><span>- ${num(s.discount)}</span></div>` : ''}
     ${s.voucher_code ? `<div class="row"><span>Voucher ${esc(s.voucher_code)}</span><span>- ${num(s.voucher)}</span></div>` : ''}
+    ${s.round_off ? `<div class="row"><span>Round off</span><span>${s.round_off > 0 ? '+' : '-'} ${num(Math.abs(s.round_off))}</span></div>` : ''}
     <div class="row total"><span>${s.total < 0 ? 'REFUND' : 'TOTAL'}</span><span>${esc(S.currency)} ${num(Math.abs(s.total))}</span></div>
     ${s.total > 0 ? `<div class="row"><span>Paid (${esc(METHOD_NAMES[s.payment_method] || s.payment_method)})</span><span>${num(s.paid)}</span></div>` : ''}
     ${s.change_due ? `<div class="row b"><span>Change</span><span>${num(s.change_due)}</span></div>` : ''}

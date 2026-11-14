@@ -145,8 +145,8 @@ t = await tamper([{ t: 'movements', r: { id: 96, product_id: km.id, location_id:
 ok(!t.ok && /Correcting/.test(t.error), 'shop cannot add stock out of thin air: ' + t.error);
 t = await tamper([{ t: 'users', r: { id: ahmed.id, name: 'Ahmed', role: 'admin', location_id: null, active: 1, created_at: now } }]);
 ok((await db.query('select role, location_id from users where id = $1', [ahmed.id])).rows[0].role === 'staff', 'staff cannot make themselves owner (only their own PIN may change)');
-t = await tamper([{ t: 'expenses', k: 1, del: 1 }]);
-ok(!t.ok, 'staff cannot delete');
+t = await tamper([{ t: 'locations', k: WH, del: 1 }]);
+ok(!t.ok, 'staff cannot delete a place (only their own bills, purchases, transfers and expenses): ' + t.error);
 ok(await cloudStock(S1, km.id) === 7, 'cloud stock unchanged by refused changes');
 
 // ---------- Only the owner creates shops, warehouses, people and computers ----------

@@ -652,3 +652,30 @@ h3 > svg { width: 20px; height: 20px; vertical-align: -4px; margin-right: 4px; c
 .more-list a.demo-toggle { border-top: 1px solid var(--line); margin-top: 4px; }
 @media (max-width: 700px) { .demo-strip .ds-more { display: none; } }
 @media print { .demo-strip { display: none !important; } }
+
+/* ---------- More → Delete ---------- */
+.del-card { display: flex; gap: 16px; align-items: flex-start; }
+.del-num { width: 34px; height: 34px; border-radius: 50%; background: #fdecec; color: var(--danger); font-weight: 800; display: grid; place-items: center; flex: none; }
+.del-list { margin: 6px 0 10px; padding-left: 20px; max-height: 260px; overflow: auto; }
+.clear-kinds { display: grid; gap: 6px; }
+/* select mode: a tick box in front of every row, and the red bar at the bottom */
+.del-sel { width: 34px; text-align: center; }
+.del-sel input { width: 18px; height: 18px; cursor: pointer; accent-color: var(--danger); }
+tr.del-on > td { background: #fdecec !important; }
+.selecting td.sel, .selecting th.sel { display: none; }
+.selecting .main { padding-bottom: 90px; }
+#selBar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 80; background: #b91c1c; color: #fff; box-shadow: 0 -6px 20px rgba(0,0,0,.18); }
+#selBar .sel-in { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; max-width: 1500px; margin: 0 auto; padding: 10px 20px; }
+#selBar .sel-where { display: flex; gap: 4px; flex-wrap: wrap; }
+#selBar .sel-where a { color: #fff; padding: 4px 10px; border-radius: 8px; background: rgba(255,255,255,.14); font-size: 14px; }
+#selBar .sel-where a.on { background: #fff; color: #b91c1c; font-weight: 700; }
+#selBar .btn { background: #fff; color: #b91c1c; border-color: #fff; }
+#selBar .btn.danger.solid { background: #3a0a0a; color: #fff; border-color: #3a0a0a; }
+#selBar .btn[disabled] { opacity: .5; }
+@media print { #selBar { display: none !important; } }
+
+/* Sale order: amount actually received and order date */
+.fin-note b { color: var(--accent); font-size: 14px; }
+#dateRow input { width: 160px; }
+#dateRow.old-date { background: #fff4e0; border-radius: 10px; padding: 4px 8px; margin: 2px -8px; }
+#dateRow.old-date span::after { content: ' (earlier day)'; color: #b45309; font-size: 12.5px; }

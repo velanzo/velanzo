@@ -37,9 +37,11 @@ const Backup = (() => {
     return ask ? (await h.requestPermission(o)) === 'granted' : false;
   }
 
-  async function makeFile() {
+  // tag: a copy made for a reason (e.g. 'before-delete'): its own name with the time, never removed by the 30-day clean-up
+  async function makeFile(tag) {
     const b = await Engine.system('backupData');
     const slug = String(b.place || 'velanzo').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'velanzo';
+    if (tag) { const d = new Date(); return { name: `velanzo-${tag}-${slug}-${dayOf(d)}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.json`, json: b.json, tagged: true }; }
     return { name: `velanzo-backup-${slug}-${dayOf()}.json`, json: b.json, prefix: `velanzo-backup-${slug}-` };
   }
 
@@ -50,12 +52,13 @@ const Backup = (() => {
   }
 
   // Writes today's file into the folder and removes this computer's files older than 30 days.
-  async function writeTo(h) {
-    const f = await makeFile();
+  async function writeTo(h, tag) {
+    const f = await makeFile(tag);
     const fh = await h.getFileHandle(f.name, { create: true });
     const w = await fh.createWritable();
     await w.write(f.json);
     await w.close();
+    if (f.tagged) return f.name;
     const cutoff = dayOf(new Date(Date.now() - KEEP_DAYS * 86400000));
     try {
       for await (const [n, e] of h.entries()) {
@@ -117,19 +120,19 @@ const Backup = (() => {
     forgetFolder: () => saveFolder(null),
 
     // "Back up now": into the folder if there is one, otherwise a download.
-    async now() {
+    async now({ tag = '' } = {}) {
       const h = supported ? await folder() : null;
       if (h) {
-        if (!(await allowed(h, true))) throw new Error('The folder was not allowed. Choose the folder again.');
-        return { name: await writeTo(h), folder: h.name };
+        if (!(await allowed(h, true))) throw new Error('The backup folder was not allowed. Choose the folder again (Settings → Backup).');
+        return { name: await writeTo(h, tag), folder: h.name };
       }
-      const f = await makeFile();
+      const f = await makeFile(tag);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([f.json], { type: 'application/json' }));
       a.download = f.name;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-      remember(f.name);
+      if (!tag) remember(f.name);
       return { name: f.name, folder: null };
     },
   };

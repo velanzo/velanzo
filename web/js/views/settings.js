@@ -305,7 +305,7 @@ const SETTINGS_RENDER = {
       <div class="card"><h3>Import items from Excel</h3>
         <p class="muted" style="margin-top:0">Add many items (and their current stock) at once — useful when starting.</p>
         <button class="btn" id="impBtn">${icon('upload')} Import items…</button></div>
-      <div class="card" id="manageCard"><h3>Manage data</h3><div id="mdBody" class="loading">Loading…</div></div>`;
+      <div class="card" id="manageCard"><h3>Delete data</h3><p class="muted" style="margin:0">Deleting all, some or selected data is in <b>More → Delete</b>. <a href="#/delete">Open it</a></p></div>`;
     const refreshRange = () => {
       $$('[data-preset]', el).forEach((b) => { const [, f, t] = rangePresets()[b.dataset.preset]; b.classList.toggle('on', st.from === f && st.to === t); });
       $('[data-range=from]', el).value = st.from; $('[data-range=to]', el).value = st.to;
@@ -340,7 +340,6 @@ const SETTINGS_RENDER = {
       });
     });
     dailyBackupCard($('#dailyCard', el));
-    manageData(el, cloud).catch((e) => { const b = $('#mdBody', el); if (b) b.textContent = e.message; });
   },
 };
 

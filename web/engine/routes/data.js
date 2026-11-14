@@ -82,15 +82,19 @@ export function dataSummary() {
     movements: one('SELECT COUNT(*) AS n, MIN(substr(created_at, 1, 10)) AS first, MAX(substr(created_at, 1, 10)) AS last FROM movements'),
     products: one('SELECT COUNT(*) AS n FROM products'),
     suppliers: one('SELECT COUNT(*) AS n FROM suppliers'),
+    customers: one('SELECT COUNT(*) AS n FROM customers'),
   };
 }
 
-const CLEAR_KINDS = ['sales', 'purchases', 'dispatches', 'expenses', 'history'];
+const CLEAR_KINDS = ['sales', 'purchases', 'dispatches', 'expenses', 'history', 'stock', 'products', 'suppliers', 'customers'];
 
 // Works out what would be left after clearing: { removed: counts, data: a backup of what stays }.
 // The page then restores that data everywhere, the same way as restoring a backup. Nothing is changed here.
-//   what        which kinds: sales (bills), purchases (and supplier payments), dispatches (stock sent), expenses, history (stock log)
-//   from / to   only things dated in this range (empty = no limit)
+//   what        which kinds: sales (bills), purchases (and supplier payments), dispatches (stock sent), expenses, history (stock log),
+//               stock (every count to 0, with its history), products (items and barcodes not on any bill, purchase or transfer
+//               that stays), suppliers / customers (those that nothing left points at)
+//               A deleted bill, purchase or transfer takes its stock changes with it, as if it never happened.
+//   from / to   only things dated in this range (empty = no limit); items, suppliers, customers and stock have no dates
 //   everything  start fresh: all of the above plus stock counts, items and suppliers (places, people and settings stay)
 export function clearPlan({ what = [], from = '', to = '', everything = false } = {}) {
   const data = exportData();
@@ -117,17 +121,36 @@ export function clearPlan({ what = [], from = '', to = '', everything = false } 
   if (to && !isDate(to)) fail(400, 'The end date is not a valid date');
   if (!what.length) fail(400, 'Choose what to clear');
 
+  // The stock changes of deleted bills, purchases and transfers go with them: the counts become what they would have been.
+  const undoStock = (refType, ids) => {
+    if (!ids.size) return;
+    const diff = new Map();
+    const keep = [];
+    for (const m of t.movements) {
+      if (m.ref_type === refType && ids.has(m.ref_id)) { const k = m.product_id + ':' + m.location_id; diff.set(k, (diff.get(k) || 0) + m.qty); } else keep.push(m);
+    }
+    removed.movements = (removed.movements || 0) + (t.movements.length - keep.length);
+    t.movements = keep;
+    for (const st of t.stock) { const d = diff.get(st.product_id + ':' + st.location_id); if (d) st.qty -= d; }
+  };
+
   if (what.includes('sales')) {
     const gone = drop('sales', (r) => inRange(r.created_at));
     dropChildren('sale_items', 'sale_id', gone);
     dropChildren('customer_payments', 'sale_id', gone); // (payments for those bills go with them)
+    undoStock('sale', gone);
   }
   if (what.includes('purchases')) {
-    dropChildren('purchase_items', 'purchase_id', drop('purchases', (r) => inRange(r.date)));
+    const gone = drop('purchases', (r) => inRange(r.date));
+    dropChildren('purchase_items', 'purchase_id', gone);
     drop('supplier_payments', (r) => inRange(r.date));
+    undoStock('purchase', gone);
   }
-  // parcels still on the way are kept: their stock has left the sender and not arrived yet
-  if (what.includes('dispatches')) dropChildren('dispatch_items', 'dispatch_id', drop('dispatches', (r) => r.status !== 'in_transit' && inRange(r.created_at)));
+  if (what.includes('dispatches')) {
+    const gone = drop('dispatches', (r) => inRange(r.created_at));
+    dropChildren('dispatch_items', 'dispatch_id', gone);
+    undoStock('dispatch', gone);
+  }
   if (what.includes('expenses')) drop('expenses', (r) => inRange(r.date));
   if (what.includes('history')) {
     drop('movements', (r) => inRange(r.created_at));
@@ -136,14 +159,41 @@ export function clearPlan({ what = [], from = '', to = '', everything = false } 
     for (const m of t.movements) { const k = m.product_id + ':' + m.location_id; sums.set(k, (sums.get(k) || 0) + m.qty); }
     const stamp = now();
     let carried = 0;
-    for (const s of t.stock) {
-      const diff = s.qty - (sums.get(s.product_id + ':' + s.location_id) || 0);
+    for (const st of t.stock) {
+      const diff = st.qty - (sums.get(st.product_id + ':' + st.location_id) || 0);
       if (!diff) continue;
-      t.movements.push({ id: D.newId(), product_id: s.product_id, location_id: s.location_id, qty: diff, type: 'opening', ref_type: null, ref_id: null,
+      t.movements.push({ id: D.newId(), product_id: st.product_id, location_id: st.location_id, qty: diff, type: 'opening', ref_type: null, ref_id: null,
         note: 'Balance carried forward (older history cleared)', user_id: null, created_at: stamp });
       carried++;
     }
     removed.carried_forward = carried;
+  }
+  if (what.includes('stock')) {
+    removed.stock = t.stock.filter((x) => x.qty).length;
+    removed.movements = (removed.movements || 0) + t.movements.length;
+    t.stock = []; t.movements = [];
+  }
+  // Items, suppliers and customers: only those that nothing left points at (the rest are skipped and counted).
+  if (what.includes('products')) {
+    const used = new Set([...t.sale_items, ...t.purchase_items, ...t.dispatch_items].map((r) => r.product_id));
+    removed.products_skipped = t.products.filter((r) => used.has(r.id)).length;
+    const gone = drop('products', (r) => !used.has(r.id));
+    if (gone.size) {
+      t.stock = t.stock.filter((x) => !gone.has(x.product_id));
+      const before = t.movements.length;
+      t.movements = t.movements.filter((m) => !gone.has(m.product_id));
+      removed.movements = (removed.movements || 0) + before - t.movements.length;
+    }
+  }
+  if (what.includes('suppliers')) {
+    const used = new Set([...t.purchases, ...t.supplier_payments].map((r) => r.supplier_id));
+    removed.suppliers_skipped = t.suppliers.filter((r) => used.has(r.id)).length;
+    drop('suppliers', (r) => !used.has(r.id));
+  }
+  if (what.includes('customers')) {
+    const used = new Set([...t.sales, ...t.customer_payments].map((r) => r.customer_id));
+    removed.customers_skipped = t.customers.filter((r) => used.has(r.id)).length;
+    drop('customers', (r) => !used.has(r.id));
   }
   return { removed, data, everything: false };
 }

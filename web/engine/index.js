@@ -14,6 +14,7 @@ import './routes/data.js';
 import './routes/activity.js';
 import './routes/reports.js';
 import './routes/vouchers.js';
+import './routes/delete.js';
 import './checks.js';
 
 // demo: this is the separate demo book (Demo mode), never the real data.

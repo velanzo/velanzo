@@ -305,6 +305,10 @@ const MIGRATIONS = [
   ${outboxTriggers('customers')}
   ${outboxTriggers('customer_payments')}
   `,
+  // "Amount actually received": the bill total rounded up or down by the shop (999 → 1,000). total already includes it.
+  `
+  ALTER TABLE sales ADD COLUMN round_off REAL NOT NULL DEFAULT 0;
+  `,
 ];
 export const SCHEMA_VERSION = MIGRATIONS.length;
 

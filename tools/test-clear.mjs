@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import * as E from '../web/engine/index.js';
 import { nodeAdapter } from '../web/engine/node-adapter.js';
 import * as D from '../web/engine/db.js';
-import { clearPlan, dataSummary, importData } from '../web/engine/routes/data.js';
+import { clearPlan, dataSummary, importData, exportData } from '../web/engine/routes/data.js';
 
 E.init(nodeAdapter());
 const call = async (method, path, body, query) => {
@@ -35,7 +35,7 @@ day(10);
 const d2 = await call('POST', '/api/dispatches', { from_location_id: WH, to_location_id: S1, items: [{ product_id: a.id, qty: 5 }] }); // still on the way
 
 const stockOf = (t) => JSON.stringify([...t.stock].sort((x, y) => x.product_id - y.product_id || x.location_id - y.location_id));
-const full = clearPlan({ what: ['sales'] }); // (only to read the untouched data)
+const full = { data: exportData() }; // the untouched data
 const before = full.data.tables;
 const sum = dataSummary();
 ok(sum.sales.n === 4 && sum.sales.first === '2026-10-03' && sum.sales.last === '2026-10-12', 'summary: 4 bills from 3 to 12 Oct');
@@ -45,7 +45,9 @@ ok(sum.dispatches.n === 2 && sum.expenses.n === 2 && sum.products.n === 2, 'summ
 let p = clearPlan({ what: ['sales'], to: '2026-10-06' });
 ok(p.removed.sales === 2 && p.removed.sale_items === 4 && p.data.tables.sales.length === 2, 'bills up to 6 Oct: 2 bills and their 4 lines removed');
 ok(p.data.tables.sale_items.every((i) => p.data.tables.sales.some((s) => s.id === i.sale_id)), 'no orphan bill lines');
-ok(stockOf(p.data.tables) === stockOf(before), 'stock counts unchanged');
+const qtyIn = (tables, pid, loc) => tables.stock.find((x) => x.product_id === pid && x.location_id === loc)?.qty ?? 0;
+ok(qtyIn(p.data.tables, a.id, S1) === qtyIn(before, a.id, S1) + 4 && qtyIn(p.data.tables, b.id, S1) === qtyIn(before, b.id, S1) + 2, 'the deleted bills\' pieces are back in stock, as if they were never sold');
+ok(!p.data.tables.movements.some((m) => m.ref_type === 'sale' && !p.data.tables.sales.some((x) => x.id === m.ref_id)), 'their stock history lines went with them');
 ok(p.data.tables.purchases.length === 1 && p.data.tables.expenses.length === 2, 'nothing else touched');
 
 // ---- bills between two dates ----
@@ -56,9 +58,23 @@ ok(p.removed.sales === 2 && p.data.tables.sales.map((s) => s.created_at.slice(8,
 p = clearPlan({ what: ['expenses', 'purchases'], to: '2026-10-04' });
 ok(p.removed.expenses === 1 && p.removed.purchases === 1 && p.removed.supplier_payments === 0, 'expenses and purchases up to 4 Oct');
 
-// ---- parcels: the one still on the way is kept ----
+// ---- transfers: all go, and their stock goes back to the warehouse ----
 p = clearPlan({ what: ['dispatches'] });
-ok(p.removed.dispatches === 1 && p.data.tables.dispatches.length === 1 && p.data.tables.dispatches[0].id === d2.id && p.data.tables.dispatch_items.length === 1, 'parcels: received ones removed, the one on the way is kept');
+ok(p.removed.dispatches === 2 && p.data.tables.dispatches.length === 0 && p.data.tables.dispatch_items.length === 0, 'transfers: received and on the way removed');
+ok(qtyIn(p.data.tables, a.id, WH) === qtyIn(before, a.id, WH) + 25 && qtyIn(p.data.tables, a.id, S1) === qtyIn(before, a.id, S1) - 20, 'their pieces are back at the warehouse and gone from the shop');
+const adds = (tb) => { const m = new Map(); for (const x of tb.movements) m.set(x.product_id + ':' + x.location_id, (m.get(x.product_id + ':' + x.location_id) || 0) + x.qty); return tb.stock.every((x) => (m.get(x.product_id + ':' + x.location_id) || 0) === x.qty); };
+ok(adds(p.data.tables), 'stock history still adds up to every count');
+
+// ---- items, suppliers, customers: only the unused ones ----
+const spare = await call('POST', '/api/products', { name: 'Spare', sale_price: 10, variants: [{}] });
+await call('POST', '/api/suppliers', { name: 'Nobody' });
+p = clearPlan({ what: ['products', 'suppliers'] });
+ok(p.removed.products === 1 && p.removed.products_skipped === 2 && !p.data.tables.products.some((x) => x.id === spare[0].id), 'items: only the unused one is deleted, 2 used ones skipped');
+ok(p.removed.suppliers === 1 && p.removed.suppliers_skipped === 1, 'suppliers: only the one without purchases');
+p = clearPlan({ what: ['sales', 'purchases', 'dispatches', 'products'] });
+ok(p.removed.products === 3 && p.data.tables.products.length === 0 && p.data.tables.stock.length === 0, 'with their bills, purchases and transfers gone, all items can go');
+p = clearPlan({ what: ['stock'] });
+ok(p.data.tables.stock.length === 0 && p.data.tables.movements.length === 0 && p.data.tables.sales.length === 4, 'stock counts: all to 0 with their history; bills stay');
 
 // ---- stock history: counts stay, history adds up ----
 p = clearPlan({ what: ['history'], to: '2026-10-08' });
@@ -69,6 +85,7 @@ ok(t.stock.every((s) => (sums.get(s.product_id + ':' + s.location_id) || 0) === 
 ok(stockOf(t) === stockOf(before) && p.removed.carried_forward > 0 && t.movements.length < before.movements.length, 'stock counts unchanged; older history replaced by balance lines');
 
 // ---- restoring the kept data really leaves exactly that ----
+p = clearPlan({ what: ['history'], to: '2026-10-08' });
 const stock0 = D.stockQty(a.id, S1);
 importData(p.data, { capture: false });
 ok(D.stockQty(a.id, S1) === stock0, 'after restoring: stock count unchanged');

@@ -8,7 +8,8 @@ View('pos', {
   async render({ el }) {
     const cartKey = `vz_cart_${App.user.id}`;
     const canEditPrice = can('change_price');
-    const blank = () => ({ items: [], ret: false, discount: '', discType: 'amt', voucher: null, method: 'cash', paid: '', cname: '', cphone: '' });
+    // final: the amount actually received for the bill (empty = the total); date: the order date (empty = today)
+    const blank = () => ({ items: [], ret: false, discount: '', discType: 'amt', voucher: null, method: 'cash', paid: '', final: '', date: '', cname: '', cphone: '' });
     let S;
     try { S = { ...blank(), ...JSON.parse(localStorage.getItem(cartKey) || 'null') }; } catch { S = blank(); }
     const save = () => { try { localStorage.setItem(cartKey, JSON.stringify(S)); } catch { /* storage off */ } };
@@ -54,6 +55,11 @@ View('pos', {
           <div class="sum-row"><span>Cash received</span><input class="input num cash-in" id="paid" inputmode="decimal" placeholder="Exact" value="${esc(S.paid)}"></div>
           <div class="sum-row change-row" id="changeRow"><span id="chgLabel">Change</span><b id="sChange">—</b></div>
         </div>
+        <div id="finBox">
+          <div class="sum-row"><span>Amount actually received</span><input class="input num cash-in" id="final" inputmode="decimal" placeholder="Same as total" value="${esc(S.final)}"></div>
+          <div class="sum-row fin-note hidden" id="finNote"><span>Round off</span><b id="sRound"></b></div>
+        </div>
+        <div class="sum-row" id="dateRow"><span>Order date</span><input class="input" type="date" id="odate" max="${todayStr()}" value="${esc(S.date || todayStr())}"></div>
         <div id="custBox" class="hidden">
           <input class="input" id="cname" placeholder="Customer name" value="${esc(S.cname)}">
           <input class="input" id="cphone" placeholder="Phone number" value="${esc(S.cphone)}"></div>
@@ -71,10 +77,13 @@ View('pos', {
 
     function totals() {
       const b = billMath(S);
-      const { total } = b;
+      // the amount actually received replaces the total (999 paid as 1,000: +1 round off)
+      const fin = S.final !== '' && b.total > 0 && Number.isFinite(Number(S.final)) && Number(S.final) >= 0 ? round2(Number(S.final)) : null;
+      const roundOff = fin === null ? 0 : round2(fin - b.total);
+      const total = fin === null ? b.total : fin;
       const cashGiven = S.method === 'cash' && S.paid !== '' ? Number(S.paid) : null;
       const change = cashGiven !== null && total > 0 ? round2(cashGiven - total) : null;
-      return { ...b, cashGiven, change, off: round2(b.itemOff + b.disc + b.voucher), count: S.items.reduce((a, l) => a + (l.ret ? 0 : l.qty), 0), retCount: S.items.reduce((a, l) => a + (l.ret ? l.qty : 0), 0) };
+      return { ...b, billTotal: b.total, total, fin, roundOff, cashGiven, change, off: round2(b.itemOff + b.disc + b.voucher), count: S.items.reduce((a, l) => a + (l.ret ? 0 : l.qty), 0), retCount: S.items.reduce((a, l) => a + (l.ret ? l.qty : 0), 0) };
     }
 
     function renderTotals() {
@@ -91,6 +100,10 @@ View('pos', {
       $$('#discType button', el).forEach((b) => b.classList.toggle('on', b.dataset.t === S.discType));
       $$('#methods button', el).forEach((b) => b.classList.toggle('on', b.dataset.m === S.method));
       $('#cashBox', el).classList.toggle('hidden', S.method !== 'cash' || t.total <= 0);
+      $('#finBox', el).classList.toggle('hidden', t.billTotal <= 0);
+      $('#finNote', el).classList.toggle('hidden', !t.roundOff);
+      $('#sRound', el).textContent = t.roundOff ? `${t.roundOff > 0 ? '+' : '−'} ${money(Math.abs(t.roundOff))} (bill ${money(t.billTotal)})` : '';
+      $('#dateRow', el).classList.toggle('old-date', !!S.date && S.date !== todayStr());
       $('#laterBtn', el)?.classList.toggle('hidden', t.total <= 0);
       const row = $('#changeRow', el);
       if (t.change === null) { $('#sChange', el).textContent = '—'; row.classList.remove('short'); $('#chgLabel', el).textContent = 'Change'; }
@@ -181,6 +194,15 @@ View('pos', {
     $('#methods', el).addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) { S.method = b.dataset.m; renderTotals(); save(); } });
     $('#paid', el).addEventListener('input', (e) => { S.paid = e.target.value.trim(); renderTotals(); save(); });
     $('#paid', el).addEventListener('keydown', (e) => { if (e.key === 'Enter') complete(); });
+    $('#final', el).addEventListener('input', (e) => { S.final = e.target.value.trim(); renderTotals(); save(); });
+    $('#final', el).addEventListener('keydown', (e) => { if (e.key === 'Enter') complete(); });
+    $('#odate', el).addEventListener('change', (e) => {
+      const v = e.target.value;
+      if (v && v > todayStr()) { e.target.value = todayStr(); return toast('The order date cannot be in the future', 'error'); }
+      S.date = !v || v === todayStr() ? '' : v;
+      if (!v) e.target.value = todayStr();
+      renderTotals(); save();
+    });
     $('#cname', el).addEventListener('input', (e) => { S.cname = e.target.value; save(); });
     $('#cphone', el).addEventListener('input', (e) => { S.cphone = e.target.value; save(); });
     const toggleRet = () => { if (!canReturn) return; S.ret = !S.ret; renderTotals(); save(); focusScan(); };
@@ -210,7 +232,7 @@ View('pos', {
     // Hold: park this bill (the customer went to try something on), serve the next one, open it again later.
     const heldHere = () => HeldBills.all().filter((h) => h.loc === locId);
     const paintHeld = () => { const n = heldHere().length; $('#heldN', el).textContent = n; $('#heldBtn', el).classList.toggle('hidden', !n); };
-    const setInputs = () => { el.querySelector('#disc').value = S.discount || ''; el.querySelector('#paid').value = S.paid || ''; el.querySelector('#cname').value = S.cname || ''; el.querySelector('#cphone').value = S.cphone || ''; };
+    const setInputs = () => { el.querySelector('#disc').value = S.discount || ''; el.querySelector('#paid').value = S.paid || ''; el.querySelector('#final').value = S.final || ''; el.querySelector('#odate').value = S.date || todayStr(); el.querySelector('#cname').value = S.cname || ''; el.querySelector('#cphone').value = S.cphone || ''; };
     const holdCurrent = () => { HeldBills.add(locId, S); S = blank(); setInputs(); renderCart(); paintHeld(); };
     const openHeld = (id) => {
       const h = HeldBills.take(id);
@@ -254,7 +276,7 @@ View('pos', {
     $('#clearBtn', el).addEventListener('click', async (e) => {
       e.preventDefault();
       if (S.items.length && !(await confirmBox('Remove all items from this bill?', { ok: 'Clear bill', danger: true }))) return;
-      S = blank(); el.querySelector('#vcode').value = ''; el.querySelector('#disc').value = ''; el.querySelector('#paid').value = ''; el.querySelector('#cname').value = ''; el.querySelector('#cphone').value = '';
+      S = blank(); el.querySelector('#vcode').value = ''; el.querySelector('#disc').value = ''; el.querySelector('#paid').value = ''; el.querySelector('#final').value = ''; el.querySelector('#odate').value = todayStr(); el.querySelector('#cname').value = ''; el.querySelector('#cphone').value = '';
       renderCart(); focusScan();
     });
     if (isAdmin()) {
@@ -274,6 +296,8 @@ View('pos', {
       if (!S.items.length) { toast('The bill is empty — scan an item first', 'error'); return focusScan(); }
       const t = totals();
       if (S.voucher && t.voucherNote) { toast(`The voucher can't be used: ${t.voucherNote}`, 'error', 6000); return; }
+      if (S.final !== '' && t.billTotal > 0 && t.fin === null) { toast('The amount actually received is not a valid amount', 'error'); return $('#final', el).focus(); }
+      if (t.roundOff < 0 && !can('discount')) { toast('Taking less than the total counts as a discount, which is switched off for you', 'error'); return $('#final', el).focus(); }
       if (!credit && t.cashGiven !== null && t.total > 0 && t.cashGiven < t.total) { toast(`Cash received is less than the total (${money(t.total)})`, 'error'); return $('#paid', el).focus(); }
       completing = true;
       const btn = $(credit ? '#laterBtn' : '#doneBtn', el);
@@ -284,6 +308,8 @@ View('pos', {
         voucher: S.voucher ? S.voucher.code : '',
         payment_method: credit ? credit.method : S.method,
         paid: credit ? credit.paid : t.cashGiven ?? '',
+        final_amount: t.fin ?? '',
+        date: S.date && S.date !== todayStr() ? S.date : '',
         customer_name: S.cname,
         customer_phone: S.cphone,
         ...(credit ? { credit: true, customer_id: credit.customer.id } : {}),
@@ -294,7 +320,8 @@ View('pos', {
       if (!sale) return;
       for (const i of sale.items) { const p = ProductCache.list.find((x) => x.id === i.product_id); if (p) p.loc_qty -= i.qty; }
       S = blank();
-      ['#disc', '#vcode', '#paid', '#cname', '#cphone'].forEach((s) => { el.querySelector(s).value = ''; });
+      ['#disc', '#vcode', '#paid', '#final', '#cname', '#cphone'].forEach((s) => { el.querySelector(s).value = ''; });
+      el.querySelector('#odate').value = todayStr();
       renderCart();
       if (App.settings.auto_print_bill === '1' && !App.practice) printBill(sale); // (no printing while practising)
       const m = modal({
@@ -323,7 +350,7 @@ View('pos', {
       const m = modal({
         title: 'Confirm — pays later',
         body: `<p style="margin-top:0">Bill for <b>${esc(customer.name)}</b>: <b>${money(t.total)}</b>.<br>
-          <span class="muted small">The pieces leave stock now and the sale counts today. What is not paid now stays owed by ${esc(customer.name)}.</span></p>
+          <span class="muted small">The pieces leave stock now and the sale counts ${S.date && S.date !== todayStr() ? 'on ' + esc(fmtDate(S.date)) : 'today'}. What is not paid now stays owed by ${esc(customer.name)}.</span></p>
           <div class="form-grid">
             <label class="field">Paid now<input class="input num big" id="lPaid" inputmode="decimal" value="0" autofocus></label>
             <label class="field">Paid by<select class="input" id="lMethod">${options([['cash', 'Cash'], ['card', 'Card'], ['online', 'Online']], S.method)}</select></label></div>

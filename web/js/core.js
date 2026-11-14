@@ -335,6 +335,7 @@ const ICONS = {
   cloud: '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
   check: '<polyline points="20 6 9 17 4 12"/>',
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>',
   play: '<circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>',
   arrow: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
 };
@@ -360,6 +361,7 @@ const NAV = [
   { href: 'reports', label: 'Reports', icon: 'chart', show: () => isAdmin() || (can('reports') && can('see_cost')) },
   { href: 'activity', label: 'Activity', icon: 'activity', show: () => isAdmin() },
   { href: 'training', label: 'Training', icon: 'help', show: () => true },
+  { href: 'delete', label: 'Delete', icon: 'trash', show: () => true },
 ];
 // When there are many, these stay on the bar and the rest go under "More".
 // The first six stay on the bar (a seventh too on a wide screen); the rest go under "More".
@@ -368,7 +370,7 @@ const homeFor = () => (isAdmin() ? 'dashboard' : can('sell') ? 'pos' : 'home');
 
 function navHtml() {
   const visible = NAV.filter((n) => n.show());
-  const base = visible.filter((n) => n.href !== 'training'); // Training always lives under More
+  const base = visible.filter((n) => n.href !== 'training' && n.href !== 'delete'); // Training and Delete always live under More
   const mainList = MAIN_TABS[isAdmin() ? 'owner' : 'staff'];
   const wide = base.length <= 6 ? base : base.filter((n) => mainList.includes(n.href)).slice(0, 7);
   const main = wide.slice(0, 6);

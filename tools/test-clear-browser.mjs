@@ -64,20 +64,20 @@ try {
   const cloudBefore = await cloud();
   ok(cloudBefore.sales > 10 && shopBefore > 5, `start: ${cloudBefore.sales} bills in the cloud, ${shopBefore} on the shop computer`);
 
-  // the owner opens Settings → Backup & data
-  await o.run(`window.alert = () => {}; location.hash = '#/settings/backup'; await until(() => document.querySelector('#clSome'));`);
-  const table = await o.run(`return document.querySelector('#mdBody').innerText;`);
-  ok(/Bills/.test(table) && /Items/.test(table), 'Manage data shows what is stored');
+  // the owner opens More → Delete
+  await o.run(`window.alert = () => {}; location.hash = '#/delete'; await until(() => document.querySelector('#clSome'));`);
+  ok(await o.run(`return document.querySelectorAll('.del-card').length === 3 && /Bills/.test(document.querySelector('.clear-kinds').innerText);`), 'More → Delete shows the three ways to delete');
+  // (the confirm box: the Delete button only works after 5 seconds)
+  const confirmDelete = `await until(() => document.querySelector('#dcGo')); const go = document.querySelector('#dcGo');
+    if (!go.disabled) throw new Error('the Delete button worked before 5 seconds'); await until(() => !go.disabled, 9000); click('#dcGo');`;
 
   // ---- clear bills older than a week (by date) ----
   const cutoff = await o.run(`const d = new Date(); d.setDate(d.getDate() - 7); return ymd(d);`);
-  await o.run(`document.querySelector('[data-kind=sales]').click(); set('#clTo', ${JSON.stringify(cutoff)}); click('#clSome');
-    await until(() => document.querySelector('#cOk')); click('#cOk');
-    await until(() => document.querySelector('#pIn')); set('#pIn', 'CLEAR'); click('#pOk');`);
+  await o.run(`document.querySelector('[data-kind=sales]').click(); set('#clTo', ${JSON.stringify(cutoff)}); click('#clSome'); ${confirmDelete}`);
   await settle();
   const c1 = await cloud();
   ok(c1.sales < cloudBefore.sales && c1.sales > 0, `cloud: bills before ${cutoff} are gone (${cloudBefore.sales} → ${c1.sales}), newer ones stay`);
-  ok(c1.products === cloudBefore.products && c1.stock === cloudBefore.stock, 'items and stock counts are untouched');
+  ok(c1.products === cloudBefore.products, 'items are untouched (the pieces of the deleted bills went back into stock)');
   await s.run('await Cloud.syncNow(); await sleep(500); await Cloud.syncNow();');
   const shopMid = await shopBills();
   ok(shopMid < shopBefore, `the shop computer followed (${shopBefore} → ${shopMid} bills)`);
@@ -85,9 +85,7 @@ try {
   // ---- clear everything ----
   // (Velanzo reloaded itself after the first clearing, so it asks for the passcode again)
   await o.run(`await until(() => document.querySelector('.pin-pad')); for (const d of ${JSON.stringify(demo.owner_pin)}) click('.pin-pad [data-k="' + d + '"]'); await until(() => document.querySelector('#shell')); await sleep(500);`);
-  await o.run(`window.alert = () => {}; location.hash = '#/settings/backup'; await until(() => document.querySelector('#clAll')); click('#clAll');
-    await until(() => document.querySelector('#cOk')); click('#cOk');
-    await until(() => document.querySelector('#pIn')); set('#pIn', 'clear'); click('#pOk');`);
+  await o.run(`window.alert = () => {}; location.hash = '#/delete'; await until(() => document.querySelector('#clAll')); click('#clAll'); ${confirmDelete}`);
   await settle();
   const c2 = await cloud();
   ok(!c2.sales && !c2.products && !c2.purchases && !c2.movements && !c2.suppliers && !c2.expenses, 'cloud: all business data cleared');

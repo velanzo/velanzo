@@ -85,7 +85,26 @@ route('POST', '/api/sales', 'sell', ({ body, user }) => tx(() => {
     if (!r.ok) fail(400, r.reason);
     voucher = r.amount; voucherCode = r.code;
   }
-  const total = round2(subtotal - discount - voucher);
+  let total = round2(subtotal - discount - voucher);
+  // "Amount actually received": what the customer really paid for the bill (e.g. 1,000 for a bill of 999, no change
+  // given back). The difference is kept as a round off: more is extra money, less counts like a discount.
+  let roundOff = 0;
+  if (body.final_amount !== undefined && body.final_amount !== null && body.final_amount !== '') {
+    const fin = toMoney(body.final_amount, NaN);
+    if (!Number.isFinite(fin) || fin < 0) fail(400, 'The amount actually received is not a valid amount');
+    if (total <= 0) fail(400, 'The amount actually received is only for a bill with something to pay');
+    roundOff = round2(fin - total);
+    if (roundOff < 0) needPerm(user, 'discount', 'Giving discounts');
+    total = fin;
+  }
+  // Order date: a sale made some days ago can be entered now and counts on that day (never a future day).
+  const day = today();
+  let when = now();
+  if (body.date && body.date !== day) {
+    if (!isDate(body.date)) fail(400, 'The order date is not a valid date');
+    if (body.date > day) fail(400, 'The order date cannot be in the future');
+    when = `${body.date} ${when.slice(11)}`;
+  }
   const method = METHODS.includes(body.payment_method) ? body.payment_method : 'cash';
   // the customer this bill belongs to (needed when it is not paid in full now)
   const customer = toInt(body.customer_id) ? get('SELECT * FROM customers WHERE id = ?', toInt(body.customer_id)) || fail(400, 'Unknown customer') : null;
@@ -103,14 +122,16 @@ route('POST', '/api/sales', 'sell', ({ body, user }) => tx(() => {
   const billNo = D.deviceNo(`${loc.code}-`, 'bill');
   const id = D.newId();
   run(
-    `INSERT INTO sales(id, bill_no, location_id, customer_id, customer_name, customer_phone, subtotal, discount, voucher_code, voucher, total, paid, change_due, payment_method, items_qty, user_id, created_at)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sales(id, bill_no, location_id, customer_id, customer_name, customer_phone, subtotal, discount, voucher_code, voucher, round_off, total, paid, change_due, payment_method, items_qty, user_id, created_at)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     id, billNo, loc.id, customer ? customer.id : null, str(body.customer_name, 80) || (customer ? customer.name : ''), str(body.customer_phone, 40) || (customer ? customer.phone : ''),
-    subtotal, discount, voucherCode, voucher, total, paid, change, method, lines.reduce((a, l) => a + l.qty, 0), user.id, now());
+    subtotal, discount, voucherCode, voucher, roundOff, total, paid, change, method, lines.reduce((a, l) => a + l.qty, 0), user.id, when);
   for (const l of lines) {
     run('INSERT INTO sale_items(id, sale_id, product_id, qty, price, list_price, cost) VALUES(?, ?, ?, ?, ?, ?, ?)', D.newId(), id, l.p.id, l.qty, l.price, l.list, l.p.cost_price);
     D.moveStock(l.p.id, loc.id, -l.qty, l.qty > 0 ? 'sale' : 'return', 'sale', id, user.id, null);
   }
+  // an earlier order date: its stock changes are dated that day too
+  if (when.slice(0, 10) !== day) run("UPDATE movements SET created_at = ? WHERE ref_type = 'sale' AND ref_id = ?", when, id);
   return hideSaleCost(user, saleDetail(id));
 }));
 
