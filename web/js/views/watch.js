@@ -1,11 +1,11 @@
 'use strict';
 // The phone report for a "Reports only" person (and the owner, at #/watch/sales): two tabs.
 //   Sales: profit (sales, cost of goods, gross profit, expenses, net profit), cash in and out, and the expenses.
-//   Stock: every item with how many are at each place (search, low, out of stock).
+//   Stock: every item with how many are at each place (search, low, out of stock, place, category, items with 0).
 // Made for a phone: small type, one column, the period always at the top. Today is shown first.
 
 const WS = { kind: 'today', from: '', to: '', loc: '' }; // the period (kept when switching tabs)
-const WSTOCK = { q: '', filter: 'all', loc: '', shown: 60 };
+const WSTOCK = { q: '', filter: 'all', loc: '', category: '', zero: false, shown: 60 };
 
 const wMonthStart = (d) => d.slice(0, 8) + '01';
 function wSetKind(kind) {
@@ -103,11 +103,16 @@ View('watch/stock', {
   cls: 'watch',
   async render({ el }) {
     const places = App.locations.filter((l) => l.active);
+    const meta = await GET('/api/product-meta');
     const chips = [['all', 'All'], ['low', 'Low'], ['out', 'Out of stock']];
     el.innerHTML = `<div class="w-period">
         <input class="input w-search" id="wq" type="search" placeholder="Search item, size, colour, barcode" value="${esc(WSTOCK.q)}" autocomplete="off">
         <div class="w-seg">${chips.map(([k, l]) => `<button type="button" data-f="${k}" class="${WSTOCK.filter === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-        ${places.length > 1 ? `<select class="input w-loc" id="wsLoc">${options(places, WSTOCK.loc, { blank: 'All places' })}</select>` : ''}
+        <div class="w-two">
+          ${places.length > 1 ? `<select class="input w-loc" id="wsLoc">${options(places, WSTOCK.loc, { blank: 'All places' })}</select>` : ''}
+          <select class="input w-loc" id="wsCat">${options(meta.categories, WSTOCK.category, { blank: 'All categories' })}</select>
+        </div>
+        <label class="check w-check${WSTOCK.filter === 'all' ? '' : ' hidden'}" id="wsZeroL"><input type="checkbox" id="wsZero" ${WSTOCK.zero ? 'checked' : ''}> Include items with 0</label>
       </div><div id="wsSum"></div><div id="wsList"><div class="loading">Loading…</div></div>`;
     let rows = [], data = null;
     const paint = () => {
@@ -125,12 +130,12 @@ View('watch/stock', {
     };
     const load = async () => {
       const f = WSTOCK.filter;
-      try { data = await GET('/api/stock', { q: WSTOCK.q, location_id: WSTOCK.loc, low: f !== 'all' ? 1 : '' }); }
+      try { data = await GET('/api/stock', { q: WSTOCK.q, location_id: WSTOCK.loc, category: WSTOCK.category, low: f !== 'all' ? 1 : '', zero: f === 'all' && WSTOCK.zero ? 1 : '' }); }
       catch (e) { if (el.isConnected) $('#wsList', el).innerHTML = `<div class="w-card empty error">${esc(e.message)}</div>`; return; }
       if (!el.isConnected) return;
       rows = f === 'out' ? data.rows.filter((r) => r.total <= 0) : data.rows;
       const t = data.totals;
-      $('#wsSum', el).innerHTML = `<p class="w-sum"><b>${num(t.units)}</b> pieces · ${num(rows.length)} items${t.cost_value != null ? ` · value at cost <b>${wMoney(t.cost_value)}</b>` : ''}</p>`;
+      $('#wsSum', el).innerHTML = `<p class="w-sum"><b>${num(t.units)}</b> pieces · ${num(rows.length)} items${t.cost_value != null ? ` · cost <b>${wMoney(t.cost_value)}</b>` : ''} · sale <b>${wMoney(t.sale_value)}</b></p>`;
       paint();
     };
     let timer;
@@ -138,9 +143,12 @@ View('watch/stock', {
     $$('[data-f]', el).forEach((b) => b.addEventListener('click', () => {
       WSTOCK.filter = b.dataset.f; WSTOCK.shown = 60;
       $$('[data-f]', el).forEach((x) => x.classList.toggle('on', x === b));
+      $('#wsZeroL', el).classList.toggle('hidden', WSTOCK.filter !== 'all');
       load();
     }));
     $('#wsLoc', el)?.addEventListener('change', (e) => { WSTOCK.loc = e.target.value; WSTOCK.shown = 60; load(); });
+    $('#wsCat', el).addEventListener('change', (e) => { WSTOCK.category = e.target.value; WSTOCK.shown = 60; load(); });
+    $('#wsZero', el).addEventListener('change', (e) => { WSTOCK.zero = e.target.checked; WSTOCK.shown = 60; load(); });
     await load();
   },
 });
