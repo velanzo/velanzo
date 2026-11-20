@@ -41,6 +41,9 @@ function permSwitchesHtml(selected, { allowed = null } = {}) {
         <span>${esc(label)}${off ? ' <small class="muted">(off for this place)</small>' : ''}</span></label>`;
     }).join('')}</div>`).join('');
 }
+// "Reports only" (see isReporter in core.js): only these two switches on
+const REPORT_PERMS = ['reports', 'see_cost'];
+const isReportsOnly = (u) => !!u?.perms && Object.keys(u.perms).filter((k) => u.perms[k]).sort().join() === 'reports,see_cost';
 const readSwitches = (root) => $$('[data-perm]', root).filter((c) => c.checked && !c.disabled).map((c) => c.dataset.perm);
 const permLabel = (k) => (App.permsCatalog.find((p) => p[0] === k) || [k, k])[1];
 const DEFAULT_PLACE_PERMS = {
@@ -156,6 +159,7 @@ const SETTINGS_RENDER = {
     const lastSeen = (d) => (d && d.last_seen_at ? fmtDT(d.last_seen_at) : 'never');
     const what = (u) => {
       if (u.role === 'admin') return 'Everything, everywhere';
+      if (isReportsOnly(u)) return '<b>Reports only</b> (sales and stock)';
       const loc = locById(u.location_id);
       if (!u.perms) return `Same as ${esc(loc?.name || 'their place')}`;
       const list = (loc?.perms || []).filter((k) => u.perms[k]);
@@ -186,6 +190,7 @@ const SETTINGS_RENDER = {
           ${isOwnerRow ? '' : `<label class="field">${u ? 'New passcode (leave empty to keep)' : 'Passcode (optional)'}<input class="input pin-input" name="pin" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="4 numbers"><span class="hint">${cloud ? 'Leave empty and the person chooses it themselves when they first sign in (then only they know it).' : '4 numbers.'}</span></label>`}
           ${u ? `<label class="check full"><input type="checkbox" name="active" ${u.active ? 'checked' : ''}> Can sign in (untick when someone leaves)</label>` : ''}</div>
           ${isOwnerRow ? '<p class="muted small">The owner signs in with their email. They choose their own passcode on each owner computer.</p>' : `<div id="permBox"><h3 style="margin:18px 0 4px">What this person can do</h3>
+          <label class="check"><input type="checkbox" id="ronly" ${isReportsOnly(u) ? 'checked' : ''}> <span><b>Reports only</b> <span class="muted small">— watches sales, profit, expenses and stock (made for a phone). Can't sell or change anything.</span></span></label>
           <label class="check"><input type="checkbox" id="same" ${!u || !u.perms ? 'checked' : ''}> Same as their place</label>
           <div id="sw"></div></div>`}`,
         footer: `${u && u.id !== App.user.id ? '<button class="btn danger" id="udel" style="margin-right:auto">Delete</button>' : ''}<button class="btn" data-close>Cancel</button><button class="btn primary" id="us">Save</button>`,
@@ -195,14 +200,30 @@ const SETTINGS_RENDER = {
         if (!(await confirmBox(`Delete ${u.name}? This cannot be undone. Someone who already made bills or records cannot be deleted: untick "Can sign in" instead.`, { title: 'Delete user', ok: 'Delete', danger: true }))) return;
         await busy(udel, async () => { await DEL('/api/users/' + u.id); toast('Deleted'); m.close(); SETTINGS_RENDER.users(el); });
       });
-      const locSel = m.$('[name=location_id]'), same = m.$('#same');
+      const locSel = m.$('[name=location_id]'), same = m.$('#same'), ronly = m.$('#ronly');
       const paint = () => {
         if (!same) return;
         const allowed = locById(locSel.value)?.perms || [];
+        same.closest('label').classList.toggle('hidden', ronly.checked);
+        if (ronly.checked) {
+          // reports are worked out from what the place may see: the place needs "See reports" and "See cost price and profit"
+          const loc = locById(locSel.value);
+          const missing = REPORT_PERMS.filter((k) => !allowed.includes(k));
+          m.$('#sw').innerHTML = missing.length
+            ? `<div class="alert warn"><div><b>${esc(loc?.name || 'This place')}</b> does not allow ${missing.map((k) => `“${esc(permLabel(k))}”`).join(' and ')} yet, so this person would see nothing.
+                <p class="small" style="margin:6px 0 0">Turning it on lets everyone at ${esc(loc?.name || 'this place')} whose switches are “Same as their place” see reports and profit too.</p>
+                <button type="button" class="btn sm primary" id="allowRep" style="margin-top:8px">Allow reports at ${esc(loc?.name || 'this place')}</button></div></div>`
+            : `<p class="muted small">They see two tabs: <b>Sales</b> (sales, cost of goods, gross and net profit, money in and out, expenses) and <b>Stock</b>, for ${esc(loc?.name || 'their place')}. Today is shown first; week, month or any dates with one tap.</p>`;
+          m.$('#allowRep')?.addEventListener('click', (e) => busy(e.target, async () => {
+            await PUT('/api/locations/' + loc.id, { perms: [...new Set([...allowed, ...REPORT_PERMS])] });
+            await loadMe(); toast(`Reports allowed at ${loc.name}`); paint();
+          }));
+          return;
+        }
         const current = u?.perms ? Object.keys(u.perms).filter((k) => u.perms[k]) : allowed;
         m.$('#sw').innerHTML = same.checked ? `<p class="muted small">${allowed.map(permLabel).join(', ') || 'Nothing is switched on for this place yet.'}</p>` : permSwitchesHtml(current, { allowed });
       };
-      [locSel, same].filter(Boolean).forEach((x) => x.addEventListener('change', paint));
+      [locSel, same, ronly].filter(Boolean).forEach((x) => x.addEventListener('change', paint));
       paint();
       const b = m.$('#us');
       b.addEventListener('click', () => busy(b, async () => {
@@ -211,7 +232,7 @@ const SETTINGS_RENDER = {
         delete v.same; delete v.login; delete v.password;
         if (!v.pin) delete v.pin;
         else if (!/^[0-9]{4}$/.test(v.pin)) throw new Error('The passcode must be exactly 4 numbers.');
-        if (isOwnerRow) { v.role = 'admin'; v.location_id = null; } else { v.role = 'staff'; v.perms = same.checked ? null : readSwitches(m.$('#sw')); }
+        if (isOwnerRow) { v.role = 'admin'; v.location_id = null; } else { v.role = 'staff'; v.perms = ronly.checked ? [...REPORT_PERMS] : same.checked ? null : readSwitches(m.$('#sw')); }
         if (!u && cloud && (!login || password.length < 6)) throw new Error('Type a user ID and a password of at least 6 characters.');
         if (password && password.length < 6) throw new Error('The password must be at least 6 characters.');
         const saved = u ? await PUT('/api/users/' + u.id, v) : await POST('/api/users', v);
