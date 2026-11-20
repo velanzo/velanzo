@@ -7,7 +7,7 @@ const CORE = [
   'css/app.css', 'worker.js',
   'js/version.js', 'js/barcode.js', 'js/qr.js', 'js/bridge.js', 'js/core.js', 'js/demo.js', 'js/backup.js', 'js/delete.js', 'js/charts.js', 'js/print.js', 'js/hwscripts.js', 'js/tour.js', 'js/setup.js', 'js/cloud.js', 'js/main.js',
   'js/views/dashboard.js', 'js/views/home.js', 'js/views/pos.js', 'js/views/sales.js', 'js/views/customers.js', 'js/views/products.js', 'js/views/purchases.js',
-  'js/views/labels.js', 'js/views/dispatch.js', 'js/views/stock.js', 'js/views/accounts.js', 'js/views/reports.js', 'js/views/vouchers.js', 'js/views/settings.js', 'js/views/hardware.js', 'js/views/device.js', 'js/views/training.js', 'js/views/manage-data.js',
+  'js/views/labels.js', 'js/views/dispatch.js', 'js/views/stock.js', 'js/views/accounts.js', 'js/views/reports.js', 'js/views/watch.js', 'js/views/vouchers.js', 'js/views/settings.js', 'js/views/hardware.js', 'js/views/device.js', 'js/views/training.js', 'js/views/manage-data.js',
   'engine/index.js', 'engine/practice.js', 'engine/db.js', 'engine/util.js', 'engine/session.js', 'engine/sync.js', 'engine/syncer.js',
   'engine/routes/core.js', 'engine/routes/inventory.js', 'engine/routes/sales.js', 'engine/routes/customers.js', 'engine/routes/data.js', 'engine/routes/activity.js', 'engine/checks.js', 'engine/routes/reports.js', 'engine/routes/vouchers.js', 'engine/routes/delete.js',
   'vendor/sqlite/index.mjs', 'vendor/sqlite/sqlite3.wasm', 'vendor/supabase.js',

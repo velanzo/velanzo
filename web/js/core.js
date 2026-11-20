@@ -28,6 +28,10 @@ const warehouses = () => App.locations.filter((l) => l.type === 'warehouse' && l
 const isAdmin = () => !!App.user?.owner;
 const can = (perm) => !!App.user && (App.user.owner || App.user.perms.includes(perm));
 const canSeeCost = () => can('see_cost') || can('buy');
+// "Reports only": a person who may see reports and cost, and nothing else (they watch sales and stock, usually on a phone).
+// They get a simple phone screen with two tabs: Sales and Stock (js/views/watch.js).
+const WORK_PERMS = ['sell', 'returns', 'discount', 'change_price', 'void_bills', 'receive', 'buy', 'send', 'add_items', 'correct_stock', 'expenses'];
+const isReporter = () => !!App.user && !App.user.owner && can('reports') && can('see_cost') && !WORK_PERMS.some((k) => can(k));
 const myPlace = () => (App.user?.owner ? null : locById(App.user?.location_id));
 const METHOD_NAMES = { cash: 'Cash', card: 'Card', online: 'Online' };
 const qtyClass = (q) => (q < 0 ? 'negq' : q === 0 ? 'zero' : q <= Number(App.settings.low_stock || 2) ? 'lowq' : '');
@@ -368,9 +372,11 @@ const NAV = [
 // When there are many, these stay on the bar and the rest go under "More".
 // The first six stay on the bar (a seventh too on a wide screen); the rest go under "More".
 const MAIN_TABS = { owner: ['dashboard', 'purchases', 'dispatch', 'pos', 'sales', 'stock', 'reports'], staff: ['home', 'purchases', 'dispatch', 'pos', 'sales', 'labels', 'stock'] };
-const homeFor = () => (isAdmin() ? 'dashboard' : can('sell') ? 'pos' : 'home');
+const homeFor = () => (isAdmin() ? 'dashboard' : isReporter() ? 'watch/sales' : can('sell') ? 'pos' : 'home');
 
 function navHtml() {
+  if (isReporter()) return [['watch/sales', 'watch-sales', 'Sales', 'chart'], ['watch/stock', 'watch-stock', 'Stock', 'box']]
+    .map(([h, n, label, ic]) => `<a href="#/${h}" data-nav="${n}">${icon(ic)}<span>${label}</span></a>`).join('');
   const visible = NAV.filter((n) => n.show());
   const base = visible.filter((n) => n.href !== 'training' && n.href !== 'delete'); // Training and Delete always live under More
   const mainList = MAIN_TABS[isAdmin() ? 'owner' : 'staff'];
@@ -389,24 +395,25 @@ function navHtml() {
 function renderShell() {
   const u = App.user;
   const place = isAdmin() ? 'All shops' : locName(u.location_id);
+  const rep = isReporter();
   $('#app').innerHTML = `
-  <div class="shell" id="shell">
+  <div class="shell${rep ? ' reporter' : ''}" id="shell">
     <header class="appbar"><div class="appbar-in">
       <a class="brand" href="#/${homeFor()}"><span class="logo">V</span><span class="brand-text"><b>${esc(App.settings.business_name)}</b><small>${esc(place)}</small></span></a>
       <nav class="tabnav" id="nav">${navHtml()}</nav>
       <div class="appbar-right">
         <button class="icon-btn appbar-refresh" id="refreshBtn" type="button" title="Refresh: save, get the newest version of Velanzo and reload" aria-label="Refresh">⟳</button>
         <button class="sync-pill" id="syncPill" type="button"></button>
-        <a class="appbar-gear" id="gearBtn" href="#/settings" data-nav="settings" title="Settings" aria-label="Settings">${icon('gear')}</a>
+        ${rep ? '' : `<a class="appbar-gear" id="gearBtn" href="#/settings" data-nav="settings" title="Settings" aria-label="Settings">${icon('gear')}</a>`}
         <details class="user-menu" id="userMenu"><summary><span class="avatar">${esc((u.name || '?').slice(0, 1).toUpperCase())}</span><span class="uname">${esc(u.name)}</span></summary>
           <div class="more-list right">
             ${App.demo ? `<a href="#" id="leaveDemoBtn">${icon('play')}<span>Leave Demo mode</span></a>` : `<a href="#" id="switchBtn">${icon('lock')}<span>Lock (type the passcode again)</span></a>
             ${App.device.mode === 'cloud' ? `<a href="#" id="signOutBtn">${icon('device')}<span>Sign out / switch account</span></a>` : ''}
             <a href="#/account">${icon('lock')}<span>My passcode</span></a>`}
-            <a href="#/hardware">${icon('printer')}<span>Printers &amp; scanner</span></a>
+            ${rep ? '' : `<a href="#/hardware">${icon('printer')}<span>Printers &amp; scanner</span></a>`}
             <a href="#/device">${icon('device')}<span>This device</span></a>
             ${AppInstall.installed() ? '' : `<a href="#" id="getAppBtn">${icon('download')}<span>Get the app (PC, Android, iPhone)</span></a>`}
-            <a href="#/training">${icon('help')}<span>Training</span></a>
+            ${rep ? '' : `<a href="#/training">${icon('help')}<span>Training</span></a>`}
             <a href="manual/index.html" target="_blank" rel="noopener">${icon('file')}<span>Written guide</span></a>
             <a href="#/device">${icon('device')}<span>Version ${esc(APP_VERSION)}</span></a>
           </div></details>
@@ -459,7 +466,7 @@ async function refreshBadges() {
 // Pages that only show something: when another computer changes the data, these redraw by themselves...
 const LIVE_VIEWS = ['home', 'device', 'purchases/:id', 'dispatch/:id'];
 // ...and these too, unless the person is using a search, filter or tick box there: then they offer to.
-const OFFER_VIEWS = ['dashboard', 'purchases', 'dispatch', 'sales', 'stock', 'products', 'products/:id', 'suppliers', 'suppliers/:id', 'expenses', 'reports', 'activity', 'vouchers', 'customers', 'customers/:id',
+const OFFER_VIEWS = ['watch/sales', 'watch/stock', 'dashboard', 'purchases', 'dispatch', 'sales', 'stock', 'products', 'products/:id', 'suppliers', 'suppliers/:id', 'expenses', 'reports', 'activity', 'vouchers', 'customers', 'customers/:id',
   'settings/locations', 'settings/users'];
 // Is the person in the middle of something on this page (typing, a search or filter, ticked items)?
 function pageInUse() {
@@ -480,6 +487,8 @@ async function remoteChanged(tables) {
   if (tables.some((t) => ['settings', 'locations', 'users'].includes(t))) {
     try {
       await loadMe();
+      // (switched to or from "Reports only": the whole screen changes)
+      if ($('#shell') && $('#shell').classList.contains('reporter') !== isReporter()) { renderShell(); location.hash = '#/' + homeFor(); return; }
       const nav = $('#nav');
       if (nav) { nav.innerHTML = navHtml(); $$('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.nav === (App.view?.nav || App.view?.path?.split('/')[0]))); }
     } catch { return; } // (nobody is logged in any more: the login screen is showing)
