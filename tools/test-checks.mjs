@@ -94,14 +94,4 @@ D.run('UPDATE sales SET voucher_code = ? WHERE id = ?', vA.code, (await call('PO
 const u2 = await call('GET', '/api/reports/unusual', null, {});
 ok(u2.items.some((i) => i.kind === 'Voucher used too often'), 'a limited voucher used twice shows in Things to check');
 ok(u2.items.some((i) => i.kind === 'Big item discount'), 'a big item discount shows in Things to check');
-
-// ---- a typo in opening stock, corrected: not flagged; stock that went missing after selling: still flagged ----
-const [trouser] = await call('POST', '/api/products', { name: 'Dry Fit Trouser', cost_price: 517, sale_price: 699, opening_location_id: S1, variants: [{ size: '6-7Y', opening_qty: 24 }] });
-await call('POST', '/api/stock/adjust', { product_id: trouser.id, location_id: S1, mode: 'set', qty: 1, reason: 'Changed on the item' });
-const [jacket] = await call('POST', '/api/products', { name: 'Jacket', cost_price: 1000, sale_price: 2000, opening_location_id: S1, variants: [{ opening_qty: 24 }] });
-await call('POST', '/api/sales', { location_id: S1, items: [{ product_id: jacket.id, qty: 1 }] });
-await call('POST', '/api/stock/adjust', { product_id: jacket.id, location_id: S1, mode: 'set', qty: 1, reason: 'count' });
-const u3 = (await call('GET', '/api/reports/unusual', null, {})).items.filter((i) => i.kind === 'Big stock correction');
-ok(!u3.some((i) => i.title.includes('Dry Fit Trouser')), 'opening stock 24 typed by mistake, corrected to 1 (−23): not flagged');
-ok(u3.some((i) => i.title.includes('Jacket')), 'opening 24, one sold, then −22: still flagged');
 console.log(`\nAll ${checks} warning and report checks passed.`);

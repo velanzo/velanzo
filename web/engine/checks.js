@@ -268,21 +268,10 @@ export function unusual({ from, to, location_id }) {
     }
   }
 
-  // A correction that only takes back opening stock typed in by mistake is not flagged: the same item at the same place,
-  // its opening stock entered at most 7 days before, and nothing sold, bought, sent or received in between.
-  // (e.g. 24 typed instead of 1, then corrected by −23)
-  const undoesOpening = (r) => {
-    const open = get(`SELECT COALESCE(SUM(qty), 0) AS n, MIN(created_at) AS first FROM movements
-      WHERE product_id = ? AND location_id = ? AND type = 'opening' AND created_at <= ? AND created_at >= datetime(?, '-7 days')`, r.product_id, r.location_id, r.created_at, r.created_at);
-    if (!open.first || open.n < -r.qty) return false;
-    return !get(`SELECT 1 AS x FROM movements WHERE product_id = ? AND location_id = ? AND created_at >= ? AND created_at <= ?
-      AND type NOT IN ('opening', 'adjust') LIMIT 1`, r.product_id, r.location_id, open.first, r.created_at);
-  };
   // stock: big corrections, parcels that arrived short or over
   for (const r of all(`SELECT m.*, m.created_at AS at, p.name, p.size, p.color, u.name AS user_name, l.name AS location_name FROM movements m
       JOIN products p ON p.id = m.product_id LEFT JOIN users u ON u.id = m.user_id LEFT JOIN locations l ON l.id = m.location_id
       WHERE m.type = 'adjust' AND ABS(m.qty) >= ? AND m.created_at BETWEEN ? AND ?${inLoc('m.location_id')} ORDER BY m.created_at DESC LIMIT 200`, L.adjust, f, t)) {
-    if (r.qty < 0 && undoesOpening(r)) continue;
     add(r.qty < 0 ? 'high' : 'check', 'Big stock correction', `${label(r)}: ${r.qty > 0 ? '+' : ''}${r.qty} pieces`, r.note || 'Stock correction', { ...r, link: 'stock' });
   }
   for (const r of all(`SELECT d.id, d.dispatch_no, d.received_at AS at, u.name AS user_name, l.name AS location_name, p.name, p.size, p.color, di.qty, di.received_qty
