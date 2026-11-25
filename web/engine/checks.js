@@ -216,7 +216,9 @@ export function unusual({ from, to, location_id }) {
   const f = `${from} 00:00:00`, t = `${to} 23:59:59`;
   const loc = toInt(location_id) || null;
   const out = [];
-  const add = (level, kind, title, detail, row = {}) => out.push({ level, kind, title, detail, user: row.user_name || '', place: row.location_name || '', at: row.at || '', link: row.link || '' });
+  // key: which thing this is, for "Done" on the Attention list (the same thing always gets the same key; a new problem,
+  // or the same item with another price or count, gets a new one)
+  const add = (level, kind, title, detail, row = {}) => out.push({ key: `${kind}|${title}|${row.at || ''}`.slice(0, 400), level, kind, title, detail, user: row.user_name || '', place: row.location_name || '', at: row.at || '', link: row.link || '' });
   const inLoc = (col) => (loc ? ` AND ${col} = ${loc}` : '');
 
   // bills: sold for nothing or below cost, big discounts, cancelled

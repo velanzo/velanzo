@@ -41,9 +41,9 @@ export const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 // ---------- Schema ----------
 // Tables shared with the cloud (and in backups), in parent → child order.
 export const SYNC_TABLES = ['settings', 'locations', 'users', 'suppliers', 'customers', 'products', 'movements', 'purchases', 'purchase_items',
-  'supplier_payments', 'dispatches', 'dispatch_items', 'sales', 'sale_items', 'customer_payments', 'expenses', 'vouchers'];
+  'supplier_payments', 'dispatches', 'dispatch_items', 'sales', 'sale_items', 'customer_payments', 'expenses', 'vouchers', 'checks_done'];
 // (tables added after the first version get their outbox triggers in their own migration)
-const LATER_TABLES = ['vouchers', 'customers', 'customer_payments'];
+const LATER_TABLES = ['vouchers', 'customers', 'customer_payments', 'checks_done'];
 export const BACKUP_TABLES = [...SYNC_TABLES.slice(0, 6), 'stock', ...SYNC_TABLES.slice(6)];
 export const BACKUP_VERSION = 3;
 // Several computers on the same records (see the last migration):
@@ -314,6 +314,18 @@ const MIGRATIONS = [
   `
   ALTER TABLE supplier_payments ADD COLUMN purchase_id INTEGER;
   CREATE INDEX idx_spay_purchase ON supplier_payments(purchase_id);
+  `,
+  // Attention: something unusual stays on the list until someone presses Done. k = which thing (see checks.js).
+  `
+  CREATE TABLE checks_done (
+    id INTEGER PRIMARY KEY,
+    k TEXT NOT NULL,
+    kind TEXT, title TEXT, note TEXT,
+    user_id INTEGER,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX idx_checks_done_k ON checks_done(k);
+  ${outboxTriggers('checks_done')}
   `,
 ];
 export const SCHEMA_VERSION = MIGRATIONS.length;
