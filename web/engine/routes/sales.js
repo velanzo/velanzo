@@ -246,7 +246,7 @@ route('GET', '/api/dashboard', 'owner', () => {
      WHERE l.type = 'shop' AND l.active = 1 AND p.active = 1 AND s.qty <= ?`, low).n;
   const supplierDue = get(
     `SELECT COALESCE((SELECT SUM(total - paid) FROM purchases WHERE status = 'done' AND supplier_id IS NOT NULL), 0)
-          - COALESCE((SELECT SUM(amount) FROM supplier_payments), 0) AS n`).n;
+          - COALESCE((SELECT SUM(amount) FROM supplier_payments WHERE supplier_id <> 0), 0) AS n`).n;
   const top = all(
     `SELECT p.id, p.name, p.size, p.color, SUM(i.qty) AS qty, SUM(i.qty * i.price) AS amount
      FROM sale_items i JOIN sales s ON s.id = i.sale_id JOIN products p ON p.id = i.product_id

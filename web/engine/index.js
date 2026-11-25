@@ -53,6 +53,7 @@ export const system = {
     device: D.deviceInfo(),
     has_users: D.get('SELECT COUNT(*) AS n FROM users').n > 0,
     user_id: S.currentUser()?.id || null,
+    unlocked_today: S.unlockedToday(),
     bound_user: Number(D.get("SELECT value FROM device WHERE key = 'bound_user'")?.value) || null,
     sync: Sync.state(),
     practice: Practice.isActive(),

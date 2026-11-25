@@ -63,10 +63,15 @@ const SETTINGS_RENDER = {
       <div class="full"><h3 style="margin:8px 0 2px">Warnings</h3><div class="hint" style="margin:0">Before saving something unusual, Velanzo asks "Please check this" (for example a price of ${esc(S.currency || 'Rs')} 0 or selling below cost). You decide when these two warn:</div></div>
       <label class="field">Warn when a discount is more than (%)<input class="input num" name="warn_discount" value="${esc(S.warn_discount)}" inputmode="numeric"></label>
       <label class="field">Warn when one expense is more than<input class="input num" name="warn_expense" value="${esc(S.warn_expense)}" inputmode="numeric"></label>
+      <div class="full"><h3 style="margin:8px 0 2px">Purchases</h3></div>
+      <label class="sw-row full"><input type="checkbox" class="switch" name="pay_on_receive" ${S.pay_on_receive === '1' ? 'checked' : ''}>
+        <span>Pay the supplier when goods arrive<small class="muted" style="display:block">On: receiving stock asks "Amount paid to supplier now", filled in with the bill total. Off: nothing is asked then; pay a purchase later with the <b>Pay</b> button on it.</small></span></label>
       <div class="full"><button class="btn primary">Save</button></div></form></div>`;
     $('#f', el).addEventListener('submit', async (e) => {
       e.preventDefault();
-      await saveSettings(formValues(e.target), e.target.querySelector('button'));
+      const v = formValues(e.target);
+      v.pay_on_receive = v.pay_on_receive ? '1' : '0';
+      await saveSettings(v, e.target.querySelector('button'));
       const b = $('.brand-text b'); if (b) b.textContent = App.settings.business_name;
     });
   },

@@ -5,7 +5,7 @@ View('stock', {
   title: 'Stock',
   async render({ el, query }) {
     const meta = await GET('/api/product-meta');
-    const st = { q: '', category: '', location_id: query.location_id || '', low: query.low === '1', zero: false, sel: new Map() };
+    const st = { q: '', category: '', location_id: query.location_id || '', low: query.low === '1', neg: query.neg === '1', zero: false, sel: new Map() };
     const canLabel = can('add_items') || can('buy'); // (the same people who see Barcodes in the menu)
     const canMove = isSender() && App.locations.filter((l) => l.active).length > 1;
     const canSel = canLabel || canMove;
@@ -17,18 +17,19 @@ View('stock', {
         ${many ? `<select class="input" id="loc">${options(App.locations.filter((l) => l.active), st.location_id, { blank: 'All locations' })}</select>` : ''}
         <select class="input" id="cat">${options(meta.categories, '', { blank: 'All categories' })}</select>
         <label class="check"><input type="checkbox" id="low" ${st.low ? 'checked' : ''}> Low stock only</label>
+        <label class="check"><input type="checkbox" id="neg" ${st.neg ? 'checked' : ''}> Negative stock only</label>
         <label class="check"><input type="checkbox" id="zero"> Include items with 0</label>
         ${canSel ? `<span class="grow"></span><span class="muted small hidden" id="selInfo"></span>${canMove ? `<button class="btn hidden" id="mvSel">${icon('truck')} Move stock</button>` : ''}${canLabel ? `<button class="btn primary hidden" id="addLbl">${icon('printer')} Add to barcode printing</button>` : ''}` : ''}
       </div>
       <div class="stats" id="sum"></div>
       <div class="card flush" id="list"><div class="loading">Loading…</div></div>`;
     async function load() {
-      const d = await GET('/api/stock', { q: st.q, category: st.category, location_id: st.location_id, low: st.low ? 1 : '', zero: st.zero ? 1 : '' });
+      const d = await GET('/api/stock', { q: st.q, category: st.category, location_id: st.location_id, low: st.low ? 1 : '', neg: st.neg ? 1 : '', zero: st.zero ? 1 : '' });
       if (!el.isConnected) return;
       const showCost = canSeeCost();
       const multi = d.locations.length > 1;
       $('#sum', el).innerHTML = `
-        <div class="card stat"><div class="label">Pieces${st.low ? ' (low items)' : ''}</div><div class="value">${num(d.totals.units)}</div><div class="sub">${d.rows.length} items</div></div>
+        <div class="card stat"><div class="label">Pieces${st.neg ? ' (negative items)' : st.low ? ' (low items)' : ''}</div><div class="value">${num(d.totals.units)}</div><div class="sub">${d.rows.length} items</div></div>
         ${showCost ? `<div class="card stat"><div class="label">Value at cost</div><div class="value">${money(d.totals.cost_value)}</div></div>` : ''}
         <div class="card stat"><div class="label">Value at sale price</div><div class="value">${money(d.totals.sale_value)}</div></div>
         ${multi ? d.locations.map((l) => `<div class="card stat"><div class="label">${esc(l.name)}</div><div class="value">${num(d.totals.by_location[l.id] || 0)}</div><div class="sub">pieces</div></div>`).join('') : ''}`;
@@ -39,7 +40,7 @@ View('stock', {
           ${d.locations.map((l) => { const q = r.qty[l.id] || 0; return `<td class="r ${qtyClass(q)}">${q}</td>`; }).join('')}
           ${multi ? `<td class="r"><b>${r.total}</b></td>` : ''}${canAdjust ? `<td class="c"><button class="btn sm" data-adj="${r.id}">Correct</button></td>` : ''}</tr>`).join('')}
         </tbody></table></div>`
-        : `<div class="empty">${st.low ? `No items at ${d.low_threshold} pieces or fewer.` : 'No stock found.'}</div>`;
+        : `<div class="empty">${st.neg ? 'No item is below 0 anywhere.' : st.low ? `No items at ${d.low_threshold} pieces or fewer.` : 'No stock found.'}</div>`;
       const paintSel = () => {
         const n = st.sel.size, btn = $('#addLbl', el), mv = $('#mvSel', el);
         if (!canSel) return;
@@ -86,7 +87,9 @@ View('stock', {
     $('#cat', el).addEventListener('change', (e) => { st.category = e.target.value; load(); });
     const loc = $('#loc', el);
     if (loc) loc.addEventListener('change', (e) => { st.location_id = e.target.value; load(); });
-    $('#low', el).addEventListener('change', (e) => { st.low = e.target.checked; load(); });
+    // (low and negative are two different lists: ticking one unticks the other)
+    $('#low', el).addEventListener('change', (e) => { st.low = e.target.checked; if (st.low) { st.neg = false; $('#neg', el).checked = false; } load(); });
+    $('#neg', el).addEventListener('change', (e) => { st.neg = e.target.checked; if (st.neg) { st.low = false; $('#low', el).checked = false; } load(); });
     $('#zero', el).addEventListener('change', (e) => { st.zero = e.target.checked; load(); });
     await load();
   },

@@ -37,8 +37,8 @@ const PARTS = [
     GROUP BY m.type, m.created_at, m.location_id, m.user_id, p.name, m.note` },
   { col: 'e.created_at', loc: 'e.location_id', sql: `SELECT e.created_at, 'expense', e.location_id, e.user_id, e.category, NULL, NULL, e.amount, e.note, NULL, NULL, NULL
     FROM expenses e WHERE {W}` },
-  { col: 'sp.created_at', loc: null, sql: `SELECT sp.created_at, 'payment', NULL, sp.user_id, sup.name, NULL, NULL, sp.amount, sp.note, sp.method, 'supplier', sp.supplier_id
-    FROM supplier_payments sp JOIN suppliers sup ON sup.id = sp.supplier_id WHERE {W}` },
+  { col: 'sp.created_at', loc: null, sql: `SELECT sp.created_at, 'payment', NULL, sp.user_id, COALESCE(sup.name, 'Purchase (no supplier)'), NULL, NULL, sp.amount, sp.note, sp.method, CASE WHEN sp.purchase_id IS NOT NULL THEN 'purchase' ELSE 'supplier' END, COALESCE(sp.purchase_id, sp.supplier_id)
+    FROM supplier_payments sp LEFT JOIN suppliers sup ON sup.id = sp.supplier_id WHERE {W}` },
 ];
 
 function activity({ from, to, locationId, limit }) {

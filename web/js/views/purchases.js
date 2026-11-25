@@ -57,8 +57,8 @@ View('purchases', {
       const done = rest.filter((r) => r.status === 'done');
       $('#list', el).innerHTML = shown.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>No.</th><th>Date</th><th>Supplier</th><th>Status</th><th>Supplier invoice</th><th>Goes to</th><th class="r">Pieces</th><th class="r">Amount</th><th class="r">Paid</th></tr></thead><tbody>
         ${shown.map((r) => `<tr class="click${r.status === 'void' ? ' void' : ''}" data-id="${r.id}"><td><b>${esc(r.purchase_no)}</b></td><td>${esc(fmtDate(r.date))}</td><td>${esc(r.supplier_name || '—')}</td><td>${status(r)}</td><td>${esc(r.invoice_no || '')}</td><td>${esc(r.location_name)}</td>
-          <td class="r">${r.total_qty}</td><td class="r"><b>${money(r.total)}</b></td><td class="r">${r.status === 'ordered' || r.status === 'draft' ? '—' : money(r.paid)}</td></tr>`).join('')}
-        </tbody>${st.tab === 'ordered' || st.tab === 'draft' ? '' : `<tfoot><tr><td colspan="6">Received (${done.length} purchases)</td><td class="r">${done.reduce((a, r) => a + r.total_qty, 0)}</td><td class="r">${money(done.reduce((a, r) => a + r.total, 0))}</td><td class="r">${money(done.reduce((a, r) => a + r.paid, 0))}</td></tr></tfoot>`}</table></div>`
+          <td class="r">${r.total_qty}</td><td class="r"><b>${money(r.total)}</b></td><td class="r">${r.status === 'ordered' || r.status === 'draft' ? '—' : `${money(r.paid_total)}${r.due > 0 ? `<div class="neg small">owes ${money(r.due)}</div>` : ''}`}</td></tr>`).join('')}
+        </tbody>${st.tab === 'ordered' || st.tab === 'draft' ? '' : `<tfoot><tr><td colspan="6">Received (${done.length} purchases)</td><td class="r">${done.reduce((a, r) => a + r.total_qty, 0)}</td><td class="r">${money(done.reduce((a, r) => a + r.total, 0))}</td><td class="r">${money(done.reduce((a, r) => a + r.paid_total, 0))}</td></tr></tfoot>`}</table></div>`
         : `<div class="empty">${st.tab === 'draft' ? 'No drafts. A <b>New purchase order</b> can be saved as a draft first.' : st.tab === 'ordered' ? 'No orders are waiting for goods.' : 'Nothing in this period. Click <b>New purchase order</b> when you order stock from a supplier.'}</div>`;
     }
     bindRangeBar(el, st, load);
@@ -106,6 +106,9 @@ async function purchaseForm(el, { order, edit = null }) {
     const save = () => { if (draftKey) try { localStorage.setItem(draftKey, JSON.stringify(S)); } catch { /* ignore */ } };
     let suppliers = await GET('/api/suppliers');
     const locs = isAdmin() ? App.locations.filter((l) => l.active) : App.locations.filter((l) => l.id === App.user.location_id);
+    // "Amount paid to supplier now" only with Settings → "Pay the supplier when goods arrive" (otherwise: Pay on the purchase later)
+    const payNow = !order && App.settings.pay_on_receive === '1';
+    const syncPaid = (total) => { const f = $('#paid', el); if (f && !S.paidTyped) { S.paid = String(round2(total)); f.value = S.paid; } };
     setActions(edit ? `<a class="btn" href="#/purchases/${edit.id}">← Back to the draft</a>` : `<a class="btn" href="#/purchases">← Purchases</a>`);
     el.innerHTML = `
       ${order ? '<div class="alert info">Order what you need from the supplier. <b>Nothing is added to stock now.</b> New items can be made right here (<b>New item</b>) — Velanzo gives each one its barcode. When the goods arrive, open this order and press <b>Receive stock</b>, count them, and print the labels.</div>' : ''}
@@ -125,8 +128,8 @@ async function purchaseForm(el, { order, edit = null }) {
         <div id="lines" style="margin-top:14px"></div>
       </div>
       <div class="card"><div class="form-grid three">
-        ${order ? '' : `<label class="field">Amount paid to supplier now<input class="input num" id="paid" inputmode="decimal" placeholder="0" value="${esc(S.paid)}"><span class="hint">Leave 0 if you will pay later — it will show as owed.</span></label>`}
-        <label class="field" style="grid-column: span ${order ? 3 : 2}">Notes<input class="input" id="notes" value="${esc(S.notes)}" placeholder="optional"></label>
+        ${payNow ? `<label class="field">Amount paid to supplier now<input class="input num" id="paid" inputmode="decimal" placeholder="0" value="${esc(S.paid)}"><span class="hint">It starts at the bill total. Type 0 if you will pay later — it will show as owed.</span></label>` : ''}
+        <label class="field" style="grid-column: span ${payNow ? 2 : 3}">Notes<input class="input" id="notes" value="${esc(S.notes)}" placeholder="optional"></label>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;align-items:center">
         <div class="muted" id="sumTxt" style="margin-right:auto"></div>
@@ -141,6 +144,7 @@ async function purchaseForm(el, { order, edit = null }) {
     function renderLines(flash = -1) {
       const total = S.lines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.cost) || 0), 0);
       const pcs = S.lines.reduce((a, l) => a + (Number(l.qty) || 0), 0);
+      syncPaid(total);
       $('#lines', el).innerHTML = S.lines.length ? `<div class="table-wrap"><table class="tbl"><thead><tr><th>#</th><th>Item</th><th>Barcode</th><th class="r">Qty</th><th class="r">Cost price (each)</th><th class="r">Sale price</th><th class="r">Amount</th><th></th></tr></thead><tbody>
         ${S.lines.map((l, i) => `<tr class="${i === flash ? 'flash' : ''}"><td class="muted">${i + 1}</td><td><b>${esc(l.name)}</b> <span class="muted">${esc(variantText(l))}</span></td><td class="mono small">${esc(l.barcode)}</td>
           <td class="r"><input class="input sm num" style="width:80px" data-i="${i}" data-f="qty" value="${esc(l.qty)}" inputmode="numeric"></td>
@@ -169,7 +173,7 @@ async function purchaseForm(el, { order, edit = null }) {
     $('#inv', el).addEventListener('input', (e) => { S.invoice_no = e.target.value; save(); });
     $('#date', el).addEventListener('change', (e) => { S.date = e.target.value; save(); });
     $('#loc', el).addEventListener('change', (e) => { S.location_id = e.target.value; save(); });
-    $('#paid', el)?.addEventListener('input', (e) => { S.paid = e.target.value; save(); });
+    $('#paid', el)?.addEventListener('input', (e) => { S.paid = e.target.value; S.paidTyped = true; save(); });
     $('#exp', el)?.addEventListener('change', (e) => { S.expected_date = e.target.value; save(); });
     $('#notes', el).addEventListener('input', (e) => { S.notes = e.target.value; save(); });
     $('#newSup', el).addEventListener('click', () => openSupplierForm(null, async (s) => { suppliers = await GET('/api/suppliers'); S.supplier_id = s.id; renderSup(); save(); }));
@@ -183,6 +187,7 @@ async function purchaseForm(el, { order, edit = null }) {
       $('#tPcs', el).textContent = S.lines.reduce((a, x) => a + (Number(x.qty) || 0), 0);
       const total = S.lines.reduce((a, x) => a + (Number(x.qty) || 0) * (Number(x.cost) || 0), 0);
       $('#tAmt', el).textContent = money(total);
+      syncPaid(total);
       $('#sumTxt', el).textContent = `${S.lines.length} lines · ${$('#tPcs', el).textContent} pieces · ${money(total)}`;
       save();
     });
@@ -200,7 +205,7 @@ async function purchaseForm(el, { order, edit = null }) {
       const huge = S.lines.find((l) => parseInt(l.qty, 10) > 10000);
       if (huge) throw new Error(`Quantity ${huge.qty} for ${huge.name} looks wrong — please check it`);
       return {
-        supplier_id: S.supplier_id, invoice_no: S.invoice_no, date: S.date, location_id: S.location_id, paid: S.paid, notes: S.notes, order, expected_date: S.expected_date,
+        supplier_id: S.supplier_id, invoice_no: S.invoice_no, date: S.date, location_id: S.location_id, paid: payNow ? S.paid : 0, notes: S.notes, order, expected_date: S.expected_date,
         items: S.lines.map((l) => ({ product_id: l.product_id, qty: l.qty, cost: l.cost, sale_price: l.sale_price })),
       };
     };
@@ -238,7 +243,7 @@ View('purchases/:id', {
     const wasOrder = draft || ordered || p.items.some((i) => i.ordered_qty != null);
     setTitle(`${draft ? 'Draft purchase order' : ordered ? 'Purchase order' : 'Purchase'} ${p.purchase_no}`);
     const resetBtn = ordered || (p.status === 'done' && isAdmin()) ? '<button class="btn" id="resetBtn">↺ Reset to draft</button>' : '';
-    setActions(`<a class="btn" href="#/purchases">← Purchase</a>${resetBtn}${draft ? '<button class="btn danger" id="cancelOrder">Cancel draft</button>' : ordered ? '<button class="btn danger" id="cancelOrder">Cancel order</button>' : (isAdmin() && p.status === 'done' ? '<button class="btn danger" id="voidBtn">Cancel purchase</button>' : '')}${draft ? `<a class="btn" href="#/purchases/${p.id}/edit">${icon('file')} Edit</a><button class="btn primary" id="confirmBtn">✓ Confirm order</button>` : ordered ? `<a class="btn primary" href="#/purchases/${p.id}/receive">${icon('inbox')} Receive stock</a>` : p.status === 'done' ? `<button class="btn primary" id="lblBtn">${icon('printer')} Print barcode labels</button>` : ''}`);
+    setActions(`<a class="btn" href="#/purchases">← Purchase</a>${resetBtn}${draft ? '<button class="btn danger" id="delDraft">Delete draft</button>' : ordered ? '<button class="btn danger" id="cancelOrder">Cancel order</button>' : (isAdmin() && p.status === 'done' ? '<button class="btn danger" id="voidBtn">Cancel purchase</button>' : '')}${draft ? `<a class="btn" href="#/purchases/${p.id}/edit">${icon('file')} Edit</a><button class="btn primary" id="confirmBtn">✓ Confirm order</button>` : ordered ? `<a class="btn primary" href="#/purchases/${p.id}/receive">${icon('inbox')} Receive stock</a>` : p.status === 'done' ? `${p.due > 0 ? `<button class="btn ok" id="payBtn">Pay ${money(p.due)}</button>` : ''}<button class="btn primary" id="lblBtn">${icon('printer')} Print barcode labels</button>` : ''}`);
     el.innerHTML = `
       ${wasOrder ? flowBar(['Draft', 'Confirmed', 'Received'], draft ? 'Draft' : ordered ? 'Confirmed' : 'Received', { cancelled: p.status === 'void' }) : ''}
       ${query.drafted ? '<div class="alert info">✓ Draft saved. <b>Nothing is ordered and nothing is in stock.</b> Change it with <b>Edit</b>, then press <b>Confirm order</b> when you order from the supplier.</div>' : ''}
@@ -252,11 +257,41 @@ View('purchases/:id', {
         <dt>Supplier</dt><dd>${p.supplier_id ? `<a href="#/suppliers/${p.supplier_id}">${esc(p.supplier_name)}</a>` : '—'} ${esc(p.supplier_phone || '')}</dd>
         <dt>Supplier invoice</dt><dd>${esc(p.invoice_no || '—')}</dd><dt>Date</dt><dd>${esc(fmtDate(p.date))}</dd><dt>${p.status === 'done' ? 'Received at' : 'Goes to'}</dt><dd>${esc(p.location_name)}</dd>
         <dt>Entered by</dt><dd>${esc(p.user_name || '')} · ${esc(fmtDT(p.created_at))}</dd>
-        <dt>${ordered || draft ? 'Order total' : 'Total'}</dt><dd><b>${money(p.total)}</b>${ordered || draft ? '' : ` · paid now ${money(p.paid)}`}</dd>${p.notes ? `<dt>Notes</dt><dd>${esc(p.notes)}</dd>` : ''}</dl></div>
+        <dt>${ordered || draft ? 'Order total' : 'Total'}</dt><dd><b>${money(p.total)}</b></dd>${p.status === 'done' ? `<dt>Paid</dt><dd>${money(p.paid_total)}${p.paid_later ? ` <span class="muted small">(${money(p.paid)} when it arrived + ${money(p.paid_later)} later)</span>` : ''}</dd>
+        <dt>Still owed</dt><dd>${p.due > 0 ? `<b class="neg">${money(p.due)}</b> <a href="#" id="payLink">Pay now</a>` : '<span class="pill ok">Fully paid</span>'}</dd>` : ''}${p.notes ? `<dt>Notes</dt><dd>${esc(p.notes)}</dd>` : ''}</dl></div>
       <div class="card flush"><div class="table-wrap"><table class="tbl"><thead><tr><th>Item</th><th>Barcode</th><th class="r">Qty</th><th class="r">Cost</th><th class="r">${ordered || draft ? "Sale price" : "Sale price now"}</th><th class="r">Amount</th></tr></thead><tbody>
         ${p.items.map((i) => `<tr class="click" data-pid="${i.product_id}"><td><b>${esc(i.name)}</b> <span class="muted">${esc(variantText(i))}</span></td><td class="mono">${esc(i.barcode)}</td><td class="r">${i.qty}${!ordered && i.ordered_qty != null && i.ordered_qty !== i.qty ? ` <span class="muted small">(ordered ${i.ordered_qty})</span>` : ''}</td><td class="r">${money(i.cost)}</td><td class="r">${money(ordered || draft ? i.planned_price ?? i.sale_price : i.sale_price)}</td><td class="r">${money(i.qty * i.cost)}</td></tr>`).join('')}
-      </tbody><tfoot><tr><td colspan="2">Total</td><td class="r">${p.total_qty}</td><td></td><td></td><td class="r">${money(p.total)}</td></tr></tfoot></table></div></div>`;
+      </tbody><tfoot><tr><td colspan="2">Total</td><td class="r">${p.total_qty}</td><td></td><td></td><td class="r">${money(p.total)}</td></tr></tfoot></table></div></div>
+      ${p.payments.length ? `<h3 style="margin:20px 0 10px">Payments for this purchase</h3><div class="card flush"><div class="table-wrap"><table class="tbl pay-tbl"><thead><tr><th>Date</th><th>Paid by</th><th>Note</th><th>Entered by</th><th class="r">Amount</th></tr></thead><tbody>
+        ${p.payments.map((x) => `<tr><td>${esc(fmtDate(x.date))}</td><td>${esc(x.method || '')}</td><td>${esc(x.note || '')}</td><td>${esc(x.user_name || '')}</td><td class="r">${money(x.amount)}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
     $('.tbl', el).addEventListener('click', (e) => { const r = e.target.closest('[data-pid]'); if (r) go('products/' + r.dataset.pid); });
+    const pay = () => {
+      const m = modal({
+        title: `Pay for ${p.purchase_no}${p.supplier_name ? ` · ${p.supplier_name}` : ''}`,
+        body: `<div class="form-grid">
+          <label class="field">Amount<input class="input num big" name="amount" inputmode="decimal" value="${p.due}" autofocus><span class="hint">Still owed: ${money(p.due)}. Type less to pay part of it.</span></label>
+          <label class="field">Date<input class="input" type="date" name="date" value="${todayStr()}"></label>
+          <label class="field">Paid by<select class="input" name="method"><option>cash</option><option>bank transfer</option><option>cheque</option><option>online</option></select></label>
+          <label class="field">Note<input class="input" name="note" placeholder="optional"></label></div>`,
+        footer: '<button class="btn" data-close>Cancel</button><button class="btn primary" id="pSave">Save payment</button>',
+      });
+      const b = m.$('#pSave');
+      b.addEventListener('click', () => busy(b, async () => {
+        const v = formValues(m.el);
+        const r = await POST(`/api/purchases/${p.id}/payments`, v);
+        toast(r.due > 0 ? `Payment saved — ${money(r.due)} still owed` : `Payment saved — ${p.purchase_no} is fully paid`, 'ok');
+        m.close(); router();
+      }));
+    };
+    $('#payBtn')?.addEventListener('click', pay);
+    $('#payLink', el)?.addEventListener('click', (e) => { e.preventDefault(); pay(); });
+    $('#delDraft')?.addEventListener('click', async () => {
+      if (!(await deleteConfirm({ title: `Delete draft ${p.purchase_no}?`, html: '<p>The draft is deleted for good. Nothing was ordered and nothing is in stock, so stock does not change.</p>', ok: 'Delete draft' }))) return;
+      const r = await POST('/api/delete/run', { items: [{ kind: 'purchases', id: p.id }] });
+      if (r.skipped.length) return toast(`Not deleted: ${r.skipped[0].why}`, 'error', 6000);
+      toast(`Draft ${p.purchase_no} deleted`, 'ok');
+      go('purchases?tab=draft');
+    });
     const lb = $('#lblBtn');
     if (lb) lb.addEventListener('click', () => {
       addToLabelQueue(p.items.map((i) => ({ product: { id: i.product_id, name: i.name, size: i.size, color: i.color, barcode: i.barcode, sale_price: i.sale_price }, copies: i.qty })), true);
@@ -304,6 +339,9 @@ View('purchases/:id/receive', {
     setTitle(`Receive ${p.purchase_no}`);
     setActions(`<a class="btn" href="#/purchases/${p.id}">← Back</a>`);
     const st = new Map(p.items.map((i) => [i.id, { qty: String(i.qty), cost: String(i.cost) }]));
+    // (paying when goods arrive is a choice in Settings; otherwise the purchase is paid later with "Pay")
+    const payNow = App.settings.pay_on_receive === '1';
+    let paidTyped = false;
     el.innerHTML = `
       <div class="card"><dl class="kv"><dt>Supplier</dt><dd>${p.supplier_id ? esc(p.supplier_name) : '—'}</dd><dt>Ordered</dt><dd>${esc(fmtDate(p.date))}${p.expected_date ? ` · expected ${esc(fmtDate(p.expected_date))}` : ''}</dd>
         <dt>Goes to</dt><dd>${esc(p.location_name)}</dd><dt>Pieces ordered</dt><dd><b>${p.total_qty}</b></dd></dl></div>
@@ -312,8 +350,8 @@ View('purchases/:id/receive', {
         <div id="lines"></div>
         <div class="form-grid three" style="margin-top:16px">
           <label class="field">Supplier's bill / invoice no.<input class="input" id="inv" value="${esc(p.invoice_no || '')}" placeholder="from the paper bill"></label>
-          <label class="field">Amount paid to supplier now<input class="input num" id="paid" inputmode="decimal" placeholder="0"><span class="hint">Leave 0 if you will pay later — it will show as owed.</span></label>
-          <label class="field">Notes<input class="input" id="notes" value="${esc(p.notes || '')}" placeholder="optional"></label>
+          ${payNow ? '<label class="field">Amount paid to supplier now<input class="input num" id="paid" inputmode="decimal" placeholder="0"><span class="hint">It starts at the bill total. Type 0 if you will pay later — it will show as owed.</span></label>' : ''}
+          <label class="field"${payNow ? '' : ' style="grid-column: span 2"'}>Notes<input class="input" id="notes" value="${esc(p.notes || '')}" placeholder="optional"></label>
         </div>
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;align-items:center;flex-wrap:wrap">
           <div id="sumTxt" style="margin-right:auto"></div>
@@ -325,6 +363,7 @@ View('purchases/:id/receive', {
       const got = [...st.values()].reduce((a, x) => a + (parseInt(x.qty, 10) || 0), 0);
       const total = p.items.reduce((a, i) => a + (parseInt(st.get(i.id).qty, 10) || 0) * num0(st.get(i.id).cost), 0);
       $('#sumTxt', el).innerHTML = `Received <b>${got}</b> of ${p.total_qty} pieces ${got === p.total_qty ? '<span class="pill ok">all arrived</span>' : got === 0 ? '<span class="pill red">nothing</span>' : '<span class="pill warn">not all</span>'} · bill total <b>${money(total)}</b>`;
+      if (payNow && !paidTyped) $('#paid', el).value = String(round2(total));
       $$('[data-amt]', el).forEach((c) => { const x = st.get(Number(c.dataset.amt)); c.textContent = money((parseInt(x.qty, 10) || 0) * num0(x.cost)); });
     }
     $('#lines', el).innerHTML = `<div class="table-wrap"><table class="tbl"><thead><tr><th>Item</th><th class="r">Ordered</th><th class="c">Received</th><th class="r">Cost price (each)</th><th class="r">Amount</th></tr></thead><tbody>
@@ -338,6 +377,7 @@ View('purchases/:id/receive', {
       else if (c) st.get(Number(c)).cost = e.target.value;
       render();
     });
+    $('#paid', el)?.addEventListener('input', () => { paidTyped = true; });
     render();
     const ok = $('#okBtn', el);
     ok.addEventListener('click', async () => {
@@ -346,7 +386,7 @@ View('purchases/:id/receive', {
       if (got !== p.total_qty && !(await confirmBox(`You counted ${got} pieces but ${p.total_qty} were ordered.\nOnly ${got} will be added to stock; the order is then closed.\n\nContinue?`, { title: 'Not all arrived', ok: 'Yes, add what arrived', danger: true }))) return;
       await busy(ok, async () => {
         const body = {
-          invoice_no: $('#inv', el).value.trim(), paid: $('#paid', el).value, notes: $('#notes', el).value.trim(),
+          invoice_no: $('#inv', el).value.trim(), paid: payNow ? $('#paid', el).value : 0, notes: $('#notes', el).value.trim(),
           items: p.items.map((i) => ({ id: i.id, qty: st.get(i.id).qty, cost: st.get(i.id).cost })),
         };
         if (!(await looksRight('receive', { ...body, id: p.id }))) return;

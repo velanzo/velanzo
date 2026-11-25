@@ -309,6 +309,12 @@ const MIGRATIONS = [
   `
   ALTER TABLE sales ADD COLUMN round_off REAL NOT NULL DEFAULT 0;
   `,
+  // Paying a received purchase later: a supplier payment can be for one purchase (purchase_id).
+  // A purchase with no supplier gets payments with supplier_id 0.
+  `
+  ALTER TABLE supplier_payments ADD COLUMN purchase_id INTEGER;
+  CREATE INDEX idx_spay_purchase ON supplier_payments(purchase_id);
+  `,
 ];
 export const SCHEMA_VERSION = MIGRATIONS.length;
 
@@ -355,6 +361,7 @@ export const DEFAULT_SETTINGS = {
   low_stock: '2',
   warn_discount: '20',
   warn_expense: '50000',
+  pay_on_receive: '0', // '1': "Amount paid to supplier now" is asked when goods arrive (filled in with the bill total)
 };
 
 export function init(adapter) {

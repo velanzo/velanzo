@@ -1,7 +1,7 @@
 'use strict';
 // The phone report for a "Reports only" person (and the owner, at #/watch/sales): two tabs.
 //   Sales: profit (sales, cost of goods, gross profit, expenses, net profit), cash in and out, and the expenses.
-//   Stock: every item with how many are at each place (search, low, out of stock, place, category, items with 0).
+//   Stock: every item with how many are at each place (search, low, out of stock, negative, place, category, items with 0).
 // Made for a phone: small type, one column, the period always at the top. Today is shown first.
 
 const WS = { kind: 'today', from: '', to: '', loc: '' }; // the period (kept when switching tabs)
@@ -104,7 +104,7 @@ View('watch/stock', {
   async render({ el }) {
     const places = App.locations.filter((l) => l.active);
     const meta = await GET('/api/product-meta');
-    const chips = [['all', 'All'], ['low', 'Low'], ['out', 'Out of stock']];
+    const chips = [['all', 'All'], ['low', 'Low'], ['out', 'Out of stock'], ['neg', 'Negative']];
     el.innerHTML = `<div class="w-period">
         <input class="input w-search" id="wq" type="search" placeholder="Search item, size, colour, barcode" value="${esc(WSTOCK.q)}" autocomplete="off">
         <div class="w-seg">${chips.map(([k, l]) => `<button type="button" data-f="${k}" class="${WSTOCK.filter === k ? 'on' : ''}">${l}</button>`).join('')}</div>
@@ -125,12 +125,12 @@ View('watch/stock', {
             ${multi ? `<span class="w-locs">${locs.map((l) => { const q = r.qty[l.id] || 0; return `<i class="${qtyClass(q)}">${esc(l.code || l.name)} <b>${q}</b></i>`; }).join('')}</span>` : ''}</div>
           <b class="w-qty ${qtyClass(r.total)}">${r.total}</b></li>`).join('')}</ul>
         ${rows.length > shown.length ? `<button type="button" class="w-more" id="wsMore">Show more (${rows.length - shown.length} left)</button>` : ''}</section>`
-        : `<p class="w-empty top">${WSTOCK.filter === 'out' ? 'Nothing is out of stock.' : WSTOCK.filter === 'low' ? `No items at ${data.low_threshold} pieces or fewer.` : 'No stock found.'}</p>`;
+        : `<p class="w-empty top">${WSTOCK.filter === 'neg' ? 'No item is below 0 anywhere.' : WSTOCK.filter === 'out' ? 'Nothing is out of stock.' : WSTOCK.filter === 'low' ? `No items at ${data.low_threshold} pieces or fewer.` : 'No stock found.'}</p>`;
       $('#wsMore', el)?.addEventListener('click', () => { WSTOCK.shown += 100; paint(); });
     };
     const load = async () => {
       const f = WSTOCK.filter;
-      try { data = await GET('/api/stock', { q: WSTOCK.q, location_id: WSTOCK.loc, category: WSTOCK.category, low: f !== 'all' ? 1 : '', zero: f === 'all' && WSTOCK.zero ? 1 : '' }); }
+      try { data = await GET('/api/stock', { q: WSTOCK.q, location_id: WSTOCK.loc, category: WSTOCK.category, low: f === 'low' || f === 'out' ? 1 : '', neg: f === 'neg' ? 1 : '', zero: f === 'all' && WSTOCK.zero ? 1 : '' }); }
       catch (e) { if (el.isConnected) $('#wsList', el).innerHTML = `<div class="w-card empty error">${esc(e.message)}</div>`; return; }
       if (!el.isConnected) return;
       rows = f === 'out' ? data.rows.filter((r) => r.total <= 0) : data.rows;

@@ -252,7 +252,7 @@ View('dispatch/:id', {
     const canReceive = d.status === 'in_transit' && (isAdmin() || (can('receive') && App.user.location_id === d.to_location_id));
     const canCancel = (d.status === 'in_transit' || draft) && sender;
     const canReset = (d.status === 'in_transit' && sender) || (d.status === 'received' && isAdmin());
-    setActions(`<a class="btn" href="#/dispatch">← Back</a>${canReset ? '<button class="btn" id="resetBtn">↺ Reset to draft</button>' : ''}${canCancel ? `<button class="btn danger" id="cancelBtn">${draft ? 'Cancel draft' : 'Cancel dispatch'}</button>` : ''}
+    setActions(`<a class="btn" href="#/dispatch">← Back</a>${canReset ? '<button class="btn" id="resetBtn">↺ Reset to draft</button>' : ''}${canCancel ? (draft ? '<button class="btn danger" id="delDraft">Delete draft</button>' : '<button class="btn danger" id="cancelBtn">Cancel dispatch</button>') : ''}
       ${draft ? '' : `<button class="btn" id="printBtn">${icon('printer')} Print dispatch note</button>`}${canReceive ? `<a class="btn primary" href="#/dispatch/${d.id}/receive">Check & receive</a>` : ''}
       ${draft && sender ? `<a class="btn" href="#/dispatch/${d.id}/edit">${icon('file')} Edit</a><button class="btn ok" id="sendBtn">${icon('truck')} Send now</button>` : ''}`);
     const diff = d.items.filter((i) => i.received_qty !== null && i.received_qty !== i.qty);
@@ -296,6 +296,13 @@ View('dispatch/:id', {
       await busy(rb, async () => { await POST(`/api/dispatches/${d.id}/reset`); ProductCache.invalidate(); toast(`${d.dispatch_no} is a draft again`); go(`dispatch/${d.id}`); router(); });
     });
     if (query.new && !App.practice) setTimeout(() => printDispatch(d), 300);
+    $('#delDraft')?.addEventListener('click', async () => {
+      if (!(await deleteConfirm({ title: `Delete draft ${d.dispatch_no}?`, html: '<p>The draft is deleted for good. Nothing was sent, so stock does not change.</p>', ok: 'Delete draft' }))) return;
+      const r = await POST('/api/delete/run', { items: [{ kind: 'dispatches', id: d.id }] });
+      if (r.skipped.length) return toast(`Not deleted: ${r.skipped[0].why}`, 'error', 6000);
+      toast(`Draft ${d.dispatch_no} deleted`, 'ok');
+      go('dispatch');
+    });
     const c = $('#cancelBtn');
     if (c) c.addEventListener('click', async () => {
       if (!(await confirmBox(draft ? `Cancel draft ${d.dispatch_no}? Nothing was sent, so stock does not change.` : `Cancel ${d.dispatch_no}? The ${d.total_qty} pieces go back into stock at ${d.from_name}.`, { ok: draft ? 'Cancel draft' : 'Cancel dispatch', danger: true }))) return;
