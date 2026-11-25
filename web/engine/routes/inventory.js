@@ -171,7 +171,9 @@ route('GET', '/api/stock', 'any', ({ query, user }) => {
     const qty = byProduct.get(p.id) || {};
     return { ...p, qty, total: Object.values(qty).reduce((a, b) => a + b, 0) };
   });
-  if (query.low === '1') rows = rows.filter((r) => r.active && everStocked.has(r.id) && r.total <= low);
+  // negative: a place shows fewer than 0 pieces (sold or sent before the stock was entered)
+  if (query.neg === '1') rows = rows.filter((r) => Object.values(r.qty).some((q) => q < 0));
+  else if (query.low === '1') rows = rows.filter((r) => r.active && everStocked.has(r.id) && r.total <= low);
   else if (query.zero !== '1') rows = rows.filter((r) => r.total !== 0);
   sortProducts(rows);
   const totals = { units: 0, cost_value: 0, sale_value: 0, by_location: {} };
@@ -267,6 +269,14 @@ route('POST', '/api/suppliers/:id/payments', 'buy', ({ params, body, user }) => 
 });
 
 // ---------- Purchases (stock coming in from suppliers) ----------
+// What a received purchase still owes: its total − paid when it arrived − the payments made for it later.
+const PAID_LATER = 'COALESCE((SELECT SUM(sp.amount) FROM supplier_payments sp WHERE sp.purchase_id = p.id), 0)';
+function withPurchaseDue(p) {
+  p.paid_later = round2(p.paid_later || 0);
+  p.paid_total = round2(p.paid + p.paid_later);
+  p.due = p.status === 'done' ? Math.max(0, round2(p.total - p.paid_total)) : 0;
+  return p;
+}
 route('GET', '/api/purchases', 'buy', ({ query, user }) => {
   const where = ['1 = 1'], params = [];
   if (!user.owner) { where.push('p.location_id = ?'); params.push(user.location_id); }
@@ -276,9 +286,9 @@ route('GET', '/api/purchases', 'buy', ({ query, user }) => {
   if (toInt(query.supplier_id)) { where.push('p.supplier_id = ?'); params.push(toInt(query.supplier_id)); }
   if (query.q) { where.push('(p.purchase_no LIKE ? OR p.invoice_no LIKE ? OR s.name LIKE ?)'); const l = `%${str(query.q, 60)}%`; params.push(l, l, l); }
   return all(
-    `SELECT p.*, s.name AS supplier_name, l.name AS location_name, u.name AS user_name
+    `SELECT p.*, s.name AS supplier_name, l.name AS location_name, u.name AS user_name, ${PAID_LATER} AS paid_later
      FROM purchases p LEFT JOIN suppliers s ON s.id = p.supplier_id JOIN locations l ON l.id = p.location_id LEFT JOIN users u ON u.id = p.user_id
-     WHERE ${where.join(' AND ')} ORDER BY p.id DESC LIMIT 500`, ...params);
+     WHERE ${where.join(' AND ')} ORDER BY p.id DESC LIMIT 500`, ...params).map(withPurchaseDue);
 });
 
 route('GET', '/api/purchases/:id', 'buy', ({ params, user }) => {
@@ -291,8 +301,23 @@ route('GET', '/api/purchases/:id', 'buy', ({ params, user }) => {
   p.items = all(
     `SELECT i.*, pr.name, pr.size, pr.color, pr.barcode, pr.category, pr.sale_price
      FROM purchase_items i JOIN products pr ON pr.id = i.product_id WHERE i.purchase_id = ? ORDER BY i.id`, id);
-  return p;
+  p.payments = all('SELECT sp.*, u.name AS user_name FROM supplier_payments sp LEFT JOIN users u ON u.id = sp.user_id WHERE sp.purchase_id = ? ORDER BY sp.date, sp.created_at', id);
+  p.paid_later = p.payments.reduce((a, x) => a + x.amount, 0);
+  return withPurchaseDue(p);
 });
+
+// Paying a received purchase later (all of what it owes, or part of it). It counts as a payment to its supplier too.
+route('POST', '/api/purchases/:id/payments', 'buy', ({ params, body, user }) => tx(() => {
+  const p = ownPurchase(user, params.id);
+  if (p.status !== 'done') fail(400, 'Only a purchase whose goods arrived can be paid here');
+  const owed = withPurchaseDue({ ...p, paid_later: get(`SELECT ${PAID_LATER} AS n FROM purchases p WHERE p.id = ?`, p.id).n }).due;
+  const amount = toMoney(body.amount);
+  if (amount <= 0) fail(400, 'Enter the amount paid');
+  if (amount > owed + 0.001) fail(400, owed > 0 ? `This purchase owes only ${round2(owed)}` : 'This purchase is already fully paid');
+  run('INSERT INTO supplier_payments(id, supplier_id, purchase_id, date, amount, method, note, user_id, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    D.newId(), p.supplier_id || 0, p.id, isDate(body.date) ? body.date : today(), amount, str(body.method, 30) || 'cash', str(body.note, 200) || `For ${p.purchase_no}`, user.id, now());
+  return { paid: amount, due: round2(owed - amount) };
+}));
 
 function purchaseItems(body) {
   const items = (Array.isArray(body.items) ? body.items : []).map((it) => {

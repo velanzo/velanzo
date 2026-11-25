@@ -34,9 +34,12 @@ export function loginUsers() {
   return D.all("SELECT * FROM users WHERE active = 1 AND (role = 'admin' OR location_id = ?) ORDER BY role = 'admin', name", dev.location_id);
 }
 
+// Unlocking with the passcode is remembered on this device until the end of the day (unlocked_on).
 export function setCurrent(userId) {
-  D.setDevice({ user_id: userId || null });
+  D.setDevice({ user_id: userId || null, unlocked_on: userId ? D.today() : null });
 }
+// Was the passcode typed on this device today? (then opening Velanzo again does not ask for it)
+export const unlockedToday = () => D.get("SELECT value FROM device WHERE key = 'unlocked_on'")?.value === D.today();
 
 // The person working, with what they may do here.
 export function currentUser() {

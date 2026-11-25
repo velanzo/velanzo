@@ -38,7 +38,8 @@ const Setup = (() => {
     Backup.daily();
     if (!info.device.id) return emailConfirmed ? showOwner('signin') : showWelcome();
     Cloud.start();
-    // The computer stays signed in, but the passcode is asked every time Velanzo opens.
+    // The computer stays signed in; the passcode is asked once a day on each device (and after "Lock").
+    if (info.user_id && info.unlocked_today) return boot();
     if (info.user_id) await Engine.system('lock');
     showLogin();
   }

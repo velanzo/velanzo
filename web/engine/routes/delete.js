@@ -99,6 +99,7 @@ function remove(user, kind, id, action) {
       const p = get('SELECT * FROM purchases WHERE id = ?', id);
       if (action === 'reset') for (const l of all('SELECT * FROM purchase_items WHERE purchase_id = ?', id)) if (l.qty) D.moveStock(l.product_id, p.location_id, -l.qty, 'void', 'purchase', id, user.id, `Purchase ${p.purchase_no} deleted`);
       for (const r of all('SELECT id FROM purchase_items WHERE purchase_id = ?', id)) run('DELETE FROM purchase_items WHERE id = ?', r.id);
+      for (const r of all('SELECT id FROM supplier_payments WHERE purchase_id = ?', id)) run('DELETE FROM supplier_payments WHERE id = ?', r.id);
       run('DELETE FROM purchases WHERE id = ?', id);
       break;
     }

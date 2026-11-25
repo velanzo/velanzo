@@ -70,13 +70,20 @@ try {
   await run(`await go('#/purchases/' + ${orderId});`);
   await run(`click('.alert a.btn'); await until(() => document.querySelector('#okBtn'));`);
   ok(await run(`return document.body.innerText.includes('count the pieces') && !document.querySelector('#scan');`), 'the receive screen asks you to count (no scanning: the shirts have no barcode yet)');
-  await run(`set('[data-q]', '9'); set('#inv', 'SUP-77'); set('#paid', '3000');`);
+  ok(await run(`return !document.querySelector('#paid');`), 'no "paid now" box when goods arrive (Settings: paying when goods arrive is off)');
+  await run(`set('[data-q]', '9'); set('#inv', 'SUP-77');`);
   if (SHOTS) await p.shot(path.join(SHOTS, 'po-receive.png'));
   await run(`click('#okBtn'); await until(() => document.querySelector('#cOk')); click('#cOk'); await until(() => document.querySelector('#lblBtn'));`);
   const arrived = await run(`return document.body.innerText;`);
   ok(/Received\. 9 pieces/.test(arrived) && /ordered 10/.test(arrived) && /print the barcode labels/i.test(arrived), 'received: 9 added, “ordered 10” is kept, next step is the labels');
   ok((await stockOf('Black Henley')) === stockBefore + 9, 'stock is now 9');
   if (SHOTS) await p.shot(path.join(SHOTS, 'po-arrived.png'));
+
+  // ---- paying the supplier later, part of it, with "Pay" on the purchase ----
+  ok(await run(`return /Pay Rs 7,200/.test(document.querySelector('#payBtn')?.textContent || '') && document.body.innerText.includes('Still owed');`), 'the received purchase shows “Pay Rs 7,200” and what is still owed');
+  await run(`click('#payBtn'); await until(() => document.querySelector('.modal-wrap #pSave')); set('.modal-wrap [name=amount]', '3000'); click('.modal-wrap #pSave'); await until(() => !document.querySelector('.modal-wrap')); await sleep(900);`);
+  if (SHOTS) await p.shot(path.join(SHOTS, 'po-paid.png'));
+  ok(await run(`return /Pay Rs 4,200/.test(document.querySelector('#payBtn')?.textContent || '') && document.body.innerText.includes('Payments for this purchase');`), 'paid 3,000: Rs 4,200 still owed, the payment is listed');
 
   // ---- labels: one per piece, all the same barcode ----
   await run(`click('#lblBtn'); await until(() => document.querySelector('#qList .tbl'));`);
@@ -88,6 +95,7 @@ try {
   const done = (await cloudRows('purchases')).find((x) => x.id === orderId);
   ok(done && done.status === 'done' && done.total_qty === 9, 'the cloud has the received purchase (9 pieces)');
   ok((await cloudRows('stock')).filter((s) => s.qty === 9).length > 0, 'the cloud stock shows 9');
+  ok((await cloudRows('supplier_payments')).some((x) => x.purchase_id === orderId && x.amount === 3000), 'the cloud has the payment, linked to the purchase');
   ok((await run(`return (await GET('/api/badges')).errors || 0;`)) === 0, 'nothing was refused by the cloud');
   console.log(`\nAll ${checks} purchase order checks passed.`);
 } finally {
