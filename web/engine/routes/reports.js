@@ -1,7 +1,7 @@
 // Reports: trends over time, stock and the money in it, suppliers, staff, and things to check.
 // Everything is worked out on this device from the data it has (the owner's devices have everything).
 import * as D from '../db.js';
-import { route, toInt, isDate, needPerm, can } from '../util.js';
+import { route, toInt, isDate, needPerm, can, str, fail } from '../util.js';
 import { salesMetrics, expensesTotal } from './sales.js';
 import { label } from './inventory.js';
 import { unusual } from '../checks.js';
@@ -234,12 +234,49 @@ route('GET', '/api/reports/staff', 'reports', ({ query, user }) => {
 });
 
 // ---------- Things to check ----------
+// (each thing says whether someone pressed Done on it; high counts only those not done)
+const doneMarks = () => new Map(all('SELECT c.k, c.created_at, u.name AS user_name FROM checks_done c LEFT JOIN users u ON u.id = c.user_id ORDER BY c.created_at').map((r) => [r.k, r]));
+function withDone(items) {
+  const marks = doneMarks();
+  for (const i of items) { const m = marks.get(i.key); i.done = m ? { at: m.created_at, by: m.user_name || '' } : null; }
+  return items;
+}
 route('GET', '/api/reports/unusual', 'reports', ({ query, user }) => {
   needPerm(user, 'see_cost', 'Seeing these checks');
   const { from, to, loc } = scope(query, user);
-  const items = unusual({ from, to, location_id: loc });
-  return { from, to, location_id: loc, items, high: items.filter((i) => i.level === 'high').length };
+  const items = withDone(unusual({ from, to, location_id: loc }));
+  return { from, to, location_id: loc, items, high: items.filter((i) => i.level === 'high' && !i.done).length };
 });
+
+// ---------- Attention: everything unusual of the last 3 months until someone presses Done ----------
+export const ATTENTION_DAYS = 90;
+export function attention(user, locationId) {
+  const from = D.now(new Date(Date.now() - ATTENTION_DAYS * 864e5)).slice(0, 10);
+  const loc = user.owner ? toInt(locationId) || null : user.location_id;
+  const items = withDone(unusual({ from, to: today(), location_id: loc }));
+  const open = items.filter((i) => !i.done);
+  const done = all(`SELECT c.*, u.name AS user_name FROM checks_done c LEFT JOIN users u ON u.id = c.user_id ORDER BY c.created_at DESC LIMIT 200`);
+  return { from, days: ATTENTION_DAYS, location_id: loc, open, done, high: open.filter((i) => i.level === 'high').length };
+}
+route('GET', '/api/attention', 'reports', ({ query, user }) => {
+  needPerm(user, 'see_cost', 'Seeing these checks');
+  return attention(user, query.location_id);
+});
+// Done: we dealt with it (or saw it and it is fine). It leaves the list on every computer.
+route('POST', '/api/attention/done', 'reports', ({ body, user }) => D.tx(() => {
+  needPerm(user, 'see_cost', 'Seeing these checks');
+  const k = str(body.key, 400) || fail(400, 'Which one?');
+  if (get('SELECT 1 AS x FROM checks_done WHERE k = ?', k)) return { ok: true }; // (already done, maybe on another computer)
+  D.run('INSERT INTO checks_done(id, k, kind, title, note, user_id, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)',
+    D.newId(), k, str(body.kind, 60), str(body.title, 300), str(body.note, 300), user.id, D.now());
+  return { ok: true };
+}));
+// Not done after all: it comes back on the list (the owner only).
+route('POST', '/api/attention/undo', 'owner', ({ body }) => D.tx(() => {
+  const k = str(body.key, 400) || fail(400, 'Which one?');
+  for (const r of all('SELECT id FROM checks_done WHERE k = ?', k)) D.run('DELETE FROM checks_done WHERE id = ?', r.id);
+  return { ok: true };
+}));
 
 // ---------- Day sheet: the simple daily report ----------
 // Every bill, every expense, the money that came in and went out, and what customers still owe.

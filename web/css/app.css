@@ -313,6 +313,11 @@ label.field > .input, label.field > select, label.field > textarea, label.field 
 .check-ic { flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; color: #fff; background: #f59e0b; }
 .check-row.high .check-ic { background: var(--danger); }
 .check-go { color: var(--muted); align-self: center; } .check-go svg { width: 18px; height: 18px; }
+.check-row .att-done { flex: none; align-self: center; }
+.check-row.is-done .check-ic { background: var(--ok, #16a34a); }
+.check-row.gone { opacity: 0; transition: opacity .25s; }
+.att-tabs { display: flex; gap: 8px; margin: 0 0 14px; flex-wrap: wrap; }
+.att-tabs button.on { background: var(--brand, #4338ca); color: #fff; border-color: transparent; }
 .check-list .card-head.pad { padding-bottom: 6px; }
 .empty-good { text-align: center; padding: 40px 20px; }
 .empty-good b { display: block; font-size: 20px; margin: 10px 0 4px; }

@@ -94,4 +94,24 @@ D.run('UPDATE sales SET voucher_code = ? WHERE id = ?', vA.code, (await call('PO
 const u2 = await call('GET', '/api/reports/unusual', null, {});
 ok(u2.items.some((i) => i.kind === 'Voucher used too often'), 'a limited voucher used twice shows in Things to check');
 ok(u2.items.some((i) => i.kind === 'Big item discount'), 'a big item discount shows in Things to check');
+
+// ---- Attention: stays until Done, on the Home count too; Undo puts it back ----
+const [trouser] = await call('POST', '/api/products', { name: 'Dry Fit Trouser', cost_price: 517, sale_price: 699, opening_location_id: S1, variants: [{ size: '6-7Y', opening_qty: 24 }] });
+await call('POST', '/api/stock/adjust', { product_id: trouser.id, location_id: S1, mode: 'set', qty: 1, reason: 'Changed on the item' });
+let a = await call('GET', '/api/attention');
+const fix = a.open.find((i) => i.kind === 'Big stock correction' && i.title.includes('Dry Fit Trouser'));
+ok(fix && fix.level === 'high' && fix.key, 'the −23 correction is on the Attention list, needing attention');
+const highBefore = a.high, openBefore = a.open.length;
+await call('POST', '/api/attention/done', { key: fix.key, kind: fix.kind, title: fix.title });
+await call('POST', '/api/attention/done', { key: fix.key, kind: fix.kind, title: fix.title }); // (twice: still one mark)
+a = await call('GET', '/api/attention');
+ok(!a.open.some((i) => i.key === fix.key) && a.high === highBefore - 1 && a.open.length === openBefore - 1, 'Done: it leaves the list and the count');
+ok(a.done.length === 1 && a.done[0].title === fix.title && a.done[0].user_name === 'Owner', 'it is on the Done list, with who did it');
+const inReport = (await call('GET', '/api/reports/unusual', null, {})).items.find((i) => i.key === fix.key);
+ok(inReport && inReport.done && inReport.done.by === 'Owner', 'Things to check still shows it, marked “Done by Owner”');
+await call('POST', '/api/stock/adjust', { product_id: trouser.id, location_id: S1, mode: 'set', qty: 30, reason: 'found them' });
+ok((await call('GET', '/api/attention')).open.some((i) => i.kind === 'Big stock correction' && i.title.includes('+29')), 'a new correction of the same item is a new thing on the list');
+await call('POST', '/api/attention/undo', { key: fix.key });
+a = await call('GET', '/api/attention');
+ok(a.open.some((i) => i.key === fix.key) && !a.done.length, 'Undo (owner): it is back on the list');
 console.log(`\nAll ${checks} warning and report checks passed.`);

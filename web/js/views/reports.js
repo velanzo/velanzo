@@ -1,5 +1,6 @@
 'use strict';
-// Reports: Overview (profit), Trends (charts over time), Stock & money, Suppliers, Staff, and Things to check.
+// Reports: Overview (profit), Trends (charts over time), Stock & money, Suppliers, Staff, Attention and Things to check.
+// Attention: everything unusual of the last 3 months stays there until someone presses Done (seen on every computer).
 // The dates and the place chosen stay the same when switching between the tabs.
 
 const REPORT_TABS = [
@@ -9,6 +10,7 @@ const REPORT_TABS = [
   ['stock', 'Stock & money', 'box'],
   ['suppliers', 'Suppliers', 'truck'],
   ['staff', 'Staff', 'users'],
+  ['attention', 'Attention', 'alert'],
   ['check', 'Things to check', 'help'],
 ];
 const RS = { from: '', to: '', loc: '', group: '' };
@@ -33,10 +35,10 @@ function reportsView(tab) {
     async render({ el }) {
       if (!RS.from) { RS.from = tab === 'day' ? todayStr() : rangePresets().month[1]; RS.to = todayStr(); }
       const tabs = REPORT_TABS.filter(([k]) => k !== 'suppliers' || can('buy'));
-      const usesDates = tab !== 'stock';
+      const usesDates = tab !== 'stock' && tab !== 'attention';
       setActions(`<button class="btn" id="prBtn">${icon('download')} Export PDF</button>${isAdmin() && tab === 'overview' ? `<button class="btn" id="xlBtn">${icon('download')} Excel (bill lines)</button>` : ''}`);
-      el.innerHTML = `<div class="tabs report-tabs no-print">${tabs.map(([k, label, ic]) => `<a href="#/reports/${k}" class="${k === tab ? 'active' : ''}">${icon(ic)}${label}${k === 'check' ? ' <span class="badge hidden" id="chkBadge"></span>' : ''}</a>`).join('')}</div>
-        <div class="toolbar no-print">${usesDates ? rangeBarHtml(RS, { long: true }) : '<span class="muted">Stock as it is right now</span>'}
+      el.innerHTML = `<div class="tabs report-tabs no-print">${tabs.map(([k, label, ic]) => `<a href="#/reports/${k}" class="${k === tab ? 'active' : ''}">${icon(ic)}${label}${k === 'attention' ? ' <span class="badge hidden" id="chkBadge"></span>' : ''}</a>`).join('')}</div>
+        <div class="toolbar no-print">${usesDates ? rangeBarHtml(RS, { long: true }) : `<span class="muted">${tab === 'attention' ? 'Everything unusual of the last 3 months, until someone presses <b>Done</b>' : 'Stock as it is right now'}</span>`}
           ${isAdmin() ? `<select class="input" id="fLoc">${options(App.locations, RS.loc, { blank: 'Whole business' })}</select>` : ''}</div>
         <div id="rep"><div class="loading">Loading…</div></div>`;
       const box = $('#rep', el);
@@ -44,10 +46,7 @@ function reportsView(tab) {
         $$('[data-preset]', el).forEach((b) => { const [, f, t] = rangePresets()[b.dataset.preset]; b.classList.toggle('on', RS.from === f && RS.to === t); });
         $$('[data-range]', el).forEach((i) => { i.value = RS[i.dataset.range]; });
         const q = { from: RS.from, to: RS.to, location_id: RS.loc };
-        GET('/api/reports/unusual', q).then((u) => {
-          const b = $('#chkBadge', el);
-          if (b) { b.textContent = u.high; b.classList.toggle('hidden', !u.high); }
-        }).catch(() => {});
+        paintAttentionBadge(el, q);
         try { await REPORT_RENDER[tab](box, q); } catch (e) { box.innerHTML = `<div class="empty error">${esc(e.message)}</div>`; return; }
         if (el.isConnected) drawCharts(box);
       };
@@ -58,7 +57,7 @@ function reportsView(tab) {
       if ($('#xlBtn')) $('#xlBtn').addEventListener('click', () => download(`/api/export/sale_items${qs({ from: RS.from, to: RS.to })}`));
       box.addEventListener('click', (e) => {
         const r = e.target.closest('[data-link]');
-        if (!r) return;
+        if (!r || e.target.closest('button')) return; // (Done / Undo are buttons on the row, not "open it")
         const l = r.dataset.link;
         if (l.startsWith('bill:')) showBill(+l.slice(5)); else go(l);
       });
@@ -68,6 +67,24 @@ function reportsView(tab) {
 }
 View('reports', reportsView('day'));
 for (const [k] of REPORT_TABS) View('reports/' + k, reportsView(k));
+
+// One unusual thing: what, where, who, when (with "✓ Done by …" once someone dealt with it, or a Done button).
+function checkRow(i, { doneBtn = false } = {}) {
+  return `<div class="check-row ${i.level}${i.link ? ' click' : ''}" ${i.link ? `data-link="${esc(i.link)}"` : ''}>
+      <span class="check-ic">${i.level === 'high' ? '!' : '?'}</span>
+      <div class="grow"><div><span class="pill ${i.level === 'high' ? 'red' : 'warn'}">${esc(i.kind)}</span> <b>${esc(i.title)}</b>${i.done ? ` <span class="pill ok">✓ Done${i.done.by ? ' by ' + esc(i.done.by) : ''}</span>` : ''}</div>
+        <div class="muted small">${esc(i.detail)}</div>
+        <div class="muted small">${[i.place, i.user && 'by ' + i.user, i.at && fmtDT(i.at)].filter(Boolean).map(esc).join(' · ') || 'right now'}</div></div>
+      ${doneBtn && !i.done ? `<button class="btn ok sm att-done" data-done="${esc(i.key)}">${icon('check')} Done</button>` : ''}
+      ${i.link ? `<span class="check-go">${icon('arrow')}</span>` : ''}</div>`;
+}
+// The number on the Attention tab: things nobody has marked Done yet
+function paintAttentionBadge(root, q) {
+  GET('/api/attention', { location_id: q.location_id }).then((a) => {
+    const b = $('#chkBadge', root);
+    if (b) { b.textContent = a.open.length; b.classList.toggle('hidden', !a.open.length); }
+  }).catch(() => {});
+}
 
 const placeText = (q) => (q.location_id ? locName(q.location_id) : 'Whole business');
 
@@ -287,16 +304,53 @@ const REPORT_RENDER = {
         p.filter((x) => x.purchases || x.sent || x.received || x.corrections || x.expenses).map((x) => `<tr><td><b>${esc(x.name)}</b></td><td class="r">${x.purchases || '—'}</td><td class="r">${x.sent || '—'}</td><td class="r">${x.received || '—'}</td><td class="r">${x.corrections ? `<b>${x.corrections}</b>` : '—'}</td><td class="r">${x.expenses || '—'}</td></tr>`).join(''), 'Nothing else in these dates')}</div>`;
   },
 
+  // ---------- Attention: what nobody has dealt with yet; Done takes it off the list ----------
+  async attention(box, q) {
+    const r = await GET('/api/attention', { location_id: q.location_id });
+    const sub = box.dataset.sub || 'open';
+    const doneRow = (d) => `<div class="check-row is-done"><span class="check-ic">✓</span>
+      <div class="grow"><div>${d.kind ? `<span class="pill">${esc(d.kind)}</span> ` : ''}<b>${esc(d.title || d.k)}</b></div>
+        <div class="muted small">Done by ${esc(d.user_name || 'someone')} · ${esc(fmtDT(d.created_at))}${d.note ? ` · ${esc(d.note)}` : ''}</div></div>
+      ${isAdmin() ? `<button class="btn sm att-done" data-undo="${esc(d.k)}" title="Put it back on the list">Undo</button>` : ''}</div>`;
+    const high = r.open.filter((i) => i.level === 'high'), look = r.open.filter((i) => i.level !== 'high');
+    box.innerHTML = `
+      <div class="att-tabs"><button class="btn${sub === 'open' ? ' on' : ''}" data-sub="open">To deal with (${r.open.length})</button><button class="btn${sub === 'done' ? ' on' : ''}" data-sub="done">Done (${r.done.length})</button></div>
+      ${sub === 'done'
+        ? (r.done.length ? `<div class="card flush check-list">${r.done.map(doneRow).join('')}</div>` : '<div class="card empty">Nothing marked done yet.</div>')
+        : r.open.length ? `
+          <p class="muted" style="margin:0 0 12px">Look at each one (click it to open it). When you have dealt with it, or it is fine, press <b>Done</b>: it leaves this list on every computer.</p>
+          ${high.length ? `<div class="card flush check-list"><div class="card-head pad"><h3>Need attention (${high.length})</h3></div>${high.map((i) => checkRow(i, { doneBtn: true })).join('')}</div>` : ''}
+          ${look.length ? `<div class="card flush check-list" style="margin-top:16px"><div class="card-head pad"><h3>Worth a look (${look.length})</h3></div>${look.map((i) => checkRow(i, { doneBtn: true })).join('')}</div>` : ''}`
+        : `<div class="card empty-good"><div class="eg-ic">${icon('check')}</div><b>All dealt with</b><div class="muted">Nothing unusual is waiting. New things show up here by themselves.</div></div>`}`;
+    const byKey = new Map(r.open.map((i) => [i.key, i]));
+    box.onclick = async (e) => {
+      const s = e.target.closest('[data-sub]');
+      if (s) { box.dataset.sub = s.dataset.sub; return REPORT_RENDER.attention(box, q); }
+      const d = e.target.closest('[data-done]');
+      if (d) {
+        e.stopPropagation();
+        const i = byKey.get(d.dataset.done);
+        await busy(d, () => POST('/api/attention/done', { key: i.key, kind: i.kind, title: i.title }));
+        d.closest('.check-row').classList.add('gone');
+        toast('Done — taken off the list', 'ok');
+        setTimeout(() => { REPORT_RENDER.attention(box, q); paintAttentionBadge(document, q); }, 260);
+        return;
+      }
+      const u = e.target.closest('[data-undo]');
+      if (u) {
+        e.stopPropagation();
+        await busy(u, () => POST('/api/attention/undo', { key: u.dataset.undo }));
+        toast('It is back on the list', 'ok');
+        REPORT_RENDER.attention(box, q); paintAttentionBadge(document, q);
+      }
+    };
+  },
+
   // ---------- Things to check: what looks wrong (also what someone continued past a warning) ----------
   async check(box, q) {
     const r = await GET('/api/reports/unusual', q);
     const high = r.items.filter((i) => i.level === 'high'), look = r.items.filter((i) => i.level !== 'high');
-    const row = (i) => `<div class="check-row ${i.level}${i.link ? ' click' : ''}" ${i.link ? `data-link="${esc(i.link)}"` : ''}>
-      <span class="check-ic">${i.level === 'high' ? '!' : '?'}</span>
-      <div class="grow"><div><span class="pill ${i.level === 'high' ? 'red' : 'warn'}">${esc(i.kind)}</span> <b>${esc(i.title)}</b></div>
-        <div class="muted small">${esc(i.detail)}</div>
-        <div class="muted small">${[i.place, i.user && 'by ' + i.user, i.at && fmtDT(i.at)].filter(Boolean).map(esc).join(' · ') || 'right now'}</div></div>
-      ${i.link ? `<span class="check-go">${icon('arrow')}</span>` : ''}</div>`;
+    const row = (i) => checkRow(i);
     box.innerHTML = r.items.length ? `
       <div class="stats">
         ${statHtml('Need attention', num(high.length), 'money lost or stock wrong', high.length ? 'bad' : '')}

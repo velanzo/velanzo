@@ -11,7 +11,7 @@ View('dashboard', {
   title: () => `Today, ${fmtDate(todayStr()).replace(/ \d{4}$/, '')}`,
   allow: isAdmin,
   async render({ el }) {
-    const [d, live, chk] = await Promise.all([GET('/api/dashboard'), GET('/api/live'), GET('/api/reports/unusual', { from: todayStr().slice(0, 8) + '01', to: todayStr() }).catch(() => ({ high: 0, items: [] }))]);
+    const [d, live, chk] = await Promise.all([GET('/api/dashboard'), GET('/api/live'), GET('/api/attention').catch(() => ({ high: 0, open: [] }))]);
     setActions(`<a class="btn" href="#/reports">${icon('chart')} Reports</a>`);
     let lastBackup = null;
     // (a downloaded backup or the daily one into the folder, whichever is newer)
@@ -19,7 +19,7 @@ View('dashboard', {
     const backupOld = !App.demo && (!lastBackup || (Date.now() - new Date(lastBackup.replace(' ', 'T'))) > 7 * 864e5);
     el.innerHTML = `
       ${backupOld ? `<div class="alert flex">${icon('download')}<div class="grow">${lastBackup ? 'Your last backup from this device is more than a week old.' : 'Keep a copy of your data: download a backup now and then.'}</div><a class="btn sm" href="#/settings/backup">Back up now</a></div>` : ''}
-      ${chk.high ? `<a class="alert danger flex attn" href="#/reports/check"><span class="attn-n">${chk.high}</span><div class="grow"><b>${chk.high === 1 ? '1 thing needs' : chk.high + ' things need'} your attention this month</b><div class="small">${esc([...new Set(chk.items.filter((i) => i.level === 'high').map((i) => i.kind))].slice(0, 4).join(' · '))}</div></div><span class="btn sm">See them</span></a>` : ''}
+      ${chk.high ? `<a class="alert danger flex attn" href="#/reports/attention"><span class="attn-n">${chk.high}</span><div class="grow"><b>${chk.high === 1 ? '1 thing needs' : chk.high + ' things need'} your attention</b><div class="small">${esc([...new Set(chk.open.filter((i) => i.level === 'high').map((i) => i.kind))].slice(0, 4).join(' · '))}</div></div><span class="btn sm">See them</span></a>` : ''}
       <div class="big-stats">
         <a class="big-stat" href="#/sales"><span>Sales today</span><b id="todayVal">${money(d.today.total)}</b><small id="todaySub">${d.today.bills} bills</small></a>
         <a class="big-stat" href="#/reports"><span>Profit this month</span><b class="${d.month.net_profit < 0 ? 'neg' : ''}">${money(d.month.net_profit)}</b><small>after ${money(d.month.expenses)} expenses</small></a>

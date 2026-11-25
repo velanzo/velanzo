@@ -588,6 +588,33 @@ await scenario('33. An article number reaches every computer, and a shop may cha
   ok((await A.call('GET', '/api/products', null, { q: 'GGT-0' })).some((x) => x.id === p.id), 'searching by article number finds the item');
 });
 
+await scenario('34. Done on the Attention list on one computer takes it off everywhere', async () => {
+  const p = await newItem(30);
+  await A.call('POST', '/api/stock/adjust', { product_id: p.id, location_id: WH, mode: 'set', qty: 2, reason: 'typo' });
+  await allSynced();
+  const item = (await B.call('GET', '/api/attention')).open.find((i) => i.kind === 'Big stock correction' && i.title.includes(p.name));
+  ok(!!item, 'the other owner computer has the big correction on its list');
+  await A.call('POST', '/api/attention/done', { key: item.key, kind: item.kind, title: item.title });
+  const r = await A.sync();
+  ok(r.refused === 0, 'the cloud takes the Done mark');
+  await B.sync();
+  const onB = await B.call('GET', '/api/attention');
+  ok(!onB.open.some((i) => i.key === item.key) && onB.done.some((d) => d.k === item.key && d.user_name === 'Owner'), 'after syncing it is gone from the other computer too, under Done');
+  await B.call('POST', '/api/attention/undo', { key: item.key });
+  await B.sync(); await A.sync();
+  ok((await A.call('GET', '/api/attention')).open.some((i) => i.key === item.key), 'Undo on one computer puts it back on the other');
+});
+
+await scenario('35. A computer with customers is the same as the cloud (no endless repair)', async () => {
+  await A.call('POST', '/api/customers', { name: 'Zaid Traders', phone: '0300' });
+  await allSynced(); await A.sync();
+  for (const d of [A, SHOP]) {
+    const who = d === A ? { p_device: (await d.system('info')).device.id, p_user: ownerId } : { p_device: (await d.system('info')).device.id, p_user: ahmed.id };
+    const r = await d.system('compareWithCloud', await d.rpc('sync_check', who));
+    ok(r.compared && r.same, `${d.name}: the check finds nothing different${r.different ? ' (' + r.different.join(', ') + ')' : ''}`);
+  }
+});
+
 await sameEverywhere(A, B, '\nFinally: the two owner computers hold exactly the same data');
 for (const d of [A, B, SHOP]) await d.stop();
 console.log(failures.length ? `\n${failures.length} FAILED, ${passed} passed:\n - ${failures.join('\n - ')}` : `\nAll ${passed} multi-computer checks passed.`);
