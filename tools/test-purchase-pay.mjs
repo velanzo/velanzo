@@ -56,6 +56,14 @@ await call('POST', `/api/purchases/${pu.id}/payments`, { amount: 860 });
 ok((await call('GET', `/api/suppliers/${sup.id}`)).supplier.due === 0, 'paying the purchase clears what the supplier is owed');
 ok((await call('GET', '/api/dashboard')).supplier_due === 0, 'Home: nothing owed to suppliers (payments for a purchase with no supplier are not taken off)');
 
+// ---- an order dated earlier keeps its date when it is confirmed and received ----
+const back = await call('POST', '/api/purchases', { location_id: WH, draft: true, date: '2026-11-01', items: [{ product_id: shirt.id, qty: 2, cost: 680 }] });
+await call('POST', `/api/purchases/${back.id}/confirm`);
+ok((await call('GET', `/api/purchases/${back.id}`)).date === '2026-11-01', 'confirmed: the order keeps its date (1 Nov)');
+await call('POST', `/api/purchases/${back.id}/receive`, {});
+const got = await call('GET', `/api/purchases/${back.id}`);
+ok(got.status === 'done' && got.date === '2026-11-01' && got.received_at.slice(0, 10) === D.today(), 'received today: the date stays 1 Nov, received_at is today');
+
 // ---- drafts can be deleted ----
 const draft = await call('POST', '/api/purchases', { location_id: WH, draft: true, items: [{ product_id: shirt.id, qty: 1, cost: 680 }] });
 r = await call('POST', '/api/delete/run', { items: [{ kind: 'purchases', id: draft.id }] });
