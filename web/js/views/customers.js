@@ -24,12 +24,12 @@ function receivePayment(customer, { sale = null, owed = 0, done } = {}) {
   m.$('#pAmt').addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
 }
 
-// Add or change a customer → the saved customer.
+// Add or change a customer → the saved customer. (c without an id: a new customer with the name or phone filled in)
 function editCustomer(c) {
   return new Promise((resolve) => {
     let saved = null;
     const m = modal({
-      title: c ? c.name : 'New customer',
+      title: c?.id ? c.name : 'New customer',
       body: `<div class="form-grid">
         <label class="field">Name<input class="input" name="name" value="${esc(c?.name || '')}" autofocus></label>
         <label class="field">Phone<input class="input" name="phone" value="${esc(c?.phone || '')}" inputmode="tel"></label>
@@ -41,7 +41,7 @@ function editCustomer(c) {
     const b = m.$('#cSave');
     b.addEventListener('click', () => busy(b, async () => {
       const v = formValues(m.el);
-      saved = c ? await PUT('/api/customers/' + c.id, v) : await POST('/api/customers', v);
+      saved = c?.id ? await PUT('/api/customers/' + c.id, v) : await POST('/api/customers', v);
       m.close();
     }));
   });
