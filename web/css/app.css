@@ -512,12 +512,12 @@ h3 > svg { width: 20px; height: 20px; vertical-align: -4px; margin-right: 4px; c
 @media (max-width: 1150px) {
   .pos { grid-template-columns: 1fr 320px; }
 }
-/* the menu, the status and the person's name must never overlap: first the name goes, then the menu shows icons only */
+/* the menu, the status and the person's name must never overlap: first the name goes, then (when the menu with its words
+   does not fit beside the name of the business) the menu gets a row of its own under it — the words always show (fitNav) */
 @media (max-width: 1440px) { .appbar-right .uname { display: none; } }
-@media (max-width: 1300px) {
-  .tabnav > a span:not(.badge), .more > summary span { display: none; }
-  .tabnav > a.active span:not(.badge) { display: inline; }
-}
+.appbar-in.no-uname .uname { display: none; }
+.appbar-in.two-rows { flex-wrap: wrap; row-gap: 6px; }
+.appbar-in.two-rows .tabnav { order: 3; flex-basis: 100%; overflow-x: auto; scrollbar-width: none; }
 @media (max-width: 900px) {
   .appbar-in { flex-wrap: wrap; padding: 8px 12px; gap: 8px; }
   .tabnav { order: 3; flex-basis: 100%; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
