@@ -439,7 +439,8 @@ route('POST', '/api/purchases/:id/receive', 'buy', ({ params, body, user }) => t
   if (!got) fail(400, 'Nothing arrived, so there is nothing to add. If the order will not come, cancel it instead.');
   const paid = Math.max(0, toMoney(body.paid));
   run("UPDATE purchases SET status = 'done', total = ?, total_qty = ?, paid = ?, invoice_no = COALESCE(NULLIF(?, ''), invoice_no), date = ?, received_at = ?, notes = COALESCE(NULLIF(?, ''), notes) WHERE id = ?",
-    round2(total), got, paid, str(body.invoice_no, 60), isDate(body.date) ? body.date : today(), now(), str(body.notes, 500), id);
+    // (the purchase keeps the date it was given; when the goods arrived is received_at)
+    round2(total), got, paid, str(body.invoice_no, 60), isDate(body.date) ? body.date : p.date, now(), str(body.notes, 500), id);
   return { id, received_qty: got };
 }));
 
