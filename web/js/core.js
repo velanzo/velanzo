@@ -393,6 +393,21 @@ function navHtml() {
     <div class="more-list">${inMore.join('')}</div></details>`;
 }
 
+// The menu always shows its words. When they do not fit beside the business name and the buttons on the right,
+// first the person's name next to their letter goes, then the menu moves to a row of its own under them
+// (instead of showing icons only).
+function fitNav() {
+  const bar = $('.appbar-in'), nav = $('#nav');
+  if (!bar || !nav || $('#shell')?.classList.contains('reporter')) return;
+  const tooWide = () => nav.scrollWidth > nav.clientWidth + 1;
+  bar.classList.toggle('two-rows', false);
+  bar.classList.toggle('no-uname', false);
+  if (tooWide()) bar.classList.toggle('no-uname', true);
+  if (tooWide()) bar.classList.toggle('two-rows', true);
+}
+let fitNavTimer = null;
+window.addEventListener('resize', () => { clearTimeout(fitNavTimer); fitNavTimer = setTimeout(fitNav, 80); });
+
 function renderShell() {
   const u = App.user;
   const place = isAdmin() ? 'All shops' : locName(u.location_id);
@@ -448,6 +463,8 @@ function renderShell() {
   // menus close when something is picked or when clicking elsewhere
   document.addEventListener('click', closeMenus);
   paintSync();
+  fitNav();
+  document.fonts?.ready.then(fitNav); // (again once the font has loaded: the words get wider)
 }
 function closeMenus(e) {
   for (const d of $$('details.more, details.user-menu')) if (d.open && (!e || !d.contains(e.target) || e.target.closest('a'))) d.open = false;
@@ -491,7 +508,7 @@ async function remoteChanged(tables) {
       // (switched to or from "Reports only": the whole screen changes)
       if ($('#shell') && $('#shell').classList.contains('reporter') !== isReporter()) { renderShell(); location.hash = '#/' + homeFor(); return; }
       const nav = $('#nav');
-      if (nav) { nav.innerHTML = navHtml(); $$('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.nav === (App.view?.nav || App.view?.path?.split('/')[0]))); }
+      if (nav) { nav.innerHTML = navHtml(); $$('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.nav === (App.view?.nav || App.view?.path?.split('/')[0]))); fitNav(); }
     } catch { return; } // (nobody is logged in any more: the login screen is showing)
   }
   if (!App.view || document.querySelector('.modal-wrap')) return;
